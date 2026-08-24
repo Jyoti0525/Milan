@@ -66,6 +66,13 @@ _METHOD_WEIGHTS: dict[PaymentMethod, int] = {
 
 _SETTLEMENT_HOUR = time(11, 0)
 
+_MERGE_SPAN_DAYS = 3
+"""How far apart two payouts can be and still leave in the same transfer.
+Three days covers a weekend. It is deliberately the same number the
+matcher searches over: a generator that merged across a wider window than
+any honest matcher would consider would be manufacturing failures rather
+than difficulty."""
+
 
 @dataclass(slots=True)
 class _Debit:
@@ -85,6 +92,10 @@ class _Batch:
     """A settlement batch under construction."""
 
     settle_date: date
+    channel: str
+    """Which payout run this is. A gateway settles on cut-offs and settles
+    international cards separately, so one date carries several batches."""
+
     settlement_id: str
     utr: str
     payments: list[Payment]
@@ -112,7 +123,8 @@ class ChaosEngine:
         refunds = self._draw_refunds(payments)
         adjustments = self._draw_adjustments(payments)
 
-        batches, rows, leaks = self._assemble(orders, payments, refunds, adjustments)
+        unreported = self._choose_unreported(payments, refunds, adjustments)
+        batches, rows, leaks = self._assemble(orders, payments, refunds, adjustments, unreported)
         settlements = self._finalise_settlements(batches, rows)
         credits, truths, missing = self._emit_bank_credits(batches, settlements)
 
@@ -130,6 +142,7 @@ class ChaosEngine:
                 seed=self._config.seed,
                 credits=tuple(truths),
                 missing_settlement_ids=tuple(missing),
+                unreported_payment_ids=tuple(sorted(unreported)),
                 leaks=tuple(leaks),
             ),
         )
@@ -275,6 +288,7 @@ class ChaosEngine:
         payments: list[Payment],
         refunds: list[Refund],
         adjustments: list[Adjustment],
+        unreported: set[str],
     ) -> tuple[list[_Batch], list[SettlementRow], list[LeakTruth]]:
         """Group payments into batches and recover debits from later ones.
 
@@ -282,18 +296,22 @@ class ChaosEngine:
         where a merchant can be charged at a rate they never agreed to.
         """
         receipts = {order.order_id: order.order_receipt for order in orders}
-        grouped = self._group_by_settlement_date(payments)
+        reported = [p for p in payments if p.payment_id not in unreported]
+        grouped = self._group_into_batches(reported)
 
         batches: list[_Batch] = []
         rows: list[SettlementRow] = []
         leaks: list[LeakTruth] = []
 
-        for settle_date in sorted(grouped):
+        for settle_date, channel in sorted(grouped):
             batch = _Batch(
                 settle_date=settle_date,
+                channel=channel,
                 settlement_id=self._identifier("setl"),
                 utr=self._utr(),
-                payments=sorted(grouped[settle_date], key=lambda payment: payment.payment_id),
+                payments=sorted(
+                    grouped[(settle_date, channel)], key=lambda payment: payment.payment_id
+                ),
             )
             for payment in batch.payments:
                 row, leak = self._settle_payment(batch, payment, receipts)
@@ -306,17 +324,56 @@ class ChaosEngine:
         rows.extend(self._recover_debits(batches, pending))
         return batches, rows, leaks
 
-    def _group_by_settlement_date(self, payments: list[Payment]) -> dict[date, list[Payment]]:
-        """T+2 working days domestic, T+7 international."""
-        grouped: dict[date, list[Payment]] = defaultdict(list)
+    def _group_into_batches(self, payments: list[Payment]) -> dict[tuple[date, str], list[Payment]]:
+        """T+2 working days domestic, T+7 international - and several a day.
+
+        A payout run is a date *and* a cycle. International cards settle on
+        their own cycle because they clear on their own timetable, and the
+        domestic runs split on capture cut-offs.
+
+        Doing this properly is what stops a batch total from being a unique
+        fingerprint. One run a day gives twenty batches a month, each the sum
+        of dozens of arbitrary order values, so no two ever collide and
+        amount-plus-date is enough on its own. Several runs a day puts
+        similar totals on the same date, which is the situation the later
+        rungs exist for and which the day-one generator never produced.
+        """
+        grouped: dict[tuple[date, str], list[Payment]] = defaultdict(list)
         for payment in payments:
-            lag = (
-                INTERNATIONAL_SETTLEMENT_DAYS
-                if payment.card_type is CardType.INTERNATIONAL
-                else DOMESTIC_SETTLEMENT_DAYS
-            )
-            grouped[add_working_days(payment.captured_at.date(), lag)].append(payment)
+            international = payment.card_type is CardType.INTERNATIONAL
+            lag = INTERNATIONAL_SETTLEMENT_DAYS if international else DOMESTIC_SETTLEMENT_DAYS
+            settle_date = add_working_days(payment.captured_at.date(), lag)
+            channel = "intl" if international else self._cycle(payment)
+            grouped[(settle_date, channel)].append(payment)
         return grouped
+
+    def _cycle(self, payment: Payment) -> str:
+        """Which cut-off this capture fell before."""
+        cycles = self._config.settlement_cycles
+        index = min(payment.captured_at.hour * cycles // 24, cycles - 1)
+        return f"cycle{index + 1}"
+
+    def _choose_unreported(
+        self, payments: list[Payment], refunds: list[Refund], adjustments: list[Adjustment]
+    ) -> set[str]:
+        """Payments the settlement report will never mention.
+
+        Only payments with nothing else attached are eligible. A dropped
+        payment that still had its refund sitting in the report would produce
+        a debit for money the report never showed arriving, which is a
+        different and much stranger defect than the one being modelled here.
+        """
+        rate = self._config.defects.unreported_payments
+        if rate <= 0:
+            return set()
+        entangled = {refund.payment_id for refund in refunds} | {
+            adjustment.payment_id for adjustment in adjustments
+        }
+        return {
+            payment.payment_id
+            for payment in payments
+            if payment.payment_id not in entangled and self._rng.random() < rate
+        }
 
     def _settle_payment(
         self, batch: _Batch, payment: Payment, receipts: dict[str, str]
@@ -536,7 +593,7 @@ class ChaosEngine:
             truths.append(
                 CreditTruth(
                     credit_id=credit_id,
-                    settlement_id=settlement.settlement_id,
+                    settlement_ids=(settlement.settlement_id,),
                     entity_ids=settlement.entity_ids,
                     gross=batch.gross_total,
                     fee=batch.fee_total,
@@ -549,6 +606,7 @@ class ChaosEngine:
                 )
             )
 
+        credits, truths = self._merge_credits(credits, truths, defects.merged_credits)
         credits, truths = self._inject_orphans(credits, truths, defects.orphan_credits)
         credits, truths = self._inject_duplicates(credits, truths, defects.ambiguous_pairs)
 
@@ -587,6 +645,113 @@ class ChaosEngine:
                 f"UTR{utr} RAZORPAY PAYOUT",
             )
         )
+
+    def _merge_credits(
+        self, credits: list[BankCredit], truths: list[CreditTruth], count: int
+    ) -> tuple[list[BankCredit], list[CreditTruth]]:
+        """Collapse two or three payouts into the single line the bank shows.
+
+        This is not the gateway misbehaving. Transfers initiated in the same
+        window get swept into one NEFT credit, and the merchant's statement
+        then carries an amount that matches no settlement anywhere - because
+        it never was one settlement.
+
+        Half of these carry one member's reference, and those are the
+        dangerous ones. The join key finds a real settlement, the amount is
+        short by the rest of the group, and any system that treats a match as
+        settled fact will report a confident wrong answer with a reference
+        number attached to it. The other half carry nothing, which is merely
+        hard.
+
+        The whole group is still recorded as matchable. A merged credit is
+        resolvable from the evidence: the combination that adds up is in the
+        report, and finding it is work rather than luck.
+        """
+        if count <= 0:
+            return credits, truths
+
+        by_id = {truth.credit_id: truth for truth in truths}
+        eligible = sorted(
+            (
+                credit
+                for credit in credits
+                if by_id[credit.credit_id].settlement_ids
+                and by_id[credit.credit_id].defect is None
+                and credit.utr is not None
+            ),
+            key=lambda credit: (credit.value_date, credit.credit_id),
+        )
+
+        consumed: set[str] = set()
+        merged: list[tuple[BankCredit, CreditTruth]] = []
+
+        for index, anchor in enumerate(eligible):
+            if len(merged) >= count:
+                break
+            if anchor.credit_id in consumed:
+                continue
+            partners = [
+                candidate
+                for candidate in eligible[index + 1 :]
+                if candidate.credit_id not in consumed
+                and (candidate.value_date - anchor.value_date).days <= _MERGE_SPAN_DAYS
+            ]
+            size = self._rng.choice((2, 2, 3))
+            members = [anchor, *partners[: size - 1]]
+            if len(members) < 2:
+                continue
+            consumed.update(member.credit_id for member in members)
+            merged.append(self._one_merged_credit(members, by_id))
+
+        if not merged:
+            return credits, truths
+
+        kept = [credit for credit in credits if credit.credit_id not in consumed]
+        kept_truths = [by_id[credit.credit_id] for credit in kept]
+        return (
+            [*kept, *(credit for credit, _ in merged)],
+            [*kept_truths, *(truth for _, truth in merged)],
+        )
+
+    def _one_merged_credit(
+        self, members: list[BankCredit], by_id: dict[str, CreditTruth]
+    ) -> tuple[BankCredit, CreditTruth]:
+        """Build the single bank line that stands for several payouts."""
+        parts = [by_id[member.credit_id] for member in members]
+        credit_id = self._identifier("bank")
+        carries_reference = self._rng.random() < 0.5
+        reference = members[0].utr
+
+        if carries_reference and reference is not None:
+            narration = self._narration(reference, corrupted=False)
+            utr: str | None = reference
+            defect = "MERGED_WITH_REFERENCE"
+        else:
+            narration = self._narration("", corrupted=True)
+            utr = None
+            defect = "MERGED_CREDIT"
+
+        credit = BankCredit(
+            credit_id=credit_id,
+            amount=Paise(sum(member.amount for member in members)),
+            value_date=max(member.value_date for member in members),
+            narration=narration,
+            utr=utr,
+        )
+        truth = CreditTruth(
+            credit_id=credit_id,
+            settlement_ids=tuple(sorted(sid for part in parts for sid in part.settlement_ids)),
+            entity_ids=tuple(entity for part in parts for entity in part.entity_ids),
+            gross=Paise(sum(part.gross for part in parts)),
+            fee=Paise(sum(part.fee for part in parts)),
+            tax=Paise(sum(part.tax for part in parts)),
+            tds=Paise(sum(part.tds for part in parts)),
+            adjustments=Paise(sum(part.adjustments for part in parts)),
+            rounding_drift=Paise(sum(part.rounding_drift for part in parts)),
+            matchable=True,
+            defect=defect,
+        )
+        return credit, truth
 
     def _inject_orphans(
         self, credits: list[BankCredit], truths: list[CreditTruth], count: int
@@ -635,7 +800,11 @@ class ChaosEngine:
             return credits, truths
 
         by_id = {truth.credit_id: truth for truth in truths}
-        settled = [credit for credit in credits if by_id[credit.credit_id].settlement_id]
+        settled = [
+            credit
+            for credit in credits
+            if by_id[credit.credit_id].settlement_ids and by_id[credit.credit_id].defect is None
+        ]
         if not settled:
             return credits, truths
 
@@ -672,7 +841,7 @@ class ChaosEngine:
     def _unmatchable(self, credit_id: str, defect: str) -> CreditTruth:
         return CreditTruth(
             credit_id=credit_id,
-            settlement_id=None,
+            settlement_ids=(),
             entity_ids=(),
             gross=Paise(0),
             fee=Paise(0),

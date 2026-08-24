@@ -57,6 +57,25 @@ class DefectRates(BaseModel):
     """Pairs of settlements with identical amount and date, both with their
     UTR destroyed. Genuinely indistinguishable. Refusing is the right answer."""
 
+    merged_credits: int = 0
+    """Bank credits that pay out two or three settlements at once.
+
+    Not a gateway defect at all - it is what banks do with transfers in the
+    same cycle. It sits here because it is a difficulty knob: a merged credit
+    matches no single settlement, so every rung that compares one amount to
+    one batch is wrong about it by construction. Half of them carry one
+    member's reference, which is worse than carrying none: the join key finds
+    a settlement, the proof comes up short by the rest, and a system that does
+    not let proving overrule matching will report a confident wrong answer."""
+
+    unreported_payments: float = 0.0
+    """Captured payments the settlement report never mentions.
+
+    The one defect on this list that no amount of bank-side matching can find.
+    The money never arrived, so nothing is unmatched and every credit still
+    reconciles perfectly. It is only visible by reading the payments file and
+    asking what the report leaves out."""
+
 
 _TIERS: dict[Difficulty, DefectRates] = {
     Difficulty.CLEAN: DefectRates(),
@@ -65,6 +84,8 @@ _TIERS: dict[Difficulty, DefectRates] = {
         batch_tax_rounding=True,
         orphan_credits=1,
         missing_credits=1,
+        merged_credits=2,
+        unreported_payments=0.004,
     ),
     Difficulty.MESSY: DefectRates(
         utr_corrupted=0.25,
@@ -72,6 +93,8 @@ _TIERS: dict[Difficulty, DefectRates] = {
         rate_mismatch=0.15,
         orphan_credits=3,
         missing_credits=2,
+        merged_credits=4,
+        unreported_payments=0.010,
     ),
     Difficulty.ADVERSARIAL: DefectRates(
         utr_corrupted=0.35,
@@ -80,6 +103,8 @@ _TIERS: dict[Difficulty, DefectRates] = {
         orphan_credits=4,
         missing_credits=2,
         ambiguous_pairs=2,
+        merged_credits=6,
+        unreported_payments=0.015,
     ),
 }
 
@@ -99,6 +124,17 @@ class GenerationConfig(BaseModel):
 
     start_date: str = "2026-07-01"
     span_days: int = Field(default=21, ge=1)
+
+    settlement_cycles: int = Field(default=2, ge=1, le=6)
+    """Payout runs per day. A gateway settles on cut-offs, not once at
+    midnight, and international cards settle on their own cycle entirely.
+
+    This is the single most important difficulty knob in the file and it is
+    not a defect. With one cycle a day, a batch total is the sum of dozens of
+    arbitrary order values and is therefore unique across the month - so
+    amount-plus-date resolves nearly everything, and a match rate measured on
+    that data says almost nothing. Several batches a day is both what really
+    happens and what makes the second rung have to earn its answer."""
 
     refund_probability: float = Field(default=0.06, ge=0.0, le=1.0)
     chargeback_probability: float = Field(default=0.015, ge=0.0, le=1.0)
