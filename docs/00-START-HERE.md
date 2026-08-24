@@ -23,6 +23,7 @@ Read the files in order. Each one covers one topic in plain language.
 | `15-PRODUCTION-STORY.md` | How a real merchant uses it, and where the model runs in production |
 | `16-WHY-NOT-FINETUNE.md` | Why fine-tuning fails here, and the better HuggingFace artifact |
 | `17-AI-INVOLVEMENT.md` | **How much AI is really in this**, the ablation, and the competitor analysis |
+| `18-BUILD-LOG.md` | What broke each day, and how we got out. Written as it happens |
 
 ## The basics
 

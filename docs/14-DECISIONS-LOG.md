@@ -125,3 +125,32 @@ If a decision is not here, it is not settled.
 56. **PDF bank statement parsing** (text-PDFs) as a Tier 3 stretch. Genuinely
     AI load-bearing; ground truth free because we render our own data to PDF.
 57. **Video leads with AI-judgment moments**, not the deterministic pipeline.
+
+## Implementation (day 1, 25 August 2026)
+58. **Money is integer paise everywhere; floats are rejected at runtime.**
+    Rates are `Decimal`, and every rate application goes through one half-up
+    rounding function. Half-up, not banker's — Python's built-in `round` would
+    quietly disagree with the gateway by a paisa.
+59. **`settlement_id` and `matchable` are separate fields in the answer key.**
+    One is what is true, the other is what is knowable from the three files.
+    Conflating them broke the oracle test on day one. See `18-BUILD-LOG.md`.
+60. **A forced answer counts as a false positive even when it is right.**
+    Guessing on an ambiguous credit is right about half the time, and
+    rewarding the lucky half is how a coin flip comes to look like accuracy.
+61. **Proving vetoes matching.** A credit the cascade claimed but the
+    waterfall could not reconstruct to zero does not stay matched. It becomes
+    an exception.
+62. **The rounding allowance is derived, not picked.** `(taxed rows + 1) / 2`
+    paise, because that is the widest gap the two roundings can legitimately
+    produce. A fixed "within a rupee" would swallow real errors on small
+    batches and reject real drift on large ones.
+63. **`milan.recon` may not import ground truth.** Enforced by a test that
+    greps the package, not by convention.
+64. **The eval harness always runs the reference-only baseline.** A match rate
+    with nothing to compare it against is not a measurement.
+65. **The cascade is called a cascade in the code, not an agent.** Fixed
+    sequence, no state, no planning. Consistent with decision 52.
+66. **JSON, not Parquet, until volume demands otherwise.** Byte-stable for
+    hashing, readable when a number looks wrong. Revisit at scale.
+67. **`make` is a convenience, never a dependency.** Windows has no `make`;
+    `uv run milan ...` is the real interface.
