@@ -31,6 +31,7 @@ SeedOption = Annotated[int, typer.Option("--seed", help="Anything reproducible s
 DifficultyOption = Annotated[
     Difficulty, typer.Option("--difficulty", help="Which tier of defects to inject.")
 ]
+SpanOption = Annotated[int, typer.Option("--span", help="Days the activity covers.")]
 RootOption = Annotated[
     Path | None, typer.Option("--data-root", help="Where runs are stored.", show_default=False)
 ]
@@ -45,17 +46,19 @@ def generate(
     seed: SeedOption = 42,
     difficulty: DifficultyOption = Difficulty.REALISTIC,
     orders: Annotated[int, typer.Option("--orders", help="How many orders to generate.")] = 100,
+    span: SpanOption = 21,
     root: RootOption = None,
 ) -> None:
     """Generate a merchant's month, with the answer key."""
-    config = GenerationConfig(seed=seed, difficulty=difficulty, order_count=orders)
+    config = GenerationConfig(seed=seed, difficulty=difficulty, order_count=orders, span_days=span)
     dataset = ChaosEngine(config).generate()
     path = store.save_dataset(dataset, _root(root))
 
     console.print(
         f"Generated [bold]{dataset.record_count:,}[/bold] records "
         f"across {len(dataset.bank_credits)} bank credits "
-        f"({dataset.answer_key.impossible_count} impossible by design)."
+        f"({dataset.answer_key.merged_count} merged, "
+        f"{dataset.answer_key.impossible_count} impossible by design)."
     )
     console.print(f"[dim]{path}[/dim]")
 
@@ -143,13 +146,14 @@ def reproduce(
     seed: SeedOption = 42,
     difficulty: DifficultyOption = Difficulty.REALISTIC,
     orders: Annotated[int, typer.Option("--orders")] = 100,
+    span: SpanOption = 21,
 ) -> None:
     """Generate the same dataset twice and compare digests.
 
     Reproducibility is asserted everywhere in this project. This is the
     command that makes it falsifiable.
     """
-    config = GenerationConfig(seed=seed, difficulty=difficulty, order_count=orders)
+    config = GenerationConfig(seed=seed, difficulty=difficulty, order_count=orders, span_days=span)
     first = store.content_hash(ChaosEngine(config).generate())
     second = store.content_hash(ChaosEngine(config).generate())
 

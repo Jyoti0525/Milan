@@ -87,13 +87,26 @@ def proof_table(proof: Proof) -> Table:
 
     table.add_section()
     table.add_row("Unexplained", format_inr(proof.residual), "")
-    table.caption = (
-        f"matched by {proof.strategy.value} at {proof.confidence:.0%} confidence"
-        if proof.balances
-        else "does not balance"
-    )
+    table.caption = _proof_caption(proof)
     table.caption_justify = "left"
     return table
+
+
+def _proof_caption(proof: Proof) -> str:
+    """How this credit was resolved, and against what.
+
+    The settlements are named when there is more than one. A merged credit
+    that reads like an ordinary one invites the reader to check the total
+    against a single settlement, fail, and conclude the proof is wrong.
+    """
+    if not proof.balances:
+        return "does not balance"
+    how = f"matched by {proof.strategy.value} at {proof.confidence:.0%} confidence"
+    if len(proof.settlement_ids) > 1:
+        return f"{how}, covering {len(proof.settlement_ids)} settlements: " + ", ".join(
+            _short(settlement_id) for settlement_id in proof.settlement_ids
+        )
+    return how
 
 
 def evaluation_table(evaluation: Evaluation) -> Table:
@@ -113,6 +126,7 @@ def evaluation_table(evaluation: Evaluation) -> Table:
     table.add_column("Match rate", **_NUMERIC)  # type: ignore[arg-type]
     table.add_column("Precision", **_NUMERIC)  # type: ignore[arg-type]
     table.add_column("Refusals", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Merged", **_NUMERIC)  # type: ignore[arg-type]
     table.add_column("False +", **_NUMERIC)  # type: ignore[arg-type]
     table.add_column("Missed", **_NUMERIC)  # type: ignore[arg-type]
     table.add_column("Records/s", **_NUMERIC)  # type: ignore[arg-type]
@@ -123,6 +137,7 @@ def evaluation_table(evaluation: Evaluation) -> Table:
             f"{card.match_rate:.1%}",
             f"{card.precision:.1%}",
             f"{card.correct_refusals}/{card.impossible}",
+            f"{card.merged_resolved}/{card.merged_expected}",
             str(card.false_positives),
             str(card.false_negatives),
             f"{card.records_per_second:,.0f}",
@@ -144,8 +159,16 @@ def scorecard_detail(card: Scorecard) -> Table:
     table.add_row("Resolvable but missed", f"{card.false_negatives}")
     table.add_row("Correctly refused", f"{card.correct_refusals}")
     table.add_row(
+        "Merged credits resolved",
+        f"{card.merged_resolved}/{card.merged_expected}",
+    )
+    table.add_row(
         "Missing payouts flagged",
         f"{card.missing_settlements_detected}/{card.missing_settlements_expected}",
+    )
+    table.add_row(
+        "Unsettled payments flagged",
+        f"{card.unreported_payments_detected}/{card.unreported_payments_expected}",
     )
 
     if card.matches_by_strategy:

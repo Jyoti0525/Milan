@@ -47,6 +47,18 @@ class Scorecard(BaseModel):
     missing_settlements_expected: int = 0
     missing_settlements_detected: int = 0
 
+    unreported_payments_expected: int = 0
+    unreported_payments_detected: int = 0
+    """Captured payments the settlement report never mentions. Found by
+    reading the payments file, not by matching credits - no bank-side
+    technique can see this money, because it never arrived."""
+
+    merged_expected: int = 0
+    merged_resolved: int = 0
+    """Credits covering more than one settlement. Broken out because they
+    are the case the aggregate rate is least sensitive to and the one most
+    likely to be silently wrong."""
+
     matches_by_strategy: dict[str, int] = Field(default_factory=dict)
     unresolved_by_defect: dict[str, int] = Field(default_factory=dict)
 
@@ -87,6 +99,15 @@ class Scorecard(BaseModel):
     @property
     def missing_detection_rate(self) -> float:
         return _ratio(self.missing_settlements_detected, self.missing_settlements_expected)
+
+    @property
+    def unreported_detection_rate(self) -> float:
+        return _ratio(self.unreported_payments_detected, self.unreported_payments_expected)
+
+    @property
+    def merged_rate(self) -> float:
+        """Share of merged credits resolved to the exact set behind them."""
+        return _ratio(self.merged_resolved, self.merged_expected)
 
     @property
     def rules_share(self) -> float:

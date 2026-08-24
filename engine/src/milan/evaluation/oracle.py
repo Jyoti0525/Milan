@@ -34,7 +34,7 @@ class OracleStrategy:
 
     def attempt(self, credit: BankCredit, candidates: tuple[GatewayBatch, ...]) -> Attempt:
         expected = self._truth.get(credit.credit_id)
-        if expected is None or expected.settlement_id is None:
+        if expected is None or not expected.settlement_ids:
             return Attempt(
                 strategy=self.name,
                 verdict=Verdict.NO_CANDIDATE,
@@ -42,7 +42,7 @@ class OracleStrategy:
             )
         if not expected.matchable:
             # The oracle models the best *honest* behaviour, not omniscience.
-            # A credit can have a settlement behind it as a matter of fact and
+            # A credit can have settlements behind it as a matter of fact and
             # still be unidentifiable from the evidence in the three files -
             # two payouts of the same size on the same day, neither carrying a
             # reference. Knowing which is which is not skill, it is the answer
@@ -51,20 +51,20 @@ class OracleStrategy:
             return Attempt(
                 strategy=self.name,
                 verdict=Verdict.AMBIGUOUS,
-                note="behind this credit is a settlement no evidence could single out",
+                note="behind this credit are settlements no evidence could single out",
             )
         available = {batch.settlement_id for batch in candidates}
-        if expected.settlement_id not in available:
+        if not expected.settlement_set <= available:
             return Attempt(
                 strategy=self.name,
                 verdict=Verdict.NO_CANDIDATE,
-                note="the settlement behind this credit is not in the report",
+                note="a settlement behind this credit is not in the report",
             )
         return Attempt(
             strategy=self.name,
             verdict=Verdict.MATCHED,
-            settlement_id=expected.settlement_id,
-            candidates=(expected.settlement_id,),
+            settlement_ids=expected.settlement_ids,
+            candidates=expected.settlement_ids,
             confidence=1.0,
             note="oracle",
         )
