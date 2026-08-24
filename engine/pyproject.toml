@@ -1,0 +1,53 @@
+[project]
+name = "milan"
+version = "0.1.0"
+description = "Settlement reconciliation engine: proves where every rupee went, and refuses to guess."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.9",
+    "polars>=1.17",
+    "duckdb>=1.1",
+    "typer>=0.15",
+    "rich>=13.9",
+]
+
+[project.scripts]
+milan = "milan.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-benchmark>=5.1",
+    "hypothesis>=6.122",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/milan"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["milan"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: excluded from the fast feedback loop",
+]
