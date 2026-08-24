@@ -60,7 +60,7 @@ class AmountDateStrategy:
         return Attempt(
             strategy=self.name,
             verdict=Verdict.MATCHED,
-            settlement_id=batch.settlement_id,
+            settlement_ids=(batch.settlement_id,),
             candidates=(batch.settlement_id,),
             confidence=self._confidence(gap, batch.rounding_allowance),
             note=(

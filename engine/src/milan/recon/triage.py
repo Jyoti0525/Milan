@@ -12,12 +12,14 @@ actually left over.
 
 from __future__ import annotations
 
+from datetime import date
+
 from milan.domain.enums import EntityType, ExceptionCode
 from milan.domain.money import Paise, apply_rate, format_inr
 from milan.domain.rates import RateCard
-from milan.domain.records import BankCredit, SettlementRow
+from milan.domain.records import BankCredit, Payment, SettlementRow
 from milan.domain.results import ReconException
-from milan.recon.batches import GatewayBatch
+from milan.recon.batches import BatchGroup, GatewayBatch
 from milan.recon.matching.base import Attempt, Verdict
 from milan.recon.waterfall import UnprovenCredit
 
@@ -88,10 +90,40 @@ class Categoriser:
             },
         )
 
+    def unsettled_payment(self, payment: Payment, cutoff: date) -> ReconException:
+        """A captured payment the settlement report never mentions.
+
+        This one is not found by looking at bank credits at all. Every credit
+        can reconcile perfectly and this money still be gone, because the
+        gateway never claimed to have paid it - so nothing is unmatched and
+        nothing looks wrong. The only way to see it is to read the payments
+        file and ask what the report is missing.
+
+        The cutoff matters. A payment captured yesterday has not been settled
+        yet and that is normal; flagging it would bury the real ones under
+        ordinary gateway lag.
+        """
+        return ReconException(
+            code=ExceptionCode.UNSETTLED_PAYMENT,
+            subject_id=payment.payment_id,
+            amount=payment.amount,
+            summary=(
+                f"{format_inr(payment.amount)} was captured on "
+                f"{payment.captured_at.date()} and appears nowhere in the settlement "
+                f"report, which is complete to {cutoff}."
+            ),
+            evidence={
+                "captured_on": payment.captured_at.date().isoformat(),
+                "method": payment.method.value,
+                "order": payment.order_id,
+                "report_complete_to": cutoff.isoformat(),
+            },
+        )
+
     # ------------------------------------------- matches that would not prove
 
     def unproven_credit(
-        self, unproven: UnprovenCredit, batch: GatewayBatch, all_rows: tuple[SettlementRow, ...]
+        self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
     ) -> ReconException:
         """A credit matched to a settlement that does not reconstruct it.
 
@@ -99,7 +131,7 @@ class Categoriser:
         "amounts differ" is the last resort, not the first answer.
         """
         for check in (self._as_recovery_gap, self._as_fee_variance, self._as_tax_variance):
-            found = check(unproven, batch, all_rows)
+            found = check(unproven, group, all_rows)
             if found is not None:
                 return found
 
@@ -109,19 +141,19 @@ class Categoriser:
             amount=Paise(abs(unproven.residual)),
             summary=unproven.reason,
             evidence={
-                "settlement": unproven.settlement_id,
+                "settlements": ", ".join(unproven.settlement_ids),
                 "residual": format_inr(unproven.residual),
-                "rows": str(len(batch.rows)),
+                "rows": str(len(group.rows)),
             },
         )
 
     def _as_recovery_gap(
-        self, unproven: UnprovenCredit, batch: GatewayBatch, all_rows: tuple[SettlementRow, ...]
+        self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
     ) -> ReconException | None:
         """Short by exactly the size of a refund sitting somewhere else.
 
-        Refunds are netted into whichever batch is running when they clear,
-        five to seven working days later - normally a batch with no other
+        Refunds are netted into whichever group is running when they clear,
+        five to seven working days later - normally a group with no other
         connection to the sale. A shortfall that equals a known refund to the
         paisa is that, and saying so turns a variance into a fact.
         """
@@ -133,7 +165,7 @@ class Categoriser:
             for row in all_rows
             if row.type in (EntityType.REFUND, EntityType.ADJUSTMENT)
             and row.debit == shortfall
-            and row.settlement_id != batch.settlement_id
+            and row.settlement_id not in group.settlement_set
         ]
         if not culprits:
             return None
@@ -146,10 +178,10 @@ class Categoriser:
             amount=shortfall,
             summary=(
                 f"Short by {format_inr(shortfall)}, which is exactly {row.type.value} "
-                f"{row.entity_id}. It was recovered from {landed}, not from this batch."
+                f"{row.entity_id}. It was recovered from {landed}, not from this group."
             ),
             evidence={
-                "settlement": unproven.settlement_id,
+                "settlements": ", ".join(unproven.settlement_ids),
                 "recovered_by": landed,
                 "entity": row.entity_id,
                 "raised_on": row.created_at.date().isoformat(),
@@ -157,23 +189,23 @@ class Categoriser:
         )
 
     def _as_fee_variance(
-        self, unproven: UnprovenCredit, batch: GatewayBatch, all_rows: tuple[SettlementRow, ...]
+        self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
     ) -> ReconException | None:
-        """The batch was charged at a rate the merchant is not contracted to."""
+        """The group was charged at a rate the merchant is not contracted to."""
         del all_rows
         expected = Paise(
             sum(
                 apply_rate(row.amount, self._rates.platform_rate(row.method, row.card_type))
-                for row in batch.payment_rows
+                for row in group.payment_rows
                 if row.method is not None
             )
         )
-        difference = Paise(batch.fee - expected)
+        difference = Paise(group.fee - expected)
         if difference == 0:
             return None
 
         with_gst = Paise(difference + apply_rate(difference, self._rates.gst))
-        if abs(with_gst + unproven.residual) > batch.rounding_allowance:
+        if abs(with_gst + unproven.residual) > group.rounding_allowance:
             return None
 
         return ReconException(
@@ -181,28 +213,28 @@ class Categoriser:
             subject_id=unproven.credit_id,
             amount=Paise(abs(difference)),
             summary=(
-                f"Fee charged was {format_inr(batch.fee)} against a contracted "
+                f"Fee charged was {format_inr(group.fee)} against a contracted "
                 f"{format_inr(expected)}. The {format_inr(Paise(abs(difference)))} "
                 "difference, plus GST on it, accounts for the shortfall."
             ),
             evidence={
-                "settlement": unproven.settlement_id,
-                "fee_charged": format_inr(batch.fee),
+                "settlements": ", ".join(unproven.settlement_ids),
+                "fee_charged": format_inr(group.fee),
                 "fee_contracted": format_inr(expected),
-                "rows": str(len(batch.payment_rows)),
+                "rows": str(len(group.payment_rows)),
             },
         )
 
     def _as_tax_variance(
-        self, unproven: UnprovenCredit, batch: GatewayBatch, all_rows: tuple[SettlementRow, ...]
+        self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
     ) -> ReconException | None:
         """GST that is not the statutory rate on the fee that was charged."""
         del all_rows
-        expected = apply_rate(batch.fee, self._rates.gst)
-        difference = Paise(batch.tax - expected)
-        if difference == 0 or abs(difference) <= batch.rounding_allowance:
+        expected = apply_rate(group.fee, self._rates.gst)
+        difference = Paise(group.tax - expected)
+        if difference == 0 or abs(difference) <= group.rounding_allowance:
             return None
-        if abs(difference + unproven.residual) > batch.rounding_allowance:
+        if abs(difference + unproven.residual) > group.rounding_allowance:
             return None
 
         return ReconException(
@@ -210,12 +242,12 @@ class Categoriser:
             subject_id=unproven.credit_id,
             amount=Paise(abs(difference)),
             summary=(
-                f"GST of {format_inr(batch.tax)} is not {self._rates.gst:.0%} of the "
-                f"{format_inr(batch.fee)} fee charged. Expected {format_inr(expected)}."
+                f"GST of {format_inr(group.tax)} is not {self._rates.gst:.0%} of the "
+                f"{format_inr(group.fee)} fee charged. Expected {format_inr(expected)}."
             ),
             evidence={
-                "settlement": unproven.settlement_id,
-                "tax_charged": format_inr(batch.tax),
+                "settlements": ", ".join(unproven.settlement_ids),
+                "tax_charged": format_inr(group.tax),
                 "tax_expected": format_inr(expected),
             },
         )

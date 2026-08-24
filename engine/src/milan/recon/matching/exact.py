@@ -84,7 +84,7 @@ class ExactUtrStrategy:
         return Attempt(
             strategy=self.name,
             verdict=Verdict.MATCHED,
-            settlement_id=hits[0].settlement_id,
+            settlement_ids=(hits[0].settlement_id,),
             candidates=(hits[0].settlement_id,),
             confidence=1.0,
             note=f"settlement reference {reference}",

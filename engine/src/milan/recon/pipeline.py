@@ -7,23 +7,39 @@ are the same on every machine and in every run.
 
 The order of operations encodes the design stance. Matching comes before
 proving, and proving can veto matching: a credit the cascade claimed but the
-waterfall could not reconstruct does not stay matched. It becomes an
-exception, because a match nobody can check is worth less than an honest gap.
+waterfall could not reconstruct does not stay matched. The veto is handed to
+the cascade rather than applied afterwards, so a withdrawn claim sends the
+credit down to the next rung instead of straight to the exception queue.
+
+The last step looks in the opposite direction from all the others. Everything
+above starts from a bank credit and asks what explains it. That can only ever
+find money that arrived. A payment the gateway never reported did not arrive
+and never will, and no amount of matching credits will notice it - so the run
+finishes by reading the payments file and asking what the settlement report
+is missing.
 """
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import date
 
+from milan.domain.calendar import (
+    DOMESTIC_SETTLEMENT_DAYS,
+    INTERNATIONAL_SETTLEMENT_DAYS,
+    add_working_days,
+)
+from milan.domain.enums import CardType
 from milan.domain.rates import RateCard
+from milan.domain.records import BankCredit, Payment, SettlementRow
 from milan.domain.results import Proof, ReconException, ReconReport
-from milan.recon.batches import GatewayBatch, rebuild_batches
+from milan.recon.batches import BatchGroup, GatewayBatch, rebuild_batches
 from milan.recon.inputs import ReconInput
 from milan.recon.matching.base import Attempt
 from milan.recon.matching.cascade import Cascade
 from milan.recon.triage import Categoriser
-from milan.recon.waterfall import UnprovenCredit, prove
+from milan.recon.waterfall import UnprovenCredit, provable, prove
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +63,8 @@ class ReconciliationPipeline:
 
         batches = rebuild_batches(data.settlement_rows)
         by_id = {batch.settlement_id: batch for batch in batches}
-        attempts = self._cascade.run(data.bank_credits, batches)
+        cascade = self._cascade.with_verifier(self._provable)
+        attempts = cascade.run(data.bank_credits, batches)
 
         proofs, exceptions, claimed = self._prove_matches(data, by_id, attempts)
         exceptions.extend(self._explain_unmatched(data, batches, attempts))
@@ -56,6 +73,7 @@ class ReconciliationPipeline:
             for batch in batches
             if batch.settlement_id not in claimed
         )
+        exceptions.extend(self._find_unsettled_payments(data))
 
         return ReconReport(
             seed=metadata.seed,
@@ -66,13 +84,25 @@ class ReconciliationPipeline:
             duration_seconds=time.perf_counter() - started,
         )
 
+    # ------------------------------------------------------------- internals
+
+    def _provable(self, credit: BankCredit, group: BatchGroup) -> bool:
+        """The veto the cascade consults before accepting any rung's claim."""
+        return provable(credit, group, self._rates)
+
     def _prove_matches(
         self,
         data: ReconInput,
         by_id: dict[str, GatewayBatch],
         attempts: dict[str, Attempt],
     ) -> tuple[list[Proof], list[ReconException], set[str]]:
-        """Reconstruct every claimed credit, and drop the ones that will not."""
+        """Reconstruct every claimed credit, and drop the ones that will not.
+
+        The cascade has already checked each claim against the same
+        arithmetic, so a failure here is rare rather than routine. It is still
+        checked, because the version of this that trusts the earlier check is
+        the version where a change to one of them silently stops mattering.
+        """
         proofs: list[Proof] = []
         exceptions: list[ReconException] = []
         claimed: set[str] = set()
@@ -81,14 +111,13 @@ class ReconciliationPipeline:
             attempt = attempts.get(credit.credit_id)
             if attempt is None or not attempt.resolved:
                 continue
-            assert attempt.settlement_id is not None
-            batch = by_id[attempt.settlement_id]
-            claimed.add(batch.settlement_id)
+            group = BatchGroup.of(*(by_id[sid] for sid in attempt.settlement_ids))
+            claimed.update(group.settlement_ids)
 
-            result = prove(credit, batch, attempt.strategy, attempt.confidence, self._rates)
+            result = prove(credit, group, attempt.strategy, attempt.confidence, self._rates)
             if isinstance(result, UnprovenCredit):
                 exceptions.append(
-                    self._categoriser.unproven_credit(result, batch, data.settlement_rows)
+                    self._categoriser.unproven_credit(result, group, data.settlement_rows)
                 )
             else:
                 proofs.append(result)
@@ -106,3 +135,45 @@ class ReconciliationPipeline:
             for credit in data.bank_credits
             if credit.credit_id in attempts and not attempts[credit.credit_id].resolved
         ]
+
+    def _find_unsettled_payments(self, data: ReconInput) -> list[ReconException]:
+        """Captured money the settlement report never accounts for."""
+        cutoff = _report_complete_to(data.settlement_rows)
+        if cutoff is None:
+            return []
+
+        reported = {
+            row.payment_id for row in data.settlement_rows if row.payment_id is not None
+        } | {row.entity_id for row in data.settlement_rows}
+
+        return [
+            self._categoriser.unsettled_payment(payment, cutoff)
+            for payment in data.payments
+            if payment.payment_id not in reported and _due_by(payment) <= cutoff
+        ]
+
+
+def _report_complete_to(rows: tuple[SettlementRow, ...]) -> date | None:
+    """The last day the settlement report has anything to say about.
+
+    Beyond this date the report is not wrong, it is merely not written yet,
+    and a payment due to settle after it is pending rather than missing. Using
+    the report's own horizon rather than a clock read keeps the answer the
+    same however long after generation the run happens.
+    """
+    settled = [row.settled_at.date() for row in rows if row.settled_at is not None]
+    return max(settled) if settled else None
+
+
+def _due_by(payment: Payment) -> date:
+    """When this payment should have appeared in a settlement.
+
+    T+2 working days domestic, T+7 for international cards, which is the
+    published cycle rather than a tolerance we chose.
+    """
+    lag = (
+        INTERNATIONAL_SETTLEMENT_DAYS
+        if payment.card_type is CardType.INTERNATIONAL
+        else DOMESTIC_SETTLEMENT_DAYS
+    )
+    return add_working_days(payment.captured_at.date(), lag)
