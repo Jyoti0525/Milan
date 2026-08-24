@@ -23,7 +23,11 @@ class CreditTruth(BaseModel):
 
     credit_id: str
     settlement_id: str | None
-    """`None` when this credit genuinely has no settlement behind it."""
+    """What is actually behind this credit. `None` when nothing is.
+
+    This is a fact about the world, and it is not the same question as
+    `matchable`. A credit can have a settlement behind it and still be
+    impossible to attribute from the evidence a merchant holds."""
 
     entity_ids: tuple[str, ...]
     gross: Paise
@@ -37,11 +41,15 @@ class CreditTruth(BaseModel):
     """Signed. Batch-level tax rounding disagreeing with per-row rounding."""
 
     matchable: bool
-    """False when this credit was made impossible to resolve on purpose.
+    """Whether the evidence in the three files can single this credit out.
 
-    These records are the point of the exercise. A system that scores well on
-    matchable records and also forces answers onto these is worse than one
-    that scores slightly lower and refuses. We measure both.
+    False when the credit was made unresolvable on purpose. These records are
+    the point of the exercise. A system that scores well on resolvable
+    records and also forces answers onto these is worse than one that scores
+    slightly lower and refuses, so both are measured.
+
+    Distinct from `settlement_id`: that says what is true, this says what is
+    knowable. Scoring uses this one.
     """
 
     defect: str | None = None

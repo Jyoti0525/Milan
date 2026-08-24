@@ -41,16 +41,19 @@ class Dataset(BaseModel):
 
     @property
     def record_count(self) -> int:
-        """Total records the run had to process.
+        """Records the engine will actually read.
 
-        Razorpay's bar is a 50+ record batch, so this is the number that
-        claim is measured against. Counting only orders would flatter us.
+        Counts the three merchant-side files and nothing else. Refunds and
+        chargebacks are excluded deliberately: they reach the engine as
+        settlement report rows, so counting the underlying entities as well
+        would inflate the figure by double-counting the same records.
+
+        Razorpay's bar is a 50+ record batch and this is the number that
+        claim is measured against, so it has to mean one thing everywhere.
         """
         return (
             len(self.orders)
             + len(self.payments)
-            + len(self.refunds)
-            + len(self.adjustments)
             + len(self.settlement_rows)
             + len(self.bank_credits)
         )
