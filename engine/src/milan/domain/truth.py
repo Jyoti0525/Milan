@@ -4,7 +4,7 @@ Because we generate the data, we know the correct answer for every row. That
 is the whole reason our match rate is a measurement rather than an estimate.
 
 The answer key is written once, by the generator, and is read-only from then
-on. Nothing in `milan.recon` may import this module — the matcher must never
+on. Nothing in `milan.recon` may import this module - the matcher must never
 be able to see the answers, even accidentally. That import boundary is
 enforced by a test, not by good intentions.
 """
@@ -22,11 +22,19 @@ class CreditTruth(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     credit_id: str
-    settlement_id: str | None
-    """What is actually behind this credit. `None` when nothing is.
+
+    settlement_ids: tuple[str, ...] = ()
+    """Every settlement this one credit paid out. Empty when nothing is
+    behind it.
+
+    A tuple rather than a single id because banks merge transfers. Two payouts
+    initiated in the same cycle can arrive as one NEFT credit, and the
+    merchant's statement shows a single line for both. Modelling that as
+    "one credit, one settlement" would have quietly defined away the case the
+    matching design exists for.
 
     This is a fact about the world, and it is not the same question as
-    `matchable`. A credit can have a settlement behind it and still be
+    `matchable`. A credit can have settlements behind it and still be
     impossible to attribute from the evidence a merchant holds."""
 
     entity_ids: tuple[str, ...]
@@ -35,7 +43,7 @@ class CreditTruth(BaseModel):
     tax: Paise
     tds: Paise
     adjustments: Paise
-    """Refunds and chargebacks netted out of this batch, as a positive number."""
+    """Refunds and chargebacks netted out of these batches, as a positive number."""
 
     rounding_drift: Paise
     """Signed. Batch-level tax rounding disagreeing with per-row rounding."""
@@ -48,18 +56,28 @@ class CreditTruth(BaseModel):
     records and also forces answers onto these is worse than one that scores
     slightly lower and refuses, so both are measured.
 
-    Distinct from `settlement_id`: that says what is true, this says what is
+    Distinct from `settlement_ids`: those say what is true, this says what is
     knowable. Scoring uses this one.
     """
 
     defect: str | None = None
     """Which defect was injected, if any. Used to report accuracy per defect."""
 
+    @property
+    def settlement_set(self) -> frozenset[str]:
+        """The claim to score against. Order of ids is not part of the answer."""
+        return frozenset(self.settlement_ids)
+
+    @property
+    def is_merged(self) -> bool:
+        """One bank line covering more than one payout."""
+        return len(self.settlement_ids) > 1
+
 
 class LeakTruth(BaseModel):
     """A charge that balances perfectly and is still wrong.
 
-    The batch adds up, the bank agrees, nothing is unmatched — and the
+    The batch adds up, the bank agrees, nothing is unmatched - and the
     merchant was charged at a rate they are not contracted to. Recorded here
     at generation time so that leak detection can be measured against ground
     truth rather than demonstrated on a hand-picked example.
@@ -90,6 +108,12 @@ class AnswerKey(BaseModel):
     right answer is an exception against the settlement, not a forced match
     against some other credit of a similar size."""
 
+    unreported_payment_ids: tuple[str, ...] = ()
+    """Payments the merchant captured that the settlement report never
+    mentions. The money left the customer and never came back, and no amount
+    of matching bank credits will find it - the only way to notice is to read
+    the payments file and ask what is missing from the report."""
+
     leaks: tuple[LeakTruth, ...] = ()
 
     def by_credit(self) -> dict[str, CreditTruth]:
@@ -102,3 +126,8 @@ class AnswerKey(BaseModel):
     @property
     def impossible_count(self) -> int:
         return sum(1 for truth in self.credits if not truth.matchable)
+
+    @property
+    def merged_count(self) -> int:
+        """Credits covering more than one settlement."""
+        return sum(1 for truth in self.credits if truth.is_merged)

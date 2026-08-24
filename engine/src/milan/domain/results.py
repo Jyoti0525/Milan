@@ -39,7 +39,10 @@ class Proof(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     credit_id: str
-    settlement_id: str | None
+    settlement_ids: tuple[str, ...]
+    """Every settlement this credit paid out. Usually one; more when the
+    bank merged separate payouts into a single transfer."""
+
     credit_amount: Paise
     lines: tuple[ProofLine, ...]
     strategy: MatchStrategy
@@ -57,6 +60,10 @@ class Proof(BaseModel):
     @property
     def balances(self) -> bool:
         return self.residual == 0
+
+    @property
+    def settlement_set(self) -> frozenset[str]:
+        return frozenset(self.settlement_ids)
 
 
 class ReconException(BaseModel):

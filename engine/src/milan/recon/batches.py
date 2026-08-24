@@ -9,6 +9,13 @@ judgment, just arithmetic that has one right answer.
 from it by a few paise, because fees round per transaction and GST rounds
 once on the batch total. That gap is not an error to be suppressed; it is the
 thing the waterfall solver has to name.
+
+Two shapes live here, and the difference matters. A `GatewayBatch` is one
+settlement. A `BatchGroup` is the set of settlements that one bank credit
+paid out - usually a group of one, but banks merge transfers and a merchant's
+statement then shows a single line for two payouts. Everything downstream
+works on groups, so the merged case is the normal path rather than a special
+case bolted on beside it.
 """
 
 from __future__ import annotations
@@ -23,6 +30,29 @@ from milan.domain.money import ZERO, Paise
 from milan.domain.records import SettlementRow
 
 
+def _payments(rows: tuple[SettlementRow, ...]) -> tuple[SettlementRow, ...]:
+    return tuple(row for row in rows if row.type is EntityType.PAYMENT)
+
+
+def _debits(rows: tuple[SettlementRow, ...]) -> tuple[SettlementRow, ...]:
+    return tuple(row for row in rows if row.type is not EntityType.PAYMENT)
+
+
+def _allowance(rows: tuple[SettlementRow, ...]) -> Paise:
+    """How far the bank may legitimately differ from one batch of rows.
+
+    Each per-row GST rounding can be off by at most half a paisa, and the
+    batch-level rounding by at most half a paisa more. So the widest honest
+    gap on a batch of n taxed rows is (n + 1) / 2 paise.
+
+    The allowance is deliberately derived rather than picked. A fixed "within
+    a rupee" tolerance would swallow real errors on small batches and reject
+    real drift on large ones.
+    """
+    taxed = sum(1 for row in rows if row.tax != 0)
+    return Paise((taxed + 1) // 2 + 1)
+
+
 class GatewayBatch(BaseModel):
     """One settlement, reconstructed from the rows that carry its id."""
 
@@ -35,11 +65,11 @@ class GatewayBatch(BaseModel):
 
     @property
     def payment_rows(self) -> tuple[SettlementRow, ...]:
-        return tuple(row for row in self.rows if row.type is EntityType.PAYMENT)
+        return _payments(self.rows)
 
     @property
     def debit_rows(self) -> tuple[SettlementRow, ...]:
-        return tuple(row for row in self.rows if row.type is not EntityType.PAYMENT)
+        return _debits(self.rows)
 
     @property
     def gross(self) -> Paise:
@@ -64,18 +94,90 @@ class GatewayBatch(BaseModel):
 
     @property
     def rounding_allowance(self) -> Paise:
-        """How far the bank may legitimately differ from the rows.
+        return _allowance(self.rows)
 
-        Each per-row GST rounding can be off by at most half a paisa, and the
-        batch-level rounding by at most half a paisa more. So the widest
-        honest gap on a batch of n taxed rows is (n + 1) / 2 paise.
 
-        The allowance is deliberately derived rather than picked. A fixed
-        "within a rupee" tolerance would swallow real errors on small batches
-        and reject real drift on large ones.
+class BatchGroup(BaseModel):
+    """The settlements behind one bank credit.
+
+    Almost always a group of one. The exception is the merged transfer, and
+    it is the reason this type exists: a credit that covers two payouts
+    cannot be proved against either of them alone, and proving it against
+    "the closer one" is how a real shortfall gets filed as rounding.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    batches: tuple[GatewayBatch, ...]
+
+    @classmethod
+    def of(cls, *batches: GatewayBatch) -> BatchGroup:
+        return cls(batches=tuple(sorted(batches, key=lambda b: b.settlement_id)))
+
+    @property
+    def settlement_ids(self) -> tuple[str, ...]:
+        return tuple(batch.settlement_id for batch in self.batches)
+
+    @property
+    def settlement_set(self) -> frozenset[str]:
+        return frozenset(self.settlement_ids)
+
+    @property
+    def merged(self) -> bool:
+        return len(self.batches) > 1
+
+    @property
+    def rows(self) -> tuple[SettlementRow, ...]:
+        return tuple(row for batch in self.batches for row in batch.rows)
+
+    @property
+    def payment_rows(self) -> tuple[SettlementRow, ...]:
+        return _payments(self.rows)
+
+    @property
+    def debit_rows(self) -> tuple[SettlementRow, ...]:
+        return _debits(self.rows)
+
+    @property
+    def gross(self) -> Paise:
+        return Paise(sum(batch.gross for batch in self.batches))
+
+    @property
+    def fee(self) -> Paise:
+        return Paise(sum(batch.fee for batch in self.batches))
+
+    @property
+    def tax(self) -> Paise:
+        return Paise(sum(batch.tax for batch in self.batches))
+
+    @property
+    def debits(self) -> Paise:
+        return Paise(sum(batch.debits for batch in self.batches))
+
+    @property
+    def expected_net(self) -> Paise:
+        return Paise(sum(batch.expected_net for batch in self.batches))
+
+    @property
+    def settled_on(self) -> date:
+        """The last of the payouts to leave. A merged credit cannot arrive
+        before the latest settlement it contains."""
+        return max(batch.settled_on for batch in self.batches)
+
+    @property
+    def opened_on(self) -> date:
+        return min(batch.settled_on for batch in self.batches)
+
+    @property
+    def rounding_allowance(self) -> Paise:
+        """Summed, not recomputed over the union of rows.
+
+        Each settlement rounds its own GST once, so a group of three carries
+        three batch-level roundings. Treating the group as one large batch
+        would understate the allowance and turn honest drift into an
+        exception.
         """
-        taxed_rows = sum(1 for row in self.rows if row.tax != 0)
-        return Paise((taxed_rows + 1) // 2 + 1)
+        return Paise(sum(batch.rounding_allowance for batch in self.batches))
 
 
 def rebuild_batches(rows: tuple[SettlementRow, ...]) -> tuple[GatewayBatch, ...]:

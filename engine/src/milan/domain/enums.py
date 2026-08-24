@@ -54,6 +54,13 @@ class ExceptionCode(StrEnum):
     ROUNDING = "ROUNDING"
     PARTIAL_PAYMENT = "PARTIAL_PAYMENT"
     MISSING_SETTLEMENT = "MISSING_SETTLEMENT"
+    """A payout the gateway reported that never reached the bank."""
+
+    UNSETTLED_PAYMENT = "UNSETTLED_PAYMENT"
+    """A captured payment that never appears in the settlement report at
+    all. Distinct from MISSING_SETTLEMENT: there the gateway says it paid
+    and the bank disagrees; here the gateway never says anything."""
+
     UNEXPLAINED = "UNEXPLAINED"
 
 
