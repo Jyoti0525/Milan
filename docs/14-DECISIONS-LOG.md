@@ -154,3 +154,46 @@ If a decision is not here, it is not settled.
     hashing, readable when a number looks wrong. Revisit at scale.
 67. **`make` is a convenience, never a dependency.** Windows has no `make`;
     `uv run milan ...` is the real interface.
+68. **A bank credit maps to a *set* of settlements, not one.** Banks merge
+    transfers in the same window into a single NEFT line. Modelling one
+    credit as one settlement would have defined away the case the matching
+    design exists for. Supersedes the shape of decision 59: the answer key
+    field is `settlement_ids`.
+69. **The veto runs inside the cascade, not after it.** The waterfall solver
+    is handed to the cascade as a verifier, so a claim that will not
+    reconstruct is withdrawn and the credit falls through to the next rung.
+    Strengthens decision 61: without this, a merged credit carrying one
+    member's reference resolves confidently to the wrong settlement and never
+    reaches the rung that could have found the pair.
+70. **A settlement that fits alone is a competitor to a combination, not a
+    weaker version of it.** When both explain a credit, subset-sum refuses.
+    Preferring the combination because it is what that rung knows how to find
+    would be the search choosing its own conclusion.
+71. **A truncated search refuses instead of reporting its best find.** The
+    subset-sum rung claims a match only on uniqueness, and a search that ran
+    out of budget has not established uniqueness.
+72. **The group's rounding allowance is the sum of its members', not a
+    recomputation over the union of rows.** Each settlement rounds its GST
+    once, so a group of three carries three roundings. Treating the group as
+    one large batch would understate the allowance and turn honest drift into
+    an exception. Follows from decision 62.
+73. **Settlements per day is a difficulty knob, and it is not a defect.** A
+    gateway settles on cut-offs and settles international cards separately.
+    With one run a day a batch total is unique across the whole month, so
+    amount-plus-date resolves nearly everything and its match rate measures
+    nothing.
+74. **The 1:N split settlement is deliberately not built.** It requires a
+    partition solver rather than a rung, because no single credit proves a
+    settlement. N:1 is the commoner case and fits the model, so N:1 is what
+    exists. Recorded so the gap is a decision rather than an oversight.
+75. **Unreported payments are found by reading the payments file, not by
+    matching.** Every other technique starts from a bank credit and can only
+    find money that arrived. This one is measured against `T+2`/`T+7` and the
+    report's own horizon, never a clock read, so the answer does not change
+    with when the run happens.
+76. **Splink is cut from the plan.** Fuzzy narration matching would raise a
+    number that three deterministic rungs already hold at 100% across every
+    tier, volume and pricing model tested — including a fixed-price catalogue
+    built specifically to break the amount fingerprint. Measured, then cut.
+    The evidence is in `18-BUILD-LOG.md`; days 4-5 go to leak detection and
+    property tests instead.

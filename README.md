@@ -76,6 +76,31 @@ prefers `make generate` / `make recon` / `make eval`. The CLI is the real
 interface — the Makefile is a convenience, because `make` is not present on a
 default Windows install and the project must not depend on it.
 
+## Where it stands
+
+Measured on 600 orders, seed 42, adversarial tier. Each row adds one rung, so
+the gain over the row above it is what that rung is worth.
+
+| Configuration | Match rate | Precision | Correct refusals |
+|---|---|---|---|
+| reference (UTR) only | 46.4% | 100.0% | 8/8 |
+| + amount and date | 78.6% | 100.0% | 8/8 |
+| + subset sum | 100.0% | 100.0% | 8/8 |
+
+Reproduce it:
+
+```bash
+uv run milan generate --seed 42 --difficulty adversarial --orders 600
+uv run milan eval --seed 42 --difficulty adversarial --detail
+```
+
+The 100% is worth less than the 46.4%, and the reason is written up in
+[docs/18-BUILD-LOG.md](docs/18-BUILD-LOG.md): a settlement total turns out to
+be a near-unique fingerprint once the fee stack is modelled properly, so this
+class of matching is easier than it looks. What is hard is proving a credit to
+the paisa, refusing the ones the evidence cannot settle, and finding money
+that is wrong while everything still balances.
+
 ## Design stance
 
 **Precision beats recall.** A wrong silent match corrupts a merchant's books.
@@ -84,7 +109,14 @@ support an answer, the system says so.
 
 That is not a slogan: the generator deliberately produces records that are
 impossible to resolve, and the eval harness scores whether the engine correctly
-refuses them. Forcing a match onto one is counted as a false positive.
+refuses them. Forcing a match onto one is counted as a false positive, **even
+when the forced answer happens to be right**.
+
+**Proving beats matching.** A match is a claim; a proof is evidence. Every
+claim is checked against the waterfall before it is accepted, and a claim that
+cannot be reconstructed to zero is withdrawn — which is how a bank credit that
+merges two payouts, and carries one of their reference numbers, avoids being
+filed confidently against the wrong settlement.
 
 ## Documentation
 
