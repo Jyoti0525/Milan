@@ -19,7 +19,7 @@ from milan.domain.money import Paise, from_rupees
 from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import BankCredit, SettlementRow
 from milan.evaluation.harness import to_recon_input
-from milan.recon.batches import rebuild_batches
+from milan.recon.batches import BatchGroup, rebuild_batches
 from milan.recon.matching.cascade import Cascade
 from milan.recon.matching.exact import extract_utr
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
@@ -87,33 +87,33 @@ class TestUtrExtraction:
 class TestTheWaterfall:
     def test_a_clean_batch_reconstructs_to_zero(self) -> None:
         rows = (payment_row("pay_1", "10000"), payment_row("pay_2", "5000"))
-        batch = rebuild_batches(rows)[0]
-        result = prove(credit(batch.expected_net), batch, EXACT, 1.0, RateCard())
+        group = BatchGroup.of(rebuild_batches(rows)[0])
+        result = prove(credit(group.expected_net), group, EXACT, 1.0, RateCard())
         assert not isinstance(result, UnprovenCredit)
         assert result.balances
         assert result.residual == 0
 
     def test_lines_carry_the_rows_that_justify_them(self) -> None:
         rows = (payment_row("pay_1", "10000"), payment_row("pay_2", "5000"))
-        batch = rebuild_batches(rows)[0]
-        result = prove(credit(batch.expected_net), batch, EXACT, 1.0, RateCard())
+        group = BatchGroup.of(rebuild_batches(rows)[0])
+        result = prove(credit(group.expected_net), group, EXACT, 1.0, RateCard())
         assert not isinstance(result, UnprovenCredit)
         assert all(line.refs for line in result.lines)
 
     def test_a_credit_that_does_not_reconstruct_is_refused(self) -> None:
         """Not a low-confidence proof. Not a proof."""
         rows = (payment_row("pay_1", "10000"),)
-        batch = rebuild_batches(rows)[0]
-        short = Paise(batch.expected_net - from_rupees("500"))
-        result = prove(credit(short), batch, EXACT, 1.0, RateCard())
+        group = BatchGroup.of(rebuild_batches(rows)[0])
+        short = Paise(group.expected_net - from_rupees("500"))
+        result = prove(credit(short), group, EXACT, 1.0, RateCard())
         assert isinstance(result, UnprovenCredit)
         assert result.residual == -from_rupees("500")
 
     def test_drift_within_the_allowance_is_named_not_absorbed(self) -> None:
         rows = tuple(payment_row(f"pay_{i}", "999.99") for i in range(6))
-        batch = rebuild_batches(rows)[0]
-        drifted = Paise(batch.expected_net - 2)
-        result = prove(credit(drifted), batch, EXACT, 1.0, RateCard())
+        group = BatchGroup.of(rebuild_batches(rows)[0])
+        drifted = Paise(group.expected_net - 2)
+        result = prove(credit(drifted), group, EXACT, 1.0, RateCard())
         assert not isinstance(result, UnprovenCredit)
         assert result.balances
         assert any("Rounding drift" in line.label for line in result.lines)
@@ -200,3 +200,57 @@ class TestEndToEnd:
         second = ReconciliationPipeline().run(data, metadata)
         assert first.proofs == second.proofs
         assert first.exceptions == second.exceptions
+
+
+class TestMoneyThatNeverArrived:
+    """Payments the settlement report never mentions.
+
+    Every technique above this point starts from a bank credit and asks what
+    explains it, which can only ever find money that arrived. This is the one
+    exception that no amount of matching can reach: the credits all reconcile,
+    nothing is unmatched, and the money is still gone.
+    """
+
+    def _dataset(self, difficulty: Difficulty) -> object:
+        return ChaosEngine(
+            GenerationConfig(seed=42, difficulty=difficulty, order_count=500)
+        ).generate()
+
+    def _run(self, dataset: object) -> object:
+        return ReconciliationPipeline().run(
+            to_recon_input(dataset),  # type: ignore[arg-type]
+            RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty),  # type: ignore[attr-defined]
+        )
+
+    def test_unreported_payments_are_flagged(self) -> None:
+        dataset = self._dataset(Difficulty.MESSY)
+        expected = set(dataset.answer_key.unreported_payment_ids)  # type: ignore[attr-defined]
+        assert expected, "the messy tier is supposed to drop some payments"
+
+        flagged = {
+            exception.subject_id
+            for exception in self._run(dataset).exceptions  # type: ignore[attr-defined]
+            if exception.code is ExceptionCode.UNSETTLED_PAYMENT
+        }
+        assert flagged <= expected, (
+            "flagged a payment the report does account for - a merchant told to chase "
+            "settled money stops trusting the queue"
+        )
+        assert flagged, "found none of the payments the gateway never reported"
+
+    def test_payments_still_within_their_settlement_cycle_are_left_alone(self) -> None:
+        """T+2 has not elapsed yet. Pending is not missing.
+
+        This is the assertion that keeps the exception queue usable. Every
+        month ends with payments legitimately awaiting settlement, and a rule
+        that flags them buries the real cases under the ordinary ones.
+        """
+        dataset = self._dataset(Difficulty.CLEAN)
+        assert not dataset.answer_key.unreported_payment_ids  # type: ignore[attr-defined]
+
+        flagged = [
+            exception
+            for exception in self._run(dataset).exceptions  # type: ignore[attr-defined]
+            if exception.code is ExceptionCode.UNSETTLED_PAYMENT
+        ]
+        assert not flagged, [exception.subject_id for exception in flagged]

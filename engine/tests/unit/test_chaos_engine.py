@@ -141,7 +141,7 @@ class TestTheMoneyAddsUp:
         data = build(difficulty)
         credits = {credit.credit_id: credit for credit in data.bank_credits}
         for truth in data.answer_key.credits:
-            if truth.settlement_id is None:
+            if not truth.settlement_ids:
                 continue
             expected = (
                 truth.gross
