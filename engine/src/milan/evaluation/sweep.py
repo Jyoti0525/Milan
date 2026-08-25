@@ -115,6 +115,10 @@ def sweep(
         spreads=(
             _spread("match rate", [(c.true_positives, c.matchable) for c in cards]),
             _spread(
+                "settlement attributed",
+                [(c.attributed, c.matchable + c.unprovable_expected) for c in cards],
+            ),
+            _spread(
                 "precision",
                 [(c.true_positives, c.true_positives + c.false_positives) for c in cards],
             ),

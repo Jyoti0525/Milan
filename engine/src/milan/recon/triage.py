@@ -184,6 +184,8 @@ class Categoriser:
             summary=unproven.reason,
             evidence={
                 "settlements": ", ".join(unproven.settlement_ids),
+                "identified_by": unproven.strategy.value.replace("_", " "),
+                "identification_confidence": f"{unproven.confidence:.0%}",
                 "residual": format_inr(unproven.residual),
                 "rows": str(len(group.rows)),
             },
@@ -255,6 +257,8 @@ class Categoriser:
             ),
             evidence={
                 "settlements": ", ".join(unproven.settlement_ids),
+                "identified_by": unproven.strategy.value.replace("_", " "),
+                "identification_confidence": f"{unproven.confidence:.0%}",
                 "recovered_by": landed,
                 "entity": row.entity_id,
                 "entity_amount": format_inr(row.debit),
@@ -306,6 +310,8 @@ class Categoriser:
             ),
             evidence={
                 "settlements": ", ".join(unproven.settlement_ids),
+                "identified_by": unproven.strategy.value.replace("_", " "),
+                "identification_confidence": f"{unproven.confidence:.0%}",
                 "fee_reported": format_inr(group.fee),
                 "extra_charged": format_inr(base),
                 "implied_rate": f"{implied:.3%}",
@@ -348,6 +354,8 @@ class Categoriser:
             ),
             evidence={
                 "settlements": ", ".join(unproven.settlement_ids),
+                "identified_by": unproven.strategy.value.replace("_", " "),
+                "identification_confidence": f"{unproven.confidence:.0%}",
                 "tax_reported": format_inr(group.tax),
                 "tax_implied": format_inr(Paise(group.tax + shortfall)),
                 "rate_applied": f"{slab:.0%}",

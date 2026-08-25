@@ -60,6 +60,8 @@ def prove(
                     f"{format_inr(Paise(abs(gap)))} of this credit is not explained by "
                     f"its {len(group.rows)} settlement rows"
                 ),
+                strategy=strategy,
+                confidence=confidence,
             )
         lines = (*lines, _drift_line(gap, group))
 

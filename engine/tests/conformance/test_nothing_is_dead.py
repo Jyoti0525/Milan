@@ -69,6 +69,33 @@ def every_strategy() -> set[str]:
     return matched
 
 
+@pytest.fixture(scope="module")
+def every_named_strategy() -> set[str]:
+    """Rungs whose claims were withdrawn and became a named exception.
+
+    A second way for a rung to earn its place, and one this file did not
+    imagine until a rung existed that uses it. `ShortfallStrategy` identifies
+    a payout that arrived light; the verifier withdraws the claim, because a
+    credit short by an unexplained deduction is exactly what must not be
+    reported as reconciled. What it leaves behind is `withdrawn_ids`, which
+    the pipeline turns into "this is settlement A and it is short by refund
+    R" instead of "no settlement behind it".
+
+    So it contributes without ever producing a proof, and measuring it by
+    proofs would call the most useful rung in the queue dead.
+    """
+    named: set[str] = set()
+    for difficulty in TIERS:
+        report = run(difficulty)
+        for exception in report.exceptions:
+            strategy = exception.evidence.get("identified_by")
+            if strategy:
+                strategy = strategy.replace(" ", "_")
+            if strategy and exception.code is not ExceptionCode.UNEXPLAINED:
+                named.add(strategy)
+    return named
+
+
 class TestEveryCategoryIsReachable:
     """An exception code nothing emits reads as a category we support.
 
@@ -87,13 +114,56 @@ class TestEveryCategoryIsReachable:
 
 
 class TestEveryRungEarnsItsPlace:
+    """A rung earns its place two ways, and both count.
+
+    Producing a match is the obvious one. The other is producing a claim the
+    verifier withdraws, because a withdrawn claim still names the settlement
+    a credit fell short of - and "this is settlement A, short by refund R" is
+    an answer somebody can act on where "no candidate" is not.
+
+    This file asserted only the first until `ShortfallStrategy` arrived, whose
+    every claim is withdrawn by design. The honest fix was to name the second
+    way rather than to exempt the rung, because "it is allowed to be dead"
+    and "it contributes differently" look identical in a skip.
+    """
+
+    PROVES: frozenset[MatchStrategy] = frozenset(
+        {
+            MatchStrategy.EXACT_UTR,
+            MatchStrategy.AMOUNT_DATE,
+            MatchStrategy.SUBSET_SUM,
+            MatchStrategy.FUZZY_NARRATION,
+        }
+    )
+
     @pytest.mark.parametrize("strategy", list(MatchStrategy))
     def test_some_tier_matches_with_it(
-        self, strategy: MatchStrategy, every_strategy: set[str]
+        self,
+        strategy: MatchStrategy,
+        every_strategy: set[str],
+        every_named_strategy: set[str],
     ) -> None:
-        """A rung that never produces a match is either unreachable or
-        unnecessary, and both are worth knowing before the submission."""
-        assert strategy.value in every_strategy
+        """A rung that does neither is unreachable or unnecessary, and both
+        are worth knowing before the submission."""
+        if strategy in self.PROVES:
+            assert strategy.value in every_strategy, (
+                f"{strategy.value} produced no balanced proof on any tier"
+            )
+            return
+        assert strategy.value in every_named_strategy, (
+            f"{strategy.value} neither proved anything nor named a shortfall on "
+            "any tier, so nothing in the cascade depends on it"
+        )
+
+    def test_the_shortfall_rung_never_proves_anything(self, every_strategy: set[str]) -> None:
+        """Stated as a requirement rather than left as an observation.
+
+        The whole safety argument for a rung this permissive is that its
+        claims cannot survive proving - it matches on a total being *wrong*,
+        so a credit it claimed and then proved would mean the band had
+        swallowed an exact match belonging to a stricter rung.
+        """
+        assert MatchStrategy.SHORTFALL.value not in every_strategy
 
 
 class TestEveryNumberIsShown:

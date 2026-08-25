@@ -573,3 +573,40 @@ If a decision is not here, it is not settled.
      cannot both be true, and an "identifiers invented" column that could
      never be non-zero because the guard threw away what it rejected. Both
      were bugs in the instrument, not the subject.
+
+146. **Splink is cut because the evidence it consumes does not exist.** Of the
+     43 credits that reach the end of the cascade unmatched, 0 carry a
+     recoverable reference in their narration - the four narration forms are
+     bank boilerplate, and the one that looks like a reference is an IFSC
+     branch code. A linkage library infers from signal present in a field.
+     There is no signal in this field. Not a judgement about the library.
+147. **A rung may match on a total being wrong.** Every rung above treats
+     exactness as the whole of the evidence, which makes a credit that is one
+     settlement minus an unexplained deduction invisible to all of them -
+     though it lands on the settlement date exactly and is short by a median
+     of 0.31%.
+148. **Its band is derived from the rate card, never tuned to the data.** The
+     widest legitimate reduction is the worst card rate, plus GST on that fee,
+     plus withholding where it applies. A tolerance fitted to the generator
+     would be fitting to the defect catalogue that every accuracy figure here
+     is already conditional on, which is circular.
+149. **A rung that never survives proving still earns its place.** The
+     shortfall rung's claims are withdrawn every time by design, so it cannot
+     move the match rate, precision or the refusal count - and what it leaves
+     behind turns "no settlement behind it" into "this is settlement A, short
+     by exactly refund R". Measuring rungs by proofs alone called the most
+     useful one in the queue dead.
+150. **Match rate and attribution are two rates because they are two
+     questions.** Match rate excludes unprovable credits deliberately; that
+     exclusion left a credit failing *both* matching and proving scored only
+     against explanation, with its matching failure unreported anywhere.
+     Attribution puts them back and is the strictly harder number.
+151. **A named shortfall carries the rung that identified it.** One named
+     against a reference is a fact; one named against a settlement found
+     nearby on the right date is an argument at 35% confidence. The queue
+     presented both with equal authority until `UnprovenCredit` was given the
+     strategy and confidence that `Proof` had carried from the start.
+152. **Never index a measurement ladder by position.** `test_fuzzy.py`
+     compared `cards[-2]` to `cards[-1]`; adding a fifth rung silently
+     repointed it at two configurations it was never written about, and it
+     failed for a reason that had nothing to do with fuzzy.

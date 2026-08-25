@@ -74,3 +74,11 @@ class MatchStrategy(StrEnum):
     AMOUNT_DATE = "amount_date"
     SUBSET_SUM = "subset_sum"
     FUZZY_NARRATION = "fuzzy_narration"
+
+    SHORTFALL = "shortfall"
+    """A payout identified by date and near-total, when it arrived light.
+
+    The weakest rung and the only one that never expects its own claim to
+    survive proving. It exists so a credit that is one settlement minus an
+    unexplained deduction gets named as that, rather than reported as having
+    no settlement behind it at all."""

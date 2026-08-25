@@ -121,6 +121,17 @@ class UnprovenCredit(BaseModel):
     lines: tuple[ProofLine, ...]
     reason: str
 
+    strategy: MatchStrategy = MatchStrategy.EXACT_UTR
+    confidence: float = 0.0
+    """Which rung identified this settlement, and how sure it was.
+
+    `Proof` has carried these from the start and this did not, which left the
+    queue presenting every named shortfall with equal authority. It does not
+    deserve equal authority: a shortfall named against a settlement the
+    reference rung identified is a fact, and one named against a settlement
+    the shortfall rung merely found nearby on the right date is an argument.
+    A reader deciding whether to chase a payout needs to know which."""
+
 
 class ReconReport(BaseModel):
     """The result of one reconciliation run."""

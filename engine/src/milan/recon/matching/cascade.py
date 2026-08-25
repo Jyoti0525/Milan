@@ -35,6 +35,7 @@ from milan.recon.batches import BatchGroup, GatewayBatch
 from milan.recon.matching.base import Attempt, Strategy, Verdict, Verifier, always_valid
 from milan.recon.matching.exact import ExactUtrStrategy
 from milan.recon.matching.fuzzy import FuzzyNarrationStrategy
+from milan.recon.matching.shortfall import ShortfallStrategy
 from milan.recon.matching.subset import SubsetSumStrategy
 from milan.recon.matching.tolerance import AmountDateStrategy
 
@@ -51,12 +52,21 @@ def default_strategies() -> tuple[Strategy, ...]:
     Similarity goes last for that reason. Everything reaching it has already
     failed arithmetic, so it never overrides a number - it only speaks where
     nothing else could.
+
+    Except one thing speaks after it. The shortfall rung is last because it is
+    the only rung that does not expect to be believed: it identifies a payout
+    that arrived light, hands the claim to the verifier, and the verifier
+    withdraws it. What survives is `withdrawn_ids`, which turns "no settlement
+    behind it" into "this is settlement A and it is short by exactly refund R".
+    Putting it any earlier would let a near miss claim a settlement that an
+    exact rung could have proved.
     """
     return (
         ExactUtrStrategy(),
         AmountDateStrategy(),
         SubsetSumStrategy(),
         FuzzyNarrationStrategy(),
+        ShortfallStrategy(),
     )
 
 

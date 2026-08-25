@@ -157,8 +157,14 @@ class TestItActuallyEarnsItsPlace:
         dataset = ChaosEngine(
             GenerationConfig(seed=42, difficulty=difficulty, order_count=600)
         ).generate()
-        cards = evaluate(dataset).scorecards
-        without, with_fuzzy = cards[-2], cards[-1]
+        # Found by label, not by position. This read `cards[-2], cards[-1]`
+        # until a fifth rung was added to the ladder, at which point it
+        # silently began comparing fuzzy against shortfall and failed for a
+        # reason that had nothing to do with fuzzy. A test that names the two
+        # things it compares cannot be repointed by an unrelated change.
+        cards = {card.label: card for card in evaluate(dataset).scorecards}
+        without = cards["+ subset sum"]
+        with_fuzzy = cards["+ fuzzy narration"]
 
         assert with_fuzzy.match_rate > without.match_rate, (
             "the similarity rung resolved nothing the arithmetic rungs had not "

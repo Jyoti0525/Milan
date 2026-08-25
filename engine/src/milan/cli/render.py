@@ -163,6 +163,15 @@ def scorecard_detail(card: Scorecard) -> Table:
     table.add_row("Wrong or forced matches", f"{card.false_positives}")
     table.add_row("Resolvable but missed", f"{card.false_negatives}")
     table.add_row("Correctly refused", f"{card.correct_refusals}")
+    # Beside the match rate rather than instead of it. They answer different
+    # questions - "did we reconcile it" and "did we work out what it was" -
+    # and the gap between them is exactly the population that used to fail
+    # matching with nowhere for that failure to be reported.
+    table.add_row(
+        "Settlement attributed",
+        f"{card.attributed}/{card.matchable + card.unprovable_expected} "
+        f"({card.attribution_rate:.1%})",
+    )
     table.add_row(
         "Shortfalls named, not claimed",
         f"{card.unprovable_explained}/{card.unprovable_expected} ({card.explained_rate:.0%})",

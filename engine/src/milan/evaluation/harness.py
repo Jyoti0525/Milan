@@ -28,6 +28,7 @@ from milan.recon.inputs import ReconInput
 from milan.recon.matching.cascade import Cascade
 from milan.recon.matching.exact import ExactUtrStrategy
 from milan.recon.matching.fuzzy import FuzzyNarrationStrategy
+from milan.recon.matching.shortfall import ShortfallStrategy
 from milan.recon.matching.subset import SubsetSumStrategy
 from milan.recon.matching.tolerance import AmountDateStrategy
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
@@ -84,13 +85,25 @@ def evaluate(
             Cascade((ExactUtrStrategy(), AmountDateStrategy(), SubsetSumStrategy())),
         ),
         (
-            "full cascade (+ fuzzy narration)",
+            "+ fuzzy narration",
             Cascade(
                 (
                     ExactUtrStrategy(),
                     AmountDateStrategy(),
                     SubsetSumStrategy(),
                     FuzzyNarrationStrategy(),
+                )
+            ),
+        ),
+        (
+            "full cascade (+ shortfall)",
+            Cascade(
+                (
+                    ExactUtrStrategy(),
+                    AmountDateStrategy(),
+                    SubsetSumStrategy(),
+                    FuzzyNarrationStrategy(),
+                    ShortfallStrategy(rate_card),
                 )
             ),
         ),
@@ -158,6 +171,7 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
         false_positives=false_positives,
         false_negatives=sum(1 for t in resolvable if t.credit_id not in claimed),
         correct_refusals=sum(1 for t in impossible if t.credit_id not in claimed),
+        attributed=_attributed(report, resolvable, unprovable),
         proofs_balanced=len(balanced),
         proofs_claimed=len(report.proofs),
         proofs_with_drift=sum(1 for proof in balanced if proof.drift),
@@ -178,6 +192,37 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
         unexplained_by_defect=_unexplained_by_defect(report, unprovable),
         categorised_by=dict(Counter(e.categorised_by for e in report.exceptions)),
     )
+
+
+def _attributed(
+    report: ReconReport,
+    resolvable: list[CreditTruth],
+    unprovable: list[CreditTruth],
+) -> int:
+    """Credits pinned to the correct settlement set, proved or not.
+
+    Two sources, because a credit reaches the right answer two ways. A
+    provable credit is attributed when a proof claims exactly its settlements.
+    An unprovable one is attributed when the *withdrawn* claim named them -
+    the shortfall was identified against the right payout, and the arithmetic
+    then correctly refused to call it reconciled.
+
+    The whole set, not an overlap, on both paths. A credit covering two
+    settlements that was pinned to one of them has been half identified, and
+    half is not a partial success when the other half is a payout nobody is
+    looking for.
+    """
+    proved = {proof.credit_id: proof.settlement_set for proof in report.proofs if proof.balances}
+    shortfalls = {
+        record.credit_id: frozenset(record.settlement_ids) for record in report.shortfalls
+    }
+
+    found = 0
+    for truth in (*resolvable, *unprovable):
+        claim = proved.get(truth.credit_id) or shortfalls.get(truth.credit_id)
+        if claim is not None and claim == truth.settlement_set:
+            found += 1
+    return found
 
 
 def _explained(report: ReconReport, unprovable: list[CreditTruth]) -> int:

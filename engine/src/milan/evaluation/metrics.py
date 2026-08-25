@@ -84,6 +84,20 @@ class Scorecard(BaseModel):
     never a match - so these are scored on whether the shortfall was
     explained, not on whether it was claimed."""
 
+    attributed: int = 0
+    """Credits whose settlement the engine identified, provable or not.
+
+    The measurement gap this closes was a real one and it took reading 54
+    failures to find. `match_rate` deliberately excludes unprovable credits,
+    because the right output for those is an exception rather than a match -
+    but that exclusion also meant a credit which failed to match *and* was
+    unprovable was scored only against explanation, where it looked like a
+    naming problem. It was a matching failure with nowhere to be reported.
+
+    This is the number that reports it: of every credit the evidence can
+    single out, how many did the engine actually pin to the right settlement -
+    whether it went on to prove them or to name what they were short by."""
+
     merged_expected: int = 0
     merged_resolved: int = 0
     """Credits covering more than one settlement. Broken out because they
@@ -140,6 +154,18 @@ class Scorecard(BaseModel):
     def explained_rate(self) -> float:
         """Of the credits no proof can close, the share we could still name."""
         return _ratio(self.unprovable_explained, self.unprovable_expected)
+
+    @property
+    def attribution_rate(self) -> float:
+        """Share of every identifiable credit pinned to the right settlement.
+
+        A strictly harder denominator than `match_rate`: it adds back the
+        credits that are identifiable but unprovable, which the match rate
+        excludes on purpose. Reported beside it rather than instead of it,
+        because they answer different questions - "did we reconcile it" and
+        "did we work out what it was".
+        """
+        return _ratio(self.attributed, self.matchable + self.unprovable_expected)
 
     @property
     def merged_rate(self) -> float:

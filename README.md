@@ -97,7 +97,8 @@ the gain over the row above it is what that rung is worth.
 | reference only (baseline) | 23.8% | 100.0% | 10/10 | 2/6 |
 | + amount and date | 61.9% | 100.0% | 10/10 | 2/6 |
 | + subset sum | 90.5% | 100.0% | 10/10 | 2/6 |
-| full cascade (+ fuzzy narration) | 100.0% | 100.0% | 10/10 | 3/6 |
+| + fuzzy narration | 100.0% | 100.0% | 10/10 | 3/6 |
+| full cascade (+ shortfall) | 100.0% | 100.0% | 10/10 | 5/6 |
 <!-- /generated -->
 
 Four outcomes, not one. **Match rate** counts credits proved to the paisa.
@@ -125,7 +126,7 @@ uv run milan eval --seed 42 --difficulty adversarial --detail
 The table above is a single run, which is fine for the rungs — the match rate
 moves by tens of credits and does not depend on which seed drew them. It is
 not fine for the smaller figures. **Shortfalls named** has a denominator of
-about six per run, and across twenty seeds it ranged from 33% to 100% while
+about six per run, and across twenty seeds it ranged from 67% to 100% while
 everything else sat at 100%. Either end could have been published with a
 straight face.
 
@@ -136,9 +137,10 @@ averaging the rates, and reports the spread beside each figure:
 | Measure | Pooled | Of | Worst seed | Median | Best seed |
 |---|---|---|---|---|---|
 | match rate | 100.0% | 389/389 | 100.0% | 100.0% | 100.0% |
+| settlement attributed | 98.0% | 499/509 | 92.3% | 100.0% | 100.0% |
 | precision | 100.0% | 389/389 | 100.0% | 100.0% | 100.0% |
 | refusal rate | 100.0% | 200/200 | 100.0% | 100.0% | 100.0% |
-| shortfalls named | 64.2% | 77/120 | 33.3% | 66.7% | 100.0% |
+| shortfalls named | 91.7% | 110/120 | 66.7% | 100.0% | 100.0% |
 | merged credits resolved | 100.0% | 120/120 | 100.0% | 100.0% | 100.0% |
 | missing payouts flagged | 100.0% | 40/40 | 100.0% | 100.0% | 100.0% |
 | unsettled payments flagged | 100.0% | 153/153 | 100.0% | 100.0% | 100.0% |
@@ -148,32 +150,45 @@ averaging the rates, and reports the spread beside each figure:
 uv run milan sweep --seeds 20 --difficulty adversarial
 ```
 
-**Naming a shortfall is the weakest thing this system does — 64.2%, not the
+**Naming a shortfall is the weakest thing this system does — 91.7%, not the
 100% one seed would have shown.** Everything else holds at 100% across twenty
 seeds: 389 credits matched with nothing wrongly claimed, and 200 impossible
 credits refused without a single forced answer.
 
-That 64.2% is worth reading carefully, because it was 55.0% until this figure
-was taken apart, and what came out was two different failures wearing one
-number. Of the 54 shortfalls that went unnamed, **11 were credits the engine
-matched and could not explain, and 43 were credits it never matched at all** —
-their bank reference had been corrupted, so no candidate was ever found and
-there was no shortfall to name.
+**Two rates, because there are two questions.** *Match rate* asks whether a
+credit was reconciled, and its denominator excludes credits that are
+identifiable but cannot be reconstructed — the right output for those is an
+exception, not a match. *Settlement attributed* asks whether the engine worked
+out which payout a credit was, and it puts those credits back in. It is the
+strictly harder number and it is 98.0%.
 
-The 11 are closed. Every one of them sat within a paisa or two of a refund
-recorded elsewhere in the report, and the check that looks for it demanded
-exact equality while the prover two modules away was already treating that
-same paisa as rounding drift. It now matches inside the same derived
-allowance, and requires the match to be unique — if two refunds both fit, the
-evidence does not say which, and naming the nearer one would be a guess.
+That second row exists because a measurement gap was found by reading
+failures rather than totals. **A credit that failed to match *and* was
+unprovable was scored only against explanation**, where it looked like a
+naming problem — its matching failure had nowhere to be reported. Pooled over
+twenty seeds, 43 credits were in exactly that position: their bank reference
+was corrupted, no candidate was ever found, and they surfaced as *"no
+settlement behind it"*.
 
-The 43 are a matching failure, and they were invisible: unprovable credits are
-excluded from the match-rate denominator on purpose, because the correct
-output for them is an exception rather than a match. That exclusion also meant
-a credit which failed to match *and* was unprovable was counted only against
-explanation, where it looked like a naming problem. **The match rate of 100%
-is over credits that are matchable and provable; it is not a claim about
-these 43.**
+They are attributed now, by a fifth rung that matches on a total being
+**wrong**. A credit that arrived on the settlement date, short by an amount
+inside what a fee stack could account for, is evidence — just not exact
+evidence, and every rung above treats exactness as the whole of the evidence.
+The band is read off the merchant's rate card (worst card rate, plus GST on
+that fee, plus withholding where it applies) rather than tuned against the
+data, because a tolerance fitted to the generator would be fitting to the
+defects we chose to write.
+
+Its claims are then **withdrawn by the prover, every time, by design.** It
+matches on the total being wrong, so nothing it touches can pass proving —
+which is why adding it moved shortfalls named from 64.2% to 91.7% and left
+match rate, precision and the refusal count exactly where they were. What it
+leaves behind is the settlement id, and that turns *"no settlement behind it"*
+into *"this is settlement A and it is short by exactly refund R"*.
+
+Ten credits across twenty seeds are still unattributed: too far short for any
+fee stack to explain, or short by an amount that fits two payouts equally
+well. Those are refused, and refusing them is the point.
 
 Add `--withholding` to the generate command for a merchant subject to Section
 194-O, where 1% of gross is withheld before the payout leaves.

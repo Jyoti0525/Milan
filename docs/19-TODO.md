@@ -527,3 +527,105 @@ that population properly is the honest half of day 9, alongside leak
 detection - and it is the only place left where a model could plausibly earn
 its keep, since the question there is *which settlement is this* rather than
 *why is it short*.
+
+
+---
+
+# The two open items, closed
+
+Both were reported as *"deliberately not done"*. Neither should have stayed
+that way, and the second turned out to be the largest single improvement in
+the project's weakest number.
+
+## Splink - closed on evidence, not on taste
+
+The earlier reasoning stands and is now decisive rather than persuasive,
+because the population Splink would exist to rescue has been isolated and
+read. Pooled over twenty adversarial seeds, the credits that reached the end
+of the cascade unmatched number 43, and every one of them had its bank
+reference corrupted. Their narrations:
+
+| count | narration |
+|---|---|
+| 20 | `NEFT INWARD RAZORPAY SOFTWARE PVT LTD` |
+| 11 | `ACH C- RAZORPAYSOFTWARE` |
+| 7 | `IMPS/RZPY/SETTLEMENT` |
+| 5 | `NEFT CR-RATN0000088-RAZORPAY-SETTLEMENT` |
+
+**Recoverable references: 0 of 43.** The fourth form is the one that looks
+promising and is not - `RATN0000088` is an IFSC branch code, not a settlement
+reference, and treating it as one would be a wrong answer stated confidently.
+
+That settles it as a measurement rather than an opinion. A probabilistic
+linkage library - or any string method, Splink or otherwise - infers from
+signal present in a field. There is no signal in these fields. Splink is not
+cut because it is heavy; it is cut because **the evidence it consumes does not
+exist in the cases it would be asked to solve.**
+
+The capability Tier 1 asked for is still delivered: `FuzzyNarrationStrategy`
+handles *damaged* references, and `test_fuzzy.py` measures that removing it
+costs matches on messy and adversarial. It earns its place. Splink would not.
+
+## The 43 unmatched credits - attributed, and the blind spot closed
+
+Two separate failures, and both are fixed.
+
+**The measurement gap.** `match_rate` excludes unprovable credits on purpose,
+because the right output for those is an exception rather than a match. That
+exclusion also meant a credit which failed to match *and* was unprovable was
+scored only against explanation, where it read as a naming problem. Its
+matching failure had nowhere to be reported. There is now a second rate beside
+the first - **settlement attributed**, over every identifiable credit whether
+it proved or not, at 98.0% (499/509). Strictly the harder denominator.
+
+**The matching gap.** The evidence in those 43 was real and no rung could see
+it: all 43 land on the settlement date exactly, short by a median of 0.31%.
+Every rung above treats exactness as the whole of the evidence, so a credit
+that is one settlement minus an unexplained deduction fell through all four.
+
+`ShortfallStrategy` is the fifth rung. It matches on a total being *wrong*,
+inside a band read off the merchant's rate card - worst card rate, GST on that
+fee, withholding where it applies - rather than tuned against the data, which
+would be fitting to the defect catalogue this project's own numbers are
+already conditional on.
+
+Its claims are withdrawn by the prover **every time, by design**, so it cannot
+touch the match rate, precision, or the refusal count. What survives is the
+settlement id, which turns *"no settlement behind it"* into *"this is
+settlement A and it is short by exactly refund R"*.
+
+| | before | after |
+|---|---|---|
+| shortfalls named | 64.2% (77/120) | **91.7% (110/120)** |
+| worst seed | 33.3% | 66.7% |
+| median seed | 66.7% | 100.0% |
+| settlement attributed | not measured | **98.0% (499/509)** |
+| match rate / precision / refusal | 100% | **100%, unchanged** |
+
+Ten credits across twenty seeds remain unattributed: short by more than any
+fee stack can account for, or short by an amount that fits two payouts equally
+well. Those are refused, and refusing them is the point.
+
+### Two tests this broke, and what each was hiding
+
+**A test that indexed the ladder by position.** `test_fuzzy.py` compared
+`cards[-2]` against `cards[-1]`, so adding a fifth configuration silently
+repointed it to compare fuzzy against shortfall. It now finds both by label. A
+test that names the two things it compares cannot be repointed by an unrelated
+change.
+
+**A conformance test that knew only one way to earn a place.** It asserted
+every rung produces a balanced proof, and this rung produces none by design.
+The honest fix was to name the second way - a claim the verifier withdraws,
+which still names the settlement a credit fell short of - rather than to
+exempt the rung, because "allowed to be dead" and "contributes differently"
+look identical in a skip. There is now also a test asserting the shortfall
+rung *never* proves anything, because that is the safety argument for a band
+this wide, and it should fail loudly if it stops being true.
+
+Making that test pass surfaced a real omission: `UnprovenCredit` carried no
+record of which rung identified the settlement, so the queue presented every
+named shortfall with equal authority. It does not deserve equal authority. One
+named against a settlement the reference rung identified is a fact; one named
+against a settlement this rung found nearby on the right date is an argument
+at 35% confidence. Both now say which they are.
