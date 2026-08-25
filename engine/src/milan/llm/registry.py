@@ -97,8 +97,32 @@ def status() -> tuple[Status, ...]:
             )
             continue
         ready = bool(check())
-        found.append(Status(name=name, model=model, ready=ready, reason=_why_not(provider, ready)))
+        reason = _why_not(provider, ready)
+        if ready:
+            ready, reason = _still_served(provider, model)
+        found.append(Status(name=name, model=model, ready=ready, reason=reason))
     return tuple(found)
+
+
+def _still_served(provider: Provider, model: str) -> tuple[bool, str]:
+    """Whether the configured model is still in this key's catalogue.
+
+    Written after a key that worked perfectly reported `model_not_found`.
+    Both hosted defaults in this project had been retired by their vendors
+    between being wired in and being run, and `ready()` said yes to both -
+    because it was answering "is a key set" while the question people ask it
+    is "will this answer".
+
+    A provider with no catalogue, or one that will not serve the list, is
+    left alone. An unreachable list is not evidence that a model is gone.
+    """
+    catalogue = getattr(provider, "catalogue", None)
+    if catalogue is None:
+        return True, ""
+    served = catalogue()
+    if not served or model in served:
+        return True, ""
+    return False, f"key works, but {model} is not in its catalogue"
 
 
 def _why_not(provider: Provider, ready: bool) -> str:

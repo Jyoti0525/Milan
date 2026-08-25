@@ -1,0 +1,9 @@
+{
+  "text": "{\"kind\": \"recovery_gap\", \"entity_id\": \"rfnd_ypre2c6cxyhwit\"}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 1.1322401000652462,
+  "prompt_tokens": 629,
+  "completion_tokens": 27
+}

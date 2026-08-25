@@ -13,6 +13,8 @@ which is the state a reviewer's machine will be in.
 
 from __future__ import annotations
 
+import email.message
+import urllib.error
 from typing import Any
 
 import pytest
@@ -22,6 +24,7 @@ from milan.llm.ollama import OllamaProvider
 from milan.llm.provider import NullProvider, Request
 from milan.llm.registry import (
     CACHE_ENV,
+    _still_served,
     _why_not,
     available,
     default_cache_root,
@@ -29,7 +32,7 @@ from milan.llm.registry import (
     status,
     unpinned,
 )
-from milan.llm.transport import get_json, post_json
+from milan.llm.transport import MAX_WAIT, _wait_for, get_json, post_json
 
 UNREACHABLE = "http://127.0.0.1:1"
 """Port 1 is privileged and nothing listens on it. A refused connection
@@ -379,6 +382,38 @@ class TestSayingWhichProvidersCouldAnswer:
         assert baseline.ready
         assert "graded" in baseline.reason
 
+    def test_a_key_that_works_for_a_model_that_is_gone_is_not_ready(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The failure this project actually hit, twice in one afternoon.
+
+        Both hosted defaults were wired in against recorded response bodies
+        and retired by their vendors before a live key existed. `ready()` said
+        yes to both, because it answers "is a key set" while the question
+        people ask it is "will this answer".
+        """
+        provider = GroqProvider(api_key="test-key", model="a-model-that-was-retired")
+        monkeypatch.setattr(provider, "catalogue", lambda: ("something-else",))
+
+        ready, reason = _still_served(provider, provider.model)
+
+        assert not ready
+        assert "not in its catalogue" in reason
+
+    def test_an_unreachable_catalogue_is_not_evidence_of_anything(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A list that will not load says nothing about whether the model is
+        there, and reporting it as missing would send somebody chasing a
+        model that works."""
+        provider = GroqProvider(api_key="test-key")
+        monkeypatch.setattr(provider, "catalogue", tuple)
+
+        assert _still_served(provider, provider.model) == (True, "")
+
+    def test_a_provider_with_no_catalogue_is_left_alone(self) -> None:
+        assert _still_served(OllamaProvider(), "qwen2.5:3b") == (True, "")
+
     def test_a_missing_key_names_the_key(self) -> None:
         hosted = [entry for entry in status() if entry.name in {"groq", "gemini"}]
         for entry in hosted:
@@ -408,3 +443,122 @@ class TestSayingWhichProvidersCouldAnswer:
         env var that moves it is load-bearing rather than a convenience."""
         monkeypatch.setenv(CACHE_ENV, str(tmp_path))
         assert default_cache_root() == tmp_path
+
+
+class TestARateLimitIsWaitedOutRatherThanLost:
+    """The failure that produced a number instead of an error.
+
+    Groq's free tier is eight thousand tokens a minute. One ablation asks a
+    hundred and ten questions of a model that thinks in paragraphs, so the
+    first run answered ten of them and reported 2.7% agreement - a
+    measurement of the rate limit wearing the model's name. That is worse
+    than a crash, because it looks like a result.
+    """
+
+    def _limited(self, seconds: str | None = "0") -> urllib.error.HTTPError:
+        return urllib.error.HTTPError(
+            url="https://example.invalid",
+            code=429,
+            msg="Too Many Requests",
+            hdrs=email.message.Message() if seconds is None else _headers(seconds),
+            fp=None,
+        )
+
+    def test_the_server_is_taken_at_its_word(self) -> None:
+        assert _wait_for(self._limited("12"), attempt=0) == 12.0
+
+    def test_an_unreasonable_wait_is_capped(self) -> None:
+        """ "Come back in an hour" is a request to run this later, not to
+        block a reconciliation for an hour."""
+        assert _wait_for(self._limited("3600"), attempt=0) == MAX_WAIT
+
+    def test_a_date_falls_back_to_doubling(self) -> None:
+        """`Retry-After` may be an HTTP date. Parsing one to save a single
+        backoff is not worth the surface."""
+        assert _wait_for(self._limited("Wed, 26 Aug 2026 12:00:00 GMT"), attempt=1) == 10.0
+
+    def test_no_header_at_all_still_backs_off(self) -> None:
+        assert _wait_for(self._limited(None), attempt=2) == 20.0
+
+    def test_a_retried_call_eventually_answers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = {"n": 0}
+        slept: list[float] = []
+
+        def flaky(*_a: Any, **_k: Any) -> Any:
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise self._limited("0")
+            return _Answered('{"answered": true}')
+
+        monkeypatch.setattr("urllib.request.urlopen", flaky)
+        answer = post_json(
+            "https://example.invalid",
+            {"q": 1},
+            timeout=1.0,
+            retries=4,
+            sleep=slept.append,
+        )
+
+        assert answer == {"answered": True}
+        assert calls["n"] == 3
+        assert slept == [0.0, 0.0]
+
+    def test_it_gives_up_rather_than_retrying_forever(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = {"n": 0}
+
+        def always(*_a: Any, **_k: Any) -> Any:
+            calls["n"] += 1
+            raise self._limited("0")
+
+        monkeypatch.setattr("urllib.request.urlopen", always)
+        answer = post_json(
+            "https://example.invalid", {"q": 1}, timeout=1.0, retries=2, sleep=lambda _s: None
+        )
+
+        assert answer is None
+        assert calls["n"] == 3, "one attempt, then two retries"
+
+    def test_a_status_that_will_not_improve_is_not_retried(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A 404 for a retired model is the failure this project actually
+        hit, and asking again four times would only make it slower."""
+        calls = {"n": 0}
+
+        def gone(*_a: Any, **_k: Any) -> Any:
+            calls["n"] += 1
+            raise urllib.error.HTTPError(
+                url="https://example.invalid",
+                code=404,
+                msg="model_not_found",
+                hdrs=email.message.Message(),
+                fp=None,
+            )
+
+        monkeypatch.setattr("urllib.request.urlopen", gone)
+        assert post_json("https://example.invalid", {}, timeout=1.0, retries=4) is None
+        assert calls["n"] == 1
+
+
+def _headers(seconds: str) -> email.message.Message:
+    headers = email.message.Message()
+    headers["Retry-After"] = seconds
+    return headers
+
+
+class _Answered:
+    """The context manager `urlopen` returns, with a body."""
+
+    def __init__(self, body: str) -> None:
+        self._body = body.encode("utf-8")
+
+    def __enter__(self) -> _Answered:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._body

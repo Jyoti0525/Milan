@@ -24,6 +24,7 @@ def ablate(
     seeds: tuple[int, ...],
     orders: int = 600,
     model: str = "",
+    max_tokens: int = 96,
 ) -> Ablation:
     """Put every shortfall in every seed to the model, and check the answers.
 
@@ -31,9 +32,17 @@ def ablate(
     answer, and the model is asked afterwards about the same shortfalls - so
     nothing the model says can reach a graded number, and the comparison is
     between two answers to one question rather than between two pipelines.
+
+    `max_tokens` is a property of the model rather than of the question. The
+    answer is one small JSON object either way, but a reasoning model spends
+    a few hundred tokens thinking before it writes one - and a budget that is
+    generous for a 3B instruct model truncates a frontier model mid-thought,
+    which is measured as an unanswered question rather than as a
+    misconfiguration. It is also part of the cache key, so raising it for one
+    provider cannot silently reuse another's answers.
     """
     rates = RateCard()
-    triage = LlmTriage(provider)
+    triage = LlmTriage(provider, max_tokens=max_tokens)
     run = AblationRun(triage, rates, provider.name, model)
 
     for seed in seeds:

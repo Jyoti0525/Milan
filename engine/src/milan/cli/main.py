@@ -311,6 +311,13 @@ def ablate_command(
         str,
         typer.Option("--model", help="Override the provider's model, to compare two."),
     ] = "",
+    max_tokens: Annotated[
+        int,
+        typer.Option(
+            "--max-tokens",
+            help="Answer budget. Reasoning models need a few hundred to finish thinking.",
+        ),
+    ] = 96,
 ) -> None:
     """Measure what a model adds to the shortfall explanations.
 
@@ -339,7 +346,9 @@ def ablate_command(
         # does not replay the first one's answers.
         _name_model(built, model)
     chosen = model or getattr(built, "model", "")
-    result = ablate(built, difficulty, tuple(range(1, seeds + 1)), orders, chosen)
+    result = ablate(
+        built, difficulty, tuple(range(1, seeds + 1)), orders, chosen, max_tokens=max_tokens
+    )
 
     if result.asked and not result.answered:
         console.print(
@@ -347,6 +356,19 @@ def ablate_command(
             "The reconciliation is unaffected - every figure it reports is "
             "computed before a provider is consulted - but this ablation has "
             "measured an absent model rather than a poor one."
+        )
+    elif result.answered < result.asked:
+        # A partial answer is the dangerous case, because it still prints a
+        # rate. Groq's free tier is eight thousand tokens a minute, and the
+        # first run of this against it answered ten of a hundred and ten and
+        # reported 2.7% agreement - a measurement of the rate limit wearing
+        # the model's name.
+        missing = result.asked - result.answered
+        console.print(
+            f"[yellow]{missing} of {result.asked} questions went unanswered.[/] "
+            "They are scored as disagreements, so the rate below is a floor "
+            "rather than an estimate. A free tier that ran out of budget "
+            "looks exactly like a model that declined."
         )
     console.print(render.ablation_table(result))
 

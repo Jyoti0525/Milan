@@ -342,9 +342,9 @@ large, the paise small and muted.
 
 ## Where the model earns its place
 
-A local Qwen 2.5 3B runs through Ollama, with free Groq and Gemini tiers
-behind the same interface. It is asked exactly one kind of question — *why is
-this credit short?* — and it is never believed.
+Four models sit behind one interface — two local through Ollama, two hosted
+on free tiers — and every one of them is asked exactly one kind of question:
+*why is this credit short?* None of them is believed.
 
 **A model may propose. Only arithmetic may conclude.** It does not return
 prose. It returns a typed claim naming a cause and a record that must already
@@ -352,71 +352,83 @@ exist in the report, and that claim is then put through the same arithmetic
 the rule-based categoriser uses. A claim that does not foot to the paisa is
 discarded before anything is printed.
 
-Which makes the model's contribution a number rather than an adjective. Over
-the 110 shortfalls in twenty adversarial seeds, every one of which the
-deterministic rules had already named:
+### Four models, one verifier
 
-| | Qwen 2.5 3B, local |
-|---|---|
-| questions answered | 110/110 |
-| **agreement with the rules** | **16.4%** (18/110) |
-| contribution beyond them | 0/0 - the rules named every shortfall the engine reached |
-| proposals rejected by arithmetic | 47 |
-| **identifiers invented** | **5** |
-| tokens in / out | 66,146 / 2,453 |
-| spent | Rs 0.00 |
+Which makes the model's contribution a number rather than an adjective. The
+same 110 shortfalls, in twenty adversarial seeds, every one of them already
+named by the deterministic rules — put to two model sizes and two vendors,
+through the same arithmetic:
 
-```bash
-uv run milan ablate --provider ollama --seeds 20 --orders 600
-```
-
-Read the last two rows of the top block together. The model made 65 confident
-proposals; 47 were wrong, and **5 of them named a refund that does not exist
-anywhere in the report**. Had it been allowed to write summaries, this system
-would have sent a finance team looking through their ledger for records that
-were never there. Every one of those was caught by arithmetic, cost nothing,
-and never reached a screen.
-
-The contribution row is 0/0 rather than 0%, and the distinction is the honest
-one: there were no shortfalls left for the model to attempt, because the
-deterministic checks now name every shortfall the engine reaches on all four
-tiers. That is a measured result and not an assumption - it was measured with
-a model actually running, because "the rules already win" inferred from never
-switching one on is an argument from silence.
-
-**A smaller model is not a safer one, it is an emptier one.** The same 110
-questions, through the same verifier, at half the parameters:
-
-| | Qwen 2.5 1.5B | Qwen 2.5 3B |
-|---|---|---|
-| questions answered | 110/110 | 110/110 |
-| proposed a cause at all | 0/110 | 65/110 |
-| agreement with the rules | 0.0% | **16.4%** |
-| proposals rejected by arithmetic | 0 | 47 |
-| identifiers invented | 0 | 5 |
+| | Qwen 2.5 1.5B<br>local | Qwen 2.5 3B<br>local | Gemini 3.1<br>Flash Lite | Groq<br>gpt-oss-120b |
+|---|---|---|---|---|
+| questions answered | 110/110 | 110/110 | 110/110 | 107/110 |
+| proposed a cause at all | 0 | 65 | 31 | 49 |
+| **agreement with the rules** | 0.0% | 16.4% | 28.2% | **36.4%** |
+| proposals rejected by arithmetic | 0 | 47 | 0 | 9 |
+| **identifiers invented** | 0 | **5** | 0 | 0 |
+| **contribution beyond the rules** | **0/0** | **0/0** | **0/0** | **0/0** |
+| output tokens | 1,430 | 2,453 | 1,877 | 33,893 |
 
 ```bash
 uv run milan ablate --provider ollama --seeds 20 --orders 600 --model qwen2.5:1.5b
+uv run milan ablate --provider gemini --seeds 20 --orders 600 --max-tokens 512
+uv run milan ablate --provider groq   --seeds 20 --orders 600 --max-tokens 512
 ```
 
-The 1.5B model answered every question in valid schema and said `unknown` to
-all 110 of them. It invented nothing, and it contributed nothing - a column of
-zeros that reads as caution and is really absence. Both models leave every
-figure in this README exactly where it was, which is the seal working rather
-than a coincidence.
+**The last row is the same in every column, and it is the point.** Not one of
+the four models reached a case the deterministic rules had left open, because
+there were none: the rules name every shortfall the engine reaches on all four
+tiers. Better models did not change a single published figure. They could not
+— they are asked afterwards, and every answer goes through the arithmetic
+before it counts.
 
-**Nothing was spent, and the volume is measured anyway.** The token counts
-come from the provider's own counters rather than from an estimate, so the
-projection below is arithmetic on a measurement: at Gemini 2.0 Flash's
-published paid rate the same questions would cost **$0.0076**, and at Groq's
-on-demand rate for Llama 3.3 70B, **$0.0410**. Both rates are recorded with
-their source and the date they were read, because a price is somebody else's
-claim and it goes stale.
+That row is **0/0 rather than 0%**, and the distinction is the honest one:
+there were no shortfalls left to attempt. It is a measured result and not an
+assumption — measured with models actually running, because "the rules already
+win" inferred from never switching one on is an argument from silence.
 
-**A reader with no GPU can reproduce the table.** `data/llm-cache` holds what
-the model actually said, addressed by the hash of the question, and a test
-replays all 110 answers with no model present at all - asserting these exact
-figures, and failing loudly if a single question misses the cache.
+The 1.5B model returned valid schema on all 110 questions and answered
+`unknown` to every one: a column of zeros that reads as caution and is really
+absence. gpt-oss-120b is the strongest at the task and still disagrees with the
+arithmetic on nine of its forty-nine proposals.
+
+**The 3B model invented five identifiers** — refunds that exist nowhere in the
+report. Had it been allowed to write the summaries, this system would have sent
+a finance team through their ledger looking for records that were never there.
+Every one was caught by the same arithmetic the rules use, cost nothing, and
+never reached a screen.
+
+Three of Groq's questions went unanswered: its free tier is 8,000 tokens a
+minute and this model thinks in paragraphs, so three ran out of retries. They
+are scored as **disagreements**, which makes 36.4% a floor rather than an
+estimate.
+
+**Nothing was spent, and the volume is measured anyway.** Token counts come
+from each provider's own counters rather than an estimate, so the projection
+is arithmetic on a measurement — only the rate is an assumption, and each rate
+carries its source and the date it was read.
+
+| run | tokens in / out | at Groq's rate | at Gemini's rate |
+|---|---|---|---|
+| Qwen 2.5 3B, local | 66,146 / 2,453 | $0.0114 | $0.0202 |
+| Gemini 3.1 Flash Lite | 67,582 / 1,877 | $0.0113 | $0.0197 |
+| Groq gpt-oss-120b | 64,628 / 32,357 | $0.0291 | $0.0647 |
+
+**A thinking model costs twenty times the output for the same answer.** Every
+answer here is one small JSON object; gpt-oss-120b writes a few hundred tokens
+of reasoning before each one, and both vendors bill that as output. Gemini
+reports those tokens in a separate field — `thoughtsTokenCount` — and counting
+only what the model *said* would have understated its cost by an order of
+magnitude, which is the direction an error is least likely to be questioned in.
+
+Actual spend across every run in this section: **Rs 0.00.**
+
+**A reader with no GPU and no key can reproduce all four columns.**
+`data/llm-cache` holds what each model actually said, addressed by the hash of
+the question — and the hash includes the model, which it did not until a
+benchmark across two model sizes came back as two identical columns. Tests
+replay every configuration with no provider present and assert these exact
+figures.
 
 **Switching models is one environment variable.** Which is worth stating in a
 README rather than in a config file, because the claim it supports is that
@@ -426,17 +438,24 @@ nothing here depends on a particular vendor:
 uv run milan providers                 # who could answer right now, and what to do about the rest
 
 export GROQ_API_KEY=...                # free at console.groq.com
-uv run milan ablate --provider groq --seeds 20 --orders 600
-
 export GEMINI_API_KEY=...              # free at aistudio.google.com
-uv run milan ablate --provider gemini --seeds 20 --orders 600
+uv run milan ablate --provider groq --seeds 20 --orders 600 --max-tokens 512
 ```
 
-Both were wired and tested against recorded response bodies and neither has
-been run against a live key, which is stated here rather than left looking
-like an oversight. An absent provider is not an error condition in this
-system: it answers nothing, the explanations fall back to the deterministic
-summaries, and every graded number is exactly where it was.
+**Both hosted defaults had been retired by their vendors between being wired
+in and being run.** `llama-3.3-70b-versatile` answers `model_not_found`;
+`gemini-2.0-flash` answers 404 with a message naming its replacement. Both
+were tested, against recorded response bodies, the whole time. `milan
+providers` checks the model against the key's live catalogue now, because
+"a key is set" and "this will answer" turned out to be different questions.
+
+The flagship replacement is not the default either, and that is a quota rather
+than a preference: `gemini-3.6-flash` allows twenty free requests a day, which
+is one fifth of a single ablation. A run against it measures the quota.
+
+An absent provider is not an error condition in this system: it answers
+nothing, the explanations fall back to the deterministic summaries, and every
+graded number is exactly where it was.
 
 **The seal is structural.** `milan.recon`, `milan.domain` and `milan.chaos`
 produce every published figure, and none of them may import `milan.llm`. A

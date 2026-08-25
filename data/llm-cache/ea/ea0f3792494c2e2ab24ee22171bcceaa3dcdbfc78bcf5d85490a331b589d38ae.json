@@ -1,0 +1,9 @@
+{
+  "text": "{\"kind\": \"recovery_gap\", \"entity_id\": \"rfnd_gvuexvsdxxyfw6\"}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 6.9466092000948265,
+  "prompt_tokens": 610,
+  "completion_tokens": 119
+}

@@ -693,3 +693,27 @@ If a decision is not here, it is not settled.
      it depends on a model, a quantisation and a daemon. The answers are in
      the repository and a test replays all 110 with no model present, failing
      if one question misses.
+
+170. **A provider is "ready" only if the model is still in the key's
+     catalogue.** Both hosted defaults were retired by their vendors between
+     being wired in and being run, and a key-presence check said yes to both.
+     "A key is set" and "this will answer" are different questions, and the
+     Ollama provider had already learned the local version of this lesson.
+171. **A partially answered evaluation says so, loudly.** The first hosted run
+     answered ten of a hundred and ten questions and printed a 2.7% agreement
+     rate - a measurement of a rate limit wearing the model's name. Unanswered
+     questions are scored as disagreements, which makes the published rate a
+     floor, and the command now says which it is.
+172. **Rate limits are waited out, not lost.** `post_json` retries a 429 and
+     honours `Retry-After` up to ninety seconds. Off by default: a local
+     daemon that refuses a connection will refuse the next one, and sleeping
+     over that would turn "no model configured" into a slow run.
+173. **The answer budget belongs to the model, not to the question.** 96
+     tokens is generous for a 3B instruct model and truncates a reasoning
+     model mid-thought, which is counted as an unanswered question. It is per
+     run, defaults to the local value, and is part of the cache key.
+174. **Thinking tokens are counted as output, because that is how they are
+     billed.** Gemini reports them in a separate field. Counting only the
+     visible answer would have understated a thinking model's cost by an order
+     of magnitude, and it is not a coincidence that the error would have run
+     in the flattering direction.

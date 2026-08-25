@@ -55,27 +55,32 @@ class Rate(BaseModel):
 
 RATES: tuple[Rate, ...] = (
     Rate(
-        label="Gemini 2.0 Flash, paid tier",
-        input_usd_per_million=Decimal("0.10"),
-        output_usd_per_million=Decimal("0.40"),
-        source="ai.google.dev/gemini-api/docs/pricing",
-        checked_on=date(2026, 8, 26),
-    ),
-    Rate(
-        label="Groq Llama 3.3 70B Versatile, on demand",
-        input_usd_per_million=Decimal("0.59"),
-        output_usd_per_million=Decimal("0.79"),
+        label="Groq, gpt-oss-120b on demand",
+        input_usd_per_million=Decimal("0.15"),
+        output_usd_per_million=Decimal("0.60"),
         # Not Groq's own pricing page, which did not carry per-model figures
         # when this was read. Named as a secondary source rather than
         # presented as the vendor's word.
         source="cloudzero.com/blog/groq-pricing (secondary)",
         checked_on=date(2026, 8, 26),
     ),
+    Rate(
+        label="Gemini 3.1 Flash Lite, paid tier",
+        input_usd_per_million=Decimal("0.25"),
+        output_usd_per_million=Decimal("1.50"),
+        source="ai.google.dev/gemini-api/docs/pricing",
+        checked_on=date(2026, 8, 26),
+    ),
 )
 """The rates the projections are quoted at.
 
 Two, not one, because a single price reads as *the* cost of running this with
-a model. The spread between them is the point: the same questions, priced by
-two vendors, differ by roughly a factor of five and neither is what this
-project actually paid.
+a model. They differ by a factor of five on input and six on output, and
+neither is what this project actually paid.
+
+One of the two thinks before answering and bills the thinking as output,
+which is why the output rate matters more here than the input rate looks
+like it should: the visible answer is a dozen tokens and the reasoning behind
+it is a few hundred. The same hundred and ten questions cost thirty-four
+thousand output tokens on one model and under two thousand on the other.
 """

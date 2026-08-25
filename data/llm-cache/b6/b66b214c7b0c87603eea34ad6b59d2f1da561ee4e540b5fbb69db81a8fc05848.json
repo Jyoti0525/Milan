@@ -1,0 +1,9 @@
+{
+  "text": "{\"kind\": \"fee_variance\", \"entity_id\": null}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 6.15294159995392,
+  "prompt_tokens": 597,
+  "completion_tokens": 273
+}

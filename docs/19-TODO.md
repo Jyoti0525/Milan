@@ -478,11 +478,24 @@ of shortfalls it names that rules alone did not.
       across all three configurations**
 - [x] `--provider` on the CLI, docs, and the build log
 
-**Done, except the hosted configs.** Groq and Gemini are wired, tested against
-recorded response bodies, and unrun: there is no key on this machine. `milan
-providers` now says so out loud, and names the command that fixes each one -
-`ready()` had been written, tested and called by nothing, which made it
-precisely the check nobody could run. That is
+**Done.** Four configs, not three: Qwen 1.5B and 3B locally, Gemini 3.1 Flash
+Lite and Groq's gpt-oss-120b hosted. Agreement roughly doubles from the local
+3B to the frontier hosted model - 16.4% to 36.4% - and the contribution row is
+0/0 in every column.
+
+Keys arrived after this plan was written, and running them turned up more than
+the numbers:
+
+- **Both hosted defaults had been retired by their vendors** between being
+  wired in and being run. `ready()` said yes to both because it was checking
+  for a key, not for a model; it checks the live catalogue now.
+- **The first Groq run answered 10 of 110 and printed 2.7% agreement** - a
+  rate limit wearing a model's name. Retries on 429 fixed the run; saying
+  *"unanswered questions are scored as disagreements, so this is a floor"*
+  fixed the reporting.
+- **The flagship Gemini model allows 20 free requests a day**, one fifth of
+  one ablation, so the default is Flash Lite. A run against the flagship
+  measures the quota. That is
 recorded as an absence rather than left looking like an oversight - the cut
 rules already allow the five-config benchmark to shrink to three, and the
 three that ran are *off*, 1.5B and 3B.
@@ -781,7 +794,7 @@ puts a price on it, and makes it replayable by a reader with no GPU.
       - is what the cut rules already allow the five-config benchmark to
       shrink to, and a size axis says more than a vendor axis about whether
       this task is model-limited at all.
-- [~] **A hosted config if a key exists**, and a recorded absence if not.
+- [x] **A hosted config if a key exists**, and a recorded absence if not.
       Groq and Gemini are one env var each and the adapters are already
       written. Not having run them is a fact to report, not a gap to hide.
 - [x] **Golden-output test.** The committed cache replayed, asserting the

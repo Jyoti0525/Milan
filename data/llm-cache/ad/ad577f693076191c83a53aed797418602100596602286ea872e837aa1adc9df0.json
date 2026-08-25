@@ -1,0 +1,9 @@
+{
+  "text": "88 = 18.55!\nOr 10% of Fee (18",
+  "provider": "gemini",
+  "model": "gemini-3.6-flash",
+  "cached": false,
+  "latency_seconds": 6.067091300035827,
+  "prompt_tokens": 611,
+  "completion_tokens": 508
+}

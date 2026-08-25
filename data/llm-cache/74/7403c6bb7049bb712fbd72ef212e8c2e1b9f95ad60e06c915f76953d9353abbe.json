@@ -1,0 +1,9 @@
+{
+  "text": "```json\n{\"kind\": \"unknown\", \"entity_id\": null}\n```",
+  "provider": "gemini",
+  "model": "gemini-3.6-flash",
+  "cached": false,
+  "latency_seconds": 6.886899200035259,
+  "prompt_tokens": 615,
+  "completion_tokens": 507
+}

@@ -164,3 +164,75 @@ class TestTheSecondModelReplaysToo:
         )
 
         assert larger.kinds != smaller.kinds
+
+
+class TestTheHostedRunsReplayToo:
+    """Two hosted models, answered once against live keys and kept.
+
+    These are the ones a reader is least able to reproduce - a key, a free
+    tier's quota, and a vendor catalogue that changes underneath both. The
+    answers are in the repository for the same reason the local ones are.
+
+    Groq's three unanswered questions are part of the record rather than an
+    embarrassment: its free tier is eight thousand tokens a minute and the
+    model thinks in paragraphs, so three questions ran out of retries. They
+    are scored as disagreements, which makes the published rate a floor.
+    """
+
+    GROQ = "openai/gpt-oss-120b"
+    GEMINI = "gemini-3.1-flash-lite"
+    BUDGET = 512
+
+    def _replayed(self, cache_root: Path, name: str, model: str) -> tuple[Ablation, Absent]:
+        absent = Absent(model)
+        absent.name = name
+        provider = CachedProvider(absent, ResponseCache(cache_root))
+        return (
+            ablate(
+                provider,
+                Difficulty.ADVERSARIAL,
+                SEEDS,
+                ORDERS,
+                model,
+                max_tokens=self.BUDGET,
+            ),
+            absent,
+        )
+
+    def test_groq_replays_to_the_published_figures(self, cache_root: Path) -> None:
+        result, absent = self._replayed(cache_root, "groq", self.GROQ)
+
+        assert result.answered == 107
+        assert result.agreement_hits == 40
+        assert result.rejected == 9
+        assert result.invented_ids == 0
+        assert absent.calls == 3, "only the three that were never answered should miss"
+
+    def test_gemini_replays_to_the_published_figures(self, cache_root: Path) -> None:
+        result, absent = self._replayed(cache_root, "gemini", self.GEMINI)
+
+        assert absent.calls == 0
+        assert result.answered == 110
+        assert result.agreement_hits == 31
+        assert result.rejected == 0
+        assert result.invented_ids == 0
+
+    def test_the_thinking_model_cost_twenty_times_the_output(self, cache_root: Path) -> None:
+        """The finding behind the cost column, asserted so it cannot quietly
+        stop being true. Both answers are one small JSON object; one model
+        writes a few hundred tokens of reasoning first, and both vendors bill
+        that as output."""
+        groq, _ = self._replayed(cache_root, "groq", self.GROQ)
+        gemini, _ = self._replayed(cache_root, "gemini", self.GEMINI)
+
+        assert groq.completion_tokens > 15 * gemini.completion_tokens
+        assert abs(groq.prompt_tokens - gemini.prompt_tokens) < gemini.prompt_tokens // 10
+
+    def test_no_model_reached_an_open_case(self, cache_root: Path) -> None:
+        """The row that matters most, across every configuration measured:
+        the rules named every shortfall the engine reached, so all four models
+        proposed into an empty set."""
+        for name, model in (("groq", self.GROQ), ("gemini", self.GEMINI)):
+            result, _ = self._replayed(cache_root, name, model)
+            assert result.open_cases == 0
+            assert result.contributions == 0

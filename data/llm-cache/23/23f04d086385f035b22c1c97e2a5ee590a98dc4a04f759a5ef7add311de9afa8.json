@@ -1,0 +1,9 @@
+{
+  "text": "{\"kind\":\"unknown\",\"entity_id\":null}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 6.291972400038503,
+  "prompt_tokens": 604,
+  "completion_tokens": 263
+}

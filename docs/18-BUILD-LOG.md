@@ -1567,3 +1567,95 @@ fee stack is modelled. The two rates that move are the two where the evidence
 genuinely thins.
 
 509 tests, 97% coverage.
+
+
+### Both hosted models had been retired before they were ever run
+
+A live key arrived and neither hosted provider worked. Not a bug in the
+adapters - both had been wired in, tested against recorded response bodies,
+and left alone for two days while their vendors moved on.
+
+| wired in as | what the API says now |
+|---|---|
+| `llama-3.3-70b-versatile` | `model_not_found` - Groq no longer serves it |
+| `gemini-2.0-flash` | 404, with a message naming its replacement |
+
+`ready()` said yes to both, because it was answering *is a key set* while the
+question people ask it is *will this answer*. It checks the model against the
+key's live catalogue now, which is the same fix the Ollama provider already
+had - a running daemon with the model absent is the failure people actually
+hit, and a valid key for a retired model is its hosted twin.
+
+### The first hosted run reported a number that was really a rate limit
+
+Groq answered **10 of 110** questions and the ablation printed *2.7%
+agreement*. That is worse than a crash: a crash gets investigated and a
+percentage gets published.
+
+The free tier is eight thousand tokens a minute, and the only general-purpose
+models Groq now serves are reasoning models that spend a few hundred tokens
+thinking before answering. So the budget was exhausted after ten questions and
+every one after that came back empty - indistinguishable, to the counter, from
+a model that declined.
+
+Two fixes, and the second matters more than the first:
+
+1. `post_json` retries a 429, honouring `Retry-After` up to a ninety-second
+   cap. Retries are off by default and used only by the hosted providers; a
+   local daemon that refuses a connection will refuse the next one too.
+2. The command now says so. A run that answers some of its questions prints
+   *"3 of 110 went unanswered - they are scored as disagreements, so the rate
+   below is a floor rather than an estimate."* The silent version of that is
+   how 2.7% got printed in the first place.
+
+With retries, Groq answered 107 of 110. The three that did not are in the
+published figure as disagreements.
+
+### The answer budget is a property of the model, not of the question
+
+96 tokens is generous for a 3B instruct model that replies with twenty tokens
+of JSON. It truncates a reasoning model mid-thought, and a truncated answer is
+counted as no answer - which reads as *this model cannot do the task* when it
+means *this model was interrupted*.
+
+`--max-tokens` is per run and defaults to 96, so the local cache stays valid,
+and it is part of the cache key, so raising it for one provider cannot
+silently replay another's answers.
+
+### Four models, one verifier
+
+| | Qwen 1.5B | Qwen 3B | Gemini 3.1 Flash Lite | gpt-oss-120b |
+|---|---|---|---|---|
+| answered | 110/110 | 110/110 | 110/110 | 107/110 |
+| proposed a cause | 0 | 65 | 31 | 49 |
+| agreement | 0.0% | 16.4% | 28.2% | **36.4%** |
+| rejected by arithmetic | 0 | 47 | 0 | 9 |
+| invented identifiers | 0 | **5** | 0 | 0 |
+| **contribution** | **0/0** | **0/0** | **0/0** | **0/0** |
+| output tokens | 1,430 | 2,453 | 1,877 | 33,893 |
+
+Agreement rises with capability, roughly doubling from the 3B local model to
+the frontier hosted one. **The bottom row does not move.** No model reached a
+case the rules had left open, because there are none - and no model changed a
+figure this project publishes, because none of them is asked until the
+arithmetic has already concluded.
+
+The output-token column is the cost story. Every answer is one small JSON
+object; the thinking model writes a few hundred tokens of reasoning first, and
+both vendors bill that as output. Gemini reports those separately as
+`thoughtsTokenCount`, and counting only what the model *said* would have
+understated its cost by an order of magnitude - the direction an error is
+least likely to be questioned in.
+
+### A flagship you cannot evaluate on
+
+`gemini-3.6-flash` is the current flagship and it is not the default here,
+which is a quota rather than a preference: **twenty free requests a day**, one
+fifth of a single ablation. A run against it measures the quota. Flash Lite
+answers all 110 inside the free allowance and does not think first, which is
+why it needs a twentieth of the output tokens.
+
+Total spent across every run in this section: **Rs 0.00.**
+
+532 tests, 97% coverage. Every hosted answer is committed, so all four columns
+replay with no key and no GPU.
