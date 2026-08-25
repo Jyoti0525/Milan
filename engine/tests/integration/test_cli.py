@@ -177,4 +177,10 @@ class TestAStoredRunHasToStillBeCurrent:
             app, ["eval", "--difficulty", "messy", "--data-root", str(tmp_path)]
         )
         assert result.exit_code == 1
-        assert "milan generate" in result.output
+        # Whitespace collapsed before matching, because rich wraps to the
+        # console width and the message contains a tmp_path - so whether
+        # "milan generate" survived on one line depended on how many times
+        # pytest had been run on this machine. It passed at pytest-99 and
+        # failed at pytest-101. A test whose result depends on a directory
+        # counter is not testing the thing it names.
+        assert "milan generate" in " ".join(result.output.split())

@@ -286,3 +286,111 @@ class TestTheAblationCounts:
         result = self._run('{"kind": "unknown"}').result()
         assert result.agreement_rate == 0.0
         assert result.contribution_rate == 0.0
+
+
+class TestThePathsRealDataNeverReaches:
+    """Branches that no dataset exercises, and that a published figure rests on.
+
+    `contribution: 0/0` is only meaningful if the code that would have counted
+    a contribution works. Nothing in twenty seeds reaches it - the rules name
+    every shortfall the engine gets to - so without these the published zero
+    would be indistinguishable from a zero caused by a broken counter.
+    """
+
+    def _run(self, reply: str) -> AblationRun:
+        return AblationRun(LlmTriage(StaticProvider(reply)), RateCard(), "static", "test")
+
+    def test_an_open_case_the_model_solves_counts_as_a_contribution(
+        self, group: BatchGroup, shortfall: UnprovenCredit
+    ) -> None:
+        rows = (*group.rows, refund_row("rfnd_x", from_rupees("500")))
+        run = self._run('{"kind": "recovery_gap", "entity_id": "rfnd_x"}')
+        run.consider(shortfall, group, rows, ExceptionCode.UNEXPLAINED)
+
+        result = run.result()
+        assert result.open_cases == 1
+        assert result.contributions == 1
+        assert result.contribution_rate == 1.0
+        assert result.agreement_cases == 0
+
+    def test_an_open_case_the_model_gets_wrong_contributes_nothing(
+        self, group: BatchGroup, shortfall: UnprovenCredit
+    ) -> None:
+        rows = (
+            *group.rows,
+            refund_row("rfnd_x", from_rupees("500")),
+            refund_row("rfnd_wrong", from_rupees("742")),
+        )
+        run = self._run('{"kind": "recovery_gap", "entity_id": "rfnd_wrong"}')
+        run.consider(shortfall, group, rows, ExceptionCode.UNEXPLAINED)
+
+        result = run.result()
+        assert result.open_cases == 1
+        assert result.contributions == 0
+        assert result.rejected == 1
+
+    def test_an_open_case_the_model_declines_is_not_a_rejection(
+        self, group: BatchGroup, shortfall: UnprovenCredit
+    ) -> None:
+        """Declining is not a wrong answer. Counting it as one would make a
+        cautious model look worse than a reckless one."""
+        run = self._run('{"kind": "unknown"}')
+        run.consider(shortfall, group, group.rows, ExceptionCode.UNEXPLAINED)
+
+        result = run.result()
+        assert result.open_cases == 1
+        assert result.rejected == 0
+
+    def test_a_fee_variance_claim_is_verified_by_the_same_arithmetic(
+        self, group: BatchGroup, shortfall: UnprovenCredit
+    ) -> None:
+        """The non-refund kinds have no entity to name, so they are checked by
+        asking the categoriser what it concludes and comparing."""
+        verdict = _verified(
+            Hypothesis(kind=HypothesisKind.FEE_VARIANCE),
+            shortfall,
+            group,
+            group.rows,
+            RateCard(),
+        )
+        assert verdict is ExceptionCode.FEE_DEDUCTION
+
+    def test_a_tax_variance_claim_on_a_fee_shaped_shortfall_is_rejected(
+        self, group: BatchGroup, shortfall: UnprovenCredit
+    ) -> None:
+        verdict = _verified(
+            Hypothesis(kind=HypothesisKind.TAX_VARIANCE),
+            shortfall,
+            group,
+            group.rows,
+            RateCard(),
+        )
+        assert verdict is None
+
+    def test_naming_a_record_that_is_not_in_the_rows_verifies_as_nothing(
+        self, group: BatchGroup, shortfall: UnprovenCredit
+    ) -> None:
+        """`parse` normally catches this, but `_verified` is the last line and
+        must not depend on having been called through the parser."""
+        verdict = _verified(
+            Hypothesis(kind=HypothesisKind.RECOVERY_GAP, entity_id="rfnd_ghost"),
+            shortfall,
+            group,
+            group.rows,
+            RateCard(),
+        )
+        assert verdict is None
+
+    def test_naming_a_payment_row_rather_than_a_refund_is_rejected(
+        self, group: BatchGroup, shortfall: UnprovenCredit
+    ) -> None:
+        """A payment is not a recovery. Blaming one would explain a shortfall
+        with money that was never taken back."""
+        verdict = _verified(
+            Hypothesis(kind=HypothesisKind.RECOVERY_GAP, entity_id="pay_0"),
+            shortfall,
+            group,
+            group.rows,
+            RateCard(),
+        )
+        assert verdict is None

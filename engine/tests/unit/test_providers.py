@@ -168,3 +168,79 @@ class TestTheRegistry:
     def test_a_typo_still_degrades_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MILAN_LLM_PROVIDER", "olama")
         assert isinstance(resolve(), NullProvider)
+
+
+class TestTheHappyPathsNobodyRunsInCi:
+    """The bodies a working key would produce.
+
+    Uncovered until the coverage report was read: every test above exercises
+    a provider failing, which is the right emphasis but leaves the code that
+    runs when things work never executed. A response shape that changed under
+    us would have been found by a user, not by this suite.
+    """
+
+    def test_ollama_reads_a_generation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "milan.llm.ollama.post_json",
+            lambda *_a, **_k: {"response": '{"kind": "unknown"}', "done": True},
+        )
+        completion = OllamaProvider().complete(question())
+        assert completion.answered
+        assert completion.text == '{"kind": "unknown"}'
+        assert completion.model == "qwen2.5:3b"
+
+    def test_groq_reads_a_chat_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, Any] = {}
+
+        def fake(url: str, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            captured["url"] = url
+            captured["payload"] = payload
+            captured["headers"] = kwargs.get("headers", {})
+            return {"choices": [{"message": {"content": "answered"}}]}
+
+        monkeypatch.setattr("milan.llm.hosted.post_json", fake)
+        completion = GroqProvider(api_key="test-key").complete(question())
+
+        assert completion.text == "answered"
+        assert captured["headers"]["Authorization"] == "Bearer test-key"
+        assert captured["payload"]["temperature"] == 0.0
+
+    def test_gemini_reads_a_generate_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, Any] = {}
+
+        def fake(url: str, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            captured["url"] = url
+            captured["payload"] = payload
+            captured["headers"] = kwargs.get("headers", {})
+            return {"candidates": [{"content": {"parts": [{"text": "answered"}]}}]}
+
+        monkeypatch.setattr("milan.llm.hosted.post_json", fake)
+        completion = GeminiProvider(api_key="test-key").complete(
+            Request(prompt="why?", system="be brief", max_tokens=32)
+        )
+
+        assert completion.text == "answered"
+        assert captured["headers"]["x-goog-api-key"] == "test-key"
+        assert "systemInstruction" in captured["payload"]
+
+    def test_the_gemini_key_never_goes_in_the_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A key on a query string ends up in proxy logs and shell history,
+        and this one belongs to whoever runs the project."""
+        captured: dict[str, Any] = {}
+
+        def fake(url: str, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            captured["url"] = url
+            return {}
+
+        monkeypatch.setattr("milan.llm.hosted.post_json", fake)
+        GeminiProvider(api_key="secret-key").complete(question())
+        assert "secret-key" not in captured["url"]
+
+    def test_a_request_model_overrides_the_configured_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("milan.llm.ollama.post_json", lambda *_a, **_k: {"response": "ok"})
+        completion = OllamaProvider().complete(
+            Request(prompt="why?", model="llama3:8b", max_tokens=16)
+        )
+        assert completion.model == "llama3:8b"
