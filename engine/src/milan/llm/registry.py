@@ -16,6 +16,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from milan.llm.cache import CachedProvider, ResponseCache
+from milan.llm.hosted import GeminiProvider, GroqProvider
+from milan.llm.ollama import OllamaProvider
 from milan.llm.provider import NullProvider, Provider
 
 PROVIDER_ENV = "MILAN_LLM_PROVIDER"
@@ -23,13 +25,15 @@ CACHE_ENV = "MILAN_LLM_CACHE"
 
 _BUILDERS: dict[str, Callable[[], Provider]] = {
     "none": NullProvider,
+    "ollama": OllamaProvider,
+    "groq": GroqProvider,
+    "gemini": GeminiProvider,
 }
-"""Registered providers. `none` is the default and the only one implemented.
+"""Every provider this project will talk to, and all of them free.
 
-Local Ollama and the free hosted tiers land here on day 8. They are absent
-rather than stubbed on purpose: an adapter that pretends to work is worse than
-one that is honestly missing, because it fails at the point of use instead of
-at the point of configuration.
+`none` stays the default and stays first. It is not the fallback for when the
+others are missing - it is the configuration every graded number in this
+project is measured under, and the others are the experiment.
 """
 
 
