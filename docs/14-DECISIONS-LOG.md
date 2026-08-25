@@ -742,4 +742,25 @@ If a decision is not here, it is not settled.
      the protocol is what lets the benchmark run its alternative arm through
      the same pipeline, the same prover and the same scorer. A benchmark that
      reimplements the pipeline for one arm is comparing two pipelines.
+179. **A merchant attribute draws no randomness when it is switched off.**
+     Instant settlement and Route both default to zero, and both check that
+     before touching the stream. Drawing unconditionally shifts every later
+     draw, which would silently change every dataset this project has
+     published - at a setting that means "this merchant does not use the
+     product". Caught by the counts moving at zero, where nothing should.
+180. **A Route transfer is not a refund, and the proof says so.** Both are
+     debits that reduce a payout by a principal plus a fee plus GST, so one
+     code path could carry both and the arithmetic would still close. It
+     would also tell a marketplace its Route commission was an instant refund
+     charge. `EntityType.TRANSFER`, its own line, and the commission named
+     with its rate.
+181. **A rate with no citation does not get invented.** Instant settlement's
+     timing is modelled and its fee is not, because the sourced pricing
+     records the first and not the second. Every accuracy figure here is
+     already conditional on the defect catalogue being honest; a made-up rate
+     would make it conditional on a guess as well.
+182. **Smart Collect and QR stay cut, on a sharper reason than before.** The
+     original "more rates, no new problem" was half wrong about Route - the
+     split was a new shape. It is entirely right about these two: a virtual
+     account and a QR code change what a payment costs, not how it settles.
 

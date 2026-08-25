@@ -109,10 +109,14 @@ def _build_lines(group: BatchGroup, rates: RateCard) -> tuple[ProofLine, ...]:
 
     lines.extend(_recovered(group, EntityType.REFUND, "Refunds recovered"))
     lines.extend(_recovered(group, EntityType.ADJUSTMENT, "Chargebacks and adjustments"))
+    lines.extend(_recovered(group, EntityType.TRANSFER, "Routed to linked accounts"))
 
     charges = _refund_charges(group)
     if charges is not None:
         lines.append(charges)
+    routing = _route_charges(group, rates)
+    if routing is not None:
+        lines.append(routing)
     return tuple(lines)
 
 
@@ -204,12 +208,38 @@ def _refund_charges(group: BatchGroup) -> ProofLine | None:
     and on a small refund it is a real percentage. Giving it a line of its own
     is the difference between a merchant seeing a charge and seeing noise.
     """
-    charged = [row for row in group.debit_rows if row.fee or row.tax]
+    charged = [
+        row
+        for row in group.debit_rows
+        if (row.fee or row.tax) and row.type is not EntityType.TRANSFER
+    ]
     if not charged:
         return None
     total = Paise(sum(row.fee + row.tax for row in charged))
     return ProofLine(
         label=f"Instant refund charges ({len(charged)}), incl. GST",
+        amount=Paise(-total),
+        refs=tuple(row.entity_id for row in charged),
+    )
+
+
+def _route_charges(group: BatchGroup, rates: RateCard) -> ProofLine | None:
+    """The commission for passing money on, kept apart from the refund charges.
+
+    Both are a fee plus GST sitting on a debit row, so one line could carry
+    them and the arithmetic would still close. It would also tell a
+    marketplace that its Route commission was an instant refund charge, which
+    is a confident wrong answer of exactly the kind this engine exists not to
+    give. The rate is named because the reader's next question is whether
+    they were charged the one they agreed to.
+    """
+    transfers = [row for row in group.debit_rows if row.type is EntityType.TRANSFER]
+    charged = [row for row in transfers if row.fee or row.tax]
+    if not charged:
+        return None
+    total = Paise(sum(row.fee + row.tax for row in charged))
+    return ProofLine(
+        label=f"Route commission @{rates.route:.1%} ({len(charged)}), incl. GST",
         amount=Paise(-total),
         refs=tuple(row.entity_id for row in charged),
     )

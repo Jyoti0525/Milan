@@ -887,10 +887,33 @@ was true of the rates and false of one of the products: Route splits a single
 payment across multiple accounts, so one payment becomes several settlement
 rows and the leak detector's assumption of one fee per payment stops holding.
 
-- [ ] `RateCard` gains the three rate families with their real slabs
-- [ ] Route's split-payment shape in the generator, as a distinct defect class
-- [ ] Confirm the oracle still balances with splits present
-- [ ] Confirm the leak detector reads a split row against the right contract
+- [x] Route's split-payment shape in the generator, with the 0.1% commission
+- [x] Confirm the oracle still balances with splits present
+- [x] `--route` on the CLI, so it runs from the seeded command
+- [ ] Smart Collect and QR rates - **not done, and see below**
+
+**Route is done, and the deferral was half wrong.** The reasoning was "more
+rates in the same waterfall, no new class of problem". True of the 0.1%
+commission. False of the transfer: every debit this engine had ever seen was
+money coming back - a refund reversing a sale, an adjustment clawing one back
+- and a Route transfer is a share of a sale that was never the merchant's. It
+reduces the payout identically and means something else, so it earns its own
+proof line rather than being folded in with the reversals.
+
+It also found a real defect. Emitting the rows without reducing what the batch
+had left to pay out put the report and the payout on two different batches:
+every affected credit came up short by exactly the amount routed. Match rate
+fell to **4.7%** at a 60% Route share - with precision still at 100%, because
+the engine refused rather than guessed, which is the design working and is
+also why the bug looked like difficult data instead of a defect.
+
+**Smart Collect and QR are not built, and the original reasoning now holds
+for them specifically.** Both are genuinely just rates: a virtual account and
+a QR code change what a payment costs, not what shape it settles in. Route was
+worth reopening because the split was a new shape; these two would add fee
+variety to a waterfall that already handles five kinds of deduction, and no
+new class of reconciliation problem. Recorded as a decision rather than left
+looking unfinished.
 
 ### Instant settlement timing (item 11, reopened)
 

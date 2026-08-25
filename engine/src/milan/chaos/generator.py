@@ -421,9 +421,75 @@ class ChaosEngine:
                     leaks.append(leak)
             batches.append(batch)
 
+        rows.extend(self._route_transfers(batches))
+
         pending = self._pending_debits(refunds, adjustments)
         rows.extend(self._recover_debits(batches, pending))
         return batches, rows, leaks
+
+    def _route_transfers(self, batches: list[_Batch]) -> list[SettlementRow]:
+        """Split part of a payment on to a linked account, Route-style.
+
+        Emitted into the same batch as the payment it comes from, which is
+        what makes this different from a refund. A refund lands in whichever
+        later batch is large enough to absorb it, so the batch it appears in
+        has no other connection to the sale; a Route transfer leaves with the
+        money it was taken from, because it is not a reversal of a sale but a
+        share of one.
+
+        The row carries the whole cash impact in `debit`, as every debit row
+        here does, with the 0.1% commission and its GST broken out into `fee`
+        and `tax`. That keeps `credit - debit` the row's true effect on the
+        payout while leaving the charge visible as a charge.
+        """
+        share = self._config.route_probability
+        if share <= 0.0:
+            # No draw when the merchant has no linked accounts. Consuming
+            # from the stream at a setting that means "this product is not in
+            # use" would change every dataset this project has published.
+            return []
+
+        rates = self._config.rates
+        rows: list[SettlementRow] = []
+        for batch in batches:
+            for payment in batch.payments:
+                if self._rng.random() >= share:
+                    continue
+                transferred = apply_rate(payment.amount, self._config.route_share)
+                if transferred <= 0:
+                    continue
+                fee = rates.route_fee(transferred)
+                tax = apply_rate(fee, rates.gst)
+
+                # The batch has this much less to pay out, from the moment the
+                # transfer is taken. Emitting the row without this leaves the
+                # report and the payout describing two different batches: the
+                # rows subtract the transfer and the settlement amount does
+                # not, so every affected credit comes up short by exactly the
+                # amount routed and no rung can match it. Match rate fell to
+                # 4.7% at a 60% Route share, with precision still at 100% -
+                # the engine refusing rather than guessing, which is the
+                # design working and is also why the bug looked like data.
+                batch.net_total = Paise(batch.net_total - (transferred + fee + tax))
+
+                rows.append(
+                    SettlementRow(
+                        entity_id=self._identifier("trf"),
+                        type=EntityType.TRANSFER,
+                        debit=Paise(transferred + fee + tax),
+                        credit=Paise(0),
+                        amount=transferred,
+                        fee=fee,
+                        tax=tax,
+                        settled=True,
+                        created_at=payment.captured_at,
+                        settled_at=datetime.combine(batch.settle_date, _SETTLEMENT_HOUR),
+                        settlement_id=batch.settlement_id,
+                        settlement_utr=batch.utr,
+                        payment_id=payment.payment_id,
+                    )
+                )
+        return rows
 
     def _group_into_batches(self, payments: list[Payment]) -> dict[tuple[date, str], list[Payment]]:
         """T+2 working days domestic, T+7 international - and several a day.

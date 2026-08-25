@@ -50,6 +50,15 @@ WithholdingOption = Annotated[
         help="Section 194-O: withhold 1% of gross, as an e-commerce operator must.",
     ),
 ]
+RouteOption = Annotated[
+    float,
+    typer.Option(
+        "--route",
+        min=0.0,
+        max=1.0,
+        help="Share of payments split to a linked account through Route.",
+    ),
+]
 RootOption = Annotated[
     Path | None, typer.Option("--data-root", help="Where runs are stored.", show_default=False)
 ]
@@ -80,6 +89,7 @@ def generate(
     orders: Annotated[int, typer.Option("--orders", help="How many orders to generate.")] = 100,
     span: SpanOption = 21,
     withholding: WithholdingOption = False,
+    route: RouteOption = 0.0,
     root: RootOption = None,
 ) -> None:
     """Generate a merchant's month, with the answer key."""
@@ -88,6 +98,7 @@ def generate(
         difficulty=difficulty,
         order_count=orders,
         span_days=span,
+        route_probability=route,
         rates=RateCard(tds_applies=withholding),
     )
     dataset = ChaosEngine(config).generate()

@@ -1731,3 +1731,92 @@ Only after all three were fixed did the arm reach the cascade's answers - at
 twice the cost. That is the finding, and it is a stronger one than the first
 draft's nine-match gap would have been.
 
+---
+
+# Day 11, continued - the two deferred items, reopened on evidence
+
+Both had been recorded as decisions rather than oversights, with reasoning
+written down. Building them tested the reasoning, and it came out differently
+each time.
+
+## Instant settlement - the deferral was right, for a reason nobody had stated
+
+Deferred on "the date window already tolerates a day either side", which is an
+assumption about the matcher that nothing had tested.
+
+Measured over ten adversarial seeds at 400 orders: match rate and precision
+hold at 100% from 0% instant through 60%. **The prediction written into the
+plan was wrong.** It said same-day payouts would crowd the date buckets and
+give amount-plus-date more ways to be wrong. What actually happens: 59% more
+batches (344 to 546), batches-per-date barely moving (2.05 to 2.22), and
+**zero** new same-date same-total collisions - because an instant batch holds
+only that day's instant payments and its total looks nothing like a scheduled
+run's.
+
+Volume, not difficulty. Generated anyway, because a shape a real merchant has
+should not be one the engine has never seen.
+
+**The fee is deliberately unmodelled.** Our sourced pricing records that
+instant settlement exists and what it does to timing, not what it charges.
+
+**One regression the measurement caught that no test would have.** Drawing
+from the random stream even at probability zero shifts every later draw, so
+every dataset this project has published would have changed at a setting
+meaning "this merchant does not use the feature". Found because the counts
+moved at `instant=0.0`, where by definition nothing should move.
+
+## Route - the deferral was half wrong
+
+Deferred on "more rates in the same waterfall, no new class of problem". True
+of the 0.1% commission. False of the transfer.
+
+**Every debit this engine had ever seen was money coming back.** A refund
+reverses a sale; an adjustment claws one back. A Route transfer is a share of
+a sale that was never the merchant's to begin with. It reduces the payout
+identically and means something completely different, which is why it gets
+`EntityType.TRANSFER` and its own proof line rather than being folded in with
+the reversals. A marketplace told its Route commission was an instant refund
+charge would have been given a confident wrong answer.
+
+A transfer also settles *with the payment it came from*, unlike a refund,
+which lands in whichever later batch is large enough to absorb it.
+
+### The defect it found
+
+Emitting the rows without reducing what the batch had left to pay out put the
+report and the payout on two different batches: the rows subtracted the
+transfer and the settlement amount did not, so every affected credit came up
+short by exactly the amount routed.
+
+| Route share | match rate | precision |
+|---|---|---|
+| 0% | 100.0% | 100.0% |
+| 25% | 27.2% | 100.0% |
+| 60% | **4.7%** | 100.0% |
+
+**Precision never moved.** The engine refused rather than guessed on every one
+of them, which is the design working exactly as intended - and is also why the
+bug read as difficult data rather than as a defect. A system that had forced
+matches here would have reported a plausible 100% and been wrong about
+hundreds of credits.
+
+A proof now reads:
+
+```
+Settled payments (7) across 3 settlements       Rs 18,827.83
+Platform fee                                      -Rs 381.90
+GST on platform fee @18%                           -Rs 68.74
+Routed to linked accounts (2)                   -Rs 2,345.62
+Route commission @0.1% (2), incl. GST               -Rs 2.77
+Rounding drift                                       -Rs 0.01
+Unexplained                                          Rs 0.00
+```
+
+## Smart Collect and QR - still not built, and now for a sharper reason
+
+Route was worth reopening because the split was a new *shape*. These two are
+genuinely just rates: a virtual account and a QR code change what a payment
+costs, not how it settles. They would add fee variety to a waterfall that
+already handles five kinds of deduction and no new class of reconciliation
+problem. Recorded as a decision.
+

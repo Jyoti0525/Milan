@@ -52,6 +52,14 @@ class RateCard(BaseModel):
     international_card: Decimal = Field(default=Decimal("0.03"))
     gst: Decimal = Field(default=GST_RATE)
     tds: Decimal = Field(default=TDS_194O_RATE)
+    route: Decimal = Field(default=Decimal("0.001"))
+    """Razorpay Route: 0.1% on the amount paid on to a linked account.
+
+    Charged on top of the platform fee on the original payment, not instead
+    of it - the merchant pays 2% to accept the money and 0.1% again to pass
+    part of it along. Both are real and both come out of the same payout.
+    """
+
     tds_applies: bool = Field(
         default=False,
         description="Section 194-O withholding is merchant-specific; off by default.",
@@ -76,6 +84,10 @@ class RateCard(BaseModel):
             if rupees <= ceiling:
                 return from_rupees(fee)
         return from_rupees(INSTANT_REFUND_TOP)
+
+    def route_fee(self, transferred: Paise) -> Paise:
+        """What it costs to pass `transferred` on to a linked account."""
+        return apply_rate(transferred, self.route)
 
     def platform_rate(self, method: PaymentMethod, card_type: CardType | None) -> Decimal:
         """The platform fee rate for one transaction.

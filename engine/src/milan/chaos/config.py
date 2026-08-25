@@ -231,6 +231,26 @@ class GenerationConfig(BaseModel):
     never seen, but it is recorded here as a measurement rather than left
     looking like a difficulty knob it is not.
     """
+    route_probability: float = Field(default=0.0, ge=0.0, le=1.0)
+    """Share of payments split to a linked account through Razorpay Route.
+
+    A marketplace shape rather than a defect: the platform takes an order,
+    Razorpay settles it, and part of it is paid on to whoever actually
+    fulfilled it. Off by default, because a merchant selling their own goods
+    has no linked accounts and Route would be a product they never bought.
+
+    This is the one deferred item that turned out to be more than another
+    rate. Route charges 0.1% on the transferred amount, which is indeed just
+    a rate - but the *transfer* is a debit against the payout that is not a
+    reversal. Every debit the engine had ever seen was money coming back: a
+    refund returning a sale, an adjustment clawing one back. A transfer is a
+    share of a sale that was never the merchant's, and it reduces the payout
+    identically while meaning something else entirely.
+    """
+
+    route_share: Decimal = Field(default=Decimal("0.30"), gt=Decimal(0), lt=Decimal(1))
+    """How much of a routed payment goes to the linked account."""
+
     chargeback_probability: float = Field(default=0.015, ge=0.0, le=1.0)
     unpaid_probability: float = Field(default=0.04, ge=0.0, le=1.0)
     international_probability: float = Field(default=0.05, ge=0.0, le=1.0)

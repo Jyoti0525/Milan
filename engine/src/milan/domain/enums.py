@@ -35,6 +35,17 @@ class EntityType(StrEnum):
     REFUND = "refund"
     ADJUSTMENT = "adjustment"
 
+    TRANSFER = "transfer"
+    """A Route split: part of a payment paid on to a linked account.
+
+    The only debit here that is not money coming back. A refund returns a
+    sale and an adjustment claws one back, so both are reversals; a transfer
+    is a share of a sale that was never the merchant's to begin with. It
+    reduces the payout exactly like the other two and means something
+    completely different, which is why it gets its own line in the proof
+    rather than being folded in with them.
+    """
+
 
 class ExceptionCode(StrEnum):
     """Industry-standard exception categories.
