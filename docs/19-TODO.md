@@ -479,7 +479,10 @@ of shortfalls it names that rules alone did not.
 - [x] `--provider` on the CLI, docs, and the build log
 
 **Done, except the hosted configs.** Groq and Gemini are wired, tested against
-recorded response bodies, and unrun: there is no key on this machine. That is
+recorded response bodies, and unrun: there is no key on this machine. `milan
+providers` now says so out loud, and names the command that fixes each one -
+`ready()` had been written, tested and called by nothing, which made it
+precisely the check nobody could run. That is
 recorded as an absence rather than left looking like an oversight - the cut
 rules already allow the five-config benchmark to shrink to three, and the
 three that ran are *off*, 1.5B and 3B.

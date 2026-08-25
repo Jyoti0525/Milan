@@ -22,6 +22,7 @@ from milan.evaluation.sweep import Spread, Sweep
 from milan.evaluation.twice import Twice
 from milan.leaks.clusters import LeakReport
 from milan.llm.pricing import RATES
+from milan.llm.registry import Status
 
 console = Console()
 
@@ -504,6 +505,24 @@ def twice_table(result: Twice) -> Table:
     table.add_section()
     table.add_row("changed", f"{result.changed}/{result.asked}", "")
     table.add_row("named a different record", str(result.different_records), "")
+    return table
+
+
+def provider_table(found: tuple[Status, ...]) -> Table:
+    """Which providers can answer, and the command that fixes the rest."""
+    table = Table(box=None, pad_edge=False)
+    table.add_column("Provider")
+    table.add_column("Model", style="dim")
+    table.add_column("Ready", justify="right")
+    table.add_column("")
+
+    for entry in found:
+        table.add_row(
+            entry.name,
+            entry.model or "-",
+            "[green]yes[/green]" if entry.ready else "[yellow]no[/yellow]",
+            f"[dim]{entry.reason}[/dim]",
+        )
     return table
 
 

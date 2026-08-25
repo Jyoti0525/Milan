@@ -76,6 +76,18 @@ class TestEveryCommandRuns:
         assert result.output.strip().endswith("<!-- /generated -->")
         assert "|---|" in result.output
 
+    def test_providers_says_what_is_missing_rather_than_just_no(self) -> None:
+        """An unset key and a stopped daemon look identical to a
+        reconciliation, which reports nothing about either by design. This is
+        the one place that difference is visible, so it has to name the fix
+        and not just the state."""
+        result = runner.invoke(app, ["providers"])
+
+        assert result.exit_code == 0, result.output
+        for name in ("none", "ollama", "groq", "gemini"):
+            assert name in result.output
+        assert "API key" in result.output
+
     def test_curve_scores_every_tier_and_dashes_the_empty_ones(self) -> None:
         """The dash is the assertion. The clean tier generates nothing
         impossible, so its refusal rate is 0/0 - and a percentage printed

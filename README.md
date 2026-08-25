@@ -418,6 +418,26 @@ the model actually said, addressed by the hash of the question, and a test
 replays all 110 answers with no model present at all - asserting these exact
 figures, and failing loudly if a single question misses the cache.
 
+**Switching models is one environment variable.** Which is worth stating in a
+README rather than in a config file, because the claim it supports is that
+nothing here depends on a particular vendor:
+
+```bash
+uv run milan providers                 # who could answer right now, and what to do about the rest
+
+export GROQ_API_KEY=...                # free at console.groq.com
+uv run milan ablate --provider groq --seeds 20 --orders 600
+
+export GEMINI_API_KEY=...              # free at aistudio.google.com
+uv run milan ablate --provider gemini --seeds 20 --orders 600
+```
+
+Both were wired and tested against recorded response bodies and neither has
+been run against a live key, which is stated here rather than left looking
+like an oversight. An absent provider is not an error condition in this
+system: it answers nothing, the explanations fall back to the deterministic
+summaries, and every graded number is exactly where it was.
+
 **The seal is structural.** `milan.recon`, `milan.domain` and `milan.chaos`
 produce every published figure, and none of them may import `milan.llm`. A
 test parses their imports and fails if one ever does, because a claim like

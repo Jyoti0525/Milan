@@ -15,6 +15,8 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
+
 from milan.llm.cache import CachedProvider, ResponseCache
 from milan.llm.hosted import GeminiProvider, GroqProvider
 from milan.llm.ollama import OllamaProvider
@@ -58,6 +60,63 @@ def direct(name: str | None = None) -> Provider:
     """
     chosen = (name or os.environ.get(PROVIDER_ENV) or "none").strip().lower()
     return _BUILDERS.get(chosen, NullProvider)()
+
+
+class Status(BaseModel):
+    """Whether one provider could answer right now, and why not."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    model: str
+    ready: bool
+    reason: str
+
+
+def status() -> tuple[Status, ...]:
+    """Ask every registered provider whether it is usable.
+
+    Exists because `ready()` was written, tested and called by nothing. A
+    check nobody can run is a check nobody runs - and this is the one people
+    need most: an unset key and an unreachable daemon both look exactly like
+    a working setup until the first answer comes back empty.
+    """
+    found: list[Status] = []
+    for name in available():
+        provider = _BUILDERS[name]()
+        model = getattr(provider, "model", "")
+        check = getattr(provider, "ready", None)
+        if check is None:
+            found.append(
+                Status(
+                    name=name,
+                    model=model,
+                    ready=True,
+                    reason="the baseline every graded number is measured under",
+                )
+            )
+            continue
+        ready = bool(check())
+        found.append(Status(name=name, model=model, ready=ready, reason=_why_not(provider, ready)))
+    return tuple(found)
+
+
+def _why_not(provider: Provider, ready: bool) -> str:
+    """The next thing to do about it, rather than a status word.
+
+    A daemon that is running without the model is the failure people
+    actually hit, and it is worth telling apart from a daemon that is not
+    running at all: one needs `ollama pull`, the other needs `ollama serve`.
+    """
+    if ready:
+        return ""
+    installed = getattr(provider, "installed_models", None)
+    if installed is not None:
+        models = installed()
+        if not models:
+            return "no daemon answering - start it with `ollama serve`"
+        return f"daemon up, model missing - `ollama pull {getattr(provider, 'model', '')}`"
+    return "no API key in the environment"
 
 
 def unpinned(provider: Provider) -> Provider:

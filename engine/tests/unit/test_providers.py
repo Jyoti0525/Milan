@@ -20,7 +20,15 @@ import pytest
 from milan.llm.hosted import GeminiProvider, GroqProvider, _first_choice, _first_part, _usage
 from milan.llm.ollama import OllamaProvider
 from milan.llm.provider import NullProvider, Request
-from milan.llm.registry import available, resolve, unpinned
+from milan.llm.registry import (
+    CACHE_ENV,
+    _why_not,
+    available,
+    default_cache_root,
+    resolve,
+    status,
+    unpinned,
+)
 from milan.llm.transport import get_json, post_json
 
 UNREACHABLE = "http://127.0.0.1:1"
@@ -350,3 +358,53 @@ class TestWhatItCostAndWhetherItCanBePinned:
         """Gemini has no seed parameter to unset. That is a fact about the
         API rather than a case to work around, and it must not raise."""
         assert unpinned(NullProvider()).complete(question()).text == ""
+
+
+class TestSayingWhichProvidersCouldAnswer:
+    """`ready()` existed, was tested, and was called by nothing.
+
+    Which made it exactly the check people needed and could not run: an
+    unset key and a stopped daemon both look like a working setup until the
+    first answer comes back empty, and the reconciliation says nothing about
+    either - by design, because every figure it reports is computed before a
+    provider is consulted.
+    """
+
+    def test_every_registered_provider_is_reported(self) -> None:
+        named = {entry.name for entry in status()}
+        assert named == set(available())
+
+    def test_the_baseline_is_always_ready(self) -> None:
+        baseline = next(entry for entry in status() if entry.name == "none")
+        assert baseline.ready
+        assert "graded" in baseline.reason
+
+    def test_a_missing_key_names_the_key(self) -> None:
+        hosted = [entry for entry in status() if entry.name in {"groq", "gemini"}]
+        for entry in hosted:
+            if not entry.ready:
+                assert "API key" in entry.reason
+
+    def test_a_stopped_daemon_and_a_missing_model_are_different_problems(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One needs `ollama serve`, the other needs `ollama pull`. A single
+        "not ready" would send somebody to the wrong one."""
+        provider = OllamaProvider(host=UNREACHABLE)
+
+        monkeypatch.setattr(provider, "installed_models", lambda: ())
+        assert "ollama serve" in _why_not(provider, ready=False)
+
+        monkeypatch.setattr(provider, "installed_models", lambda: ("llama3:8b",))
+        assert "ollama pull" in _why_not(provider, ready=False)
+
+    def test_a_ready_provider_has_nothing_to_say(self) -> None:
+        assert _why_not(OllamaProvider(), ready=True) == ""
+
+    def test_the_cache_root_can_be_pointed_somewhere_else(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """The committed cache is what makes the ablation replayable, so the
+        env var that moves it is load-bearing rather than a convenience."""
+        monkeypatch.setenv(CACHE_ENV, str(tmp_path))
+        assert default_cache_root() == tmp_path

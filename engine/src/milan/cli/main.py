@@ -27,7 +27,7 @@ from milan.evaluation.sweep import sweep
 from milan.evaluation.twice import run_twice
 from milan.leaks.clusters import summarise
 from milan.leaks.detector import detect
-from milan.llm.registry import available, direct, resolve, unpinned
+from milan.llm.registry import available, direct, resolve, status, unpinned
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
@@ -284,6 +284,18 @@ def leaks(
     payments = [row for row in dataset.settlement_rows if row.type is EntityType.PAYMENT]
     report = summarise(detect(tuple(dataset.settlement_rows), RateCard()), len(payments))
     console.print(render.leak_report(report))
+
+
+@app.command(name="providers")
+def providers_command() -> None:
+    """Say which models could answer right now, and what to do about the rest.
+
+    An unset key and a stopped daemon both look exactly like a working setup
+    until the first question comes back empty, and the reconciliation will not
+    tell you - by design, since every figure it reports is computed before a
+    provider is consulted. This is where that silence gets a voice.
+    """
+    console.print(render.provider_table(status()))
 
 
 @app.command(name="ablate")
