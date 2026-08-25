@@ -33,13 +33,13 @@ from milan.domain.calendar import (
 from milan.domain.enums import CardType
 from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit, Payment, SettlementRow
-from milan.domain.results import Proof, ReconException, ReconReport
+from milan.domain.results import Proof, ReconException, ReconReport, UnprovenCredit
 from milan.recon.batches import BatchGroup, GatewayBatch, rebuild_batches
 from milan.recon.inputs import ReconInput
 from milan.recon.matching.base import Attempt
 from milan.recon.matching.cascade import Cascade
 from milan.recon.triage import Categoriser
-from milan.recon.waterfall import UnprovenCredit, provable, prove
+from milan.recon.waterfall import provable, prove
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,8 +66,12 @@ class ReconciliationPipeline:
         cascade = self._cascade.with_verifier(self._provable)
         attempts = cascade.run(data.bank_credits, batches)
 
-        proofs, exceptions, claimed = self._prove_matches(data, by_id, attempts)
-        exceptions.extend(self._explain_unmatched(data, batches, by_id, attempts))
+        proofs, exceptions, claimed, shortfalls = self._prove_matches(data, by_id, attempts)
+        withdrawn_explanations, withdrawn_shortfalls = self._explain_unmatched(
+            data, batches, by_id, attempts
+        )
+        exceptions.extend(withdrawn_explanations)
+        shortfalls.extend(withdrawn_shortfalls)
         exceptions.extend(
             self._categoriser.missing_settlement(batch)
             for batch in batches
@@ -81,6 +85,7 @@ class ReconciliationPipeline:
             records_processed=data.record_count,
             proofs=tuple(proofs),
             exceptions=tuple(exceptions),
+            shortfalls=tuple(shortfalls),
             duration_seconds=time.perf_counter() - started,
         )
 
@@ -95,7 +100,7 @@ class ReconciliationPipeline:
         data: ReconInput,
         by_id: dict[str, GatewayBatch],
         attempts: dict[str, Attempt],
-    ) -> tuple[list[Proof], list[ReconException], set[str]]:
+    ) -> tuple[list[Proof], list[ReconException], set[str], list[UnprovenCredit]]:
         """Reconstruct every claimed credit, and drop the ones that will not.
 
         The cascade has already checked each claim against the same
@@ -106,6 +111,10 @@ class ReconciliationPipeline:
         proofs: list[Proof] = []
         exceptions: list[ReconException] = []
         claimed: set[str] = set()
+        # Kept rather than discarded. The categorised exception below is a
+        # conclusion; this is the evidence it was drawn from, and the ablation
+        # needs the evidence to put the same question to a model.
+        shortfalls: list[UnprovenCredit] = []
 
         for credit in data.bank_credits:
             attempt = attempts.get(credit.credit_id)
@@ -116,13 +125,14 @@ class ReconciliationPipeline:
 
             result = prove(credit, group, attempt.strategy, attempt.confidence, self._rates)
             if isinstance(result, UnprovenCredit):
+                shortfalls.append(result)
                 exceptions.append(
                     self._categoriser.unproven_credit(result, group, data.settlement_rows)
                 )
             else:
                 proofs.append(result)
 
-        return proofs, exceptions, claimed
+        return proofs, exceptions, claimed, shortfalls
 
     def _explain_unmatched(
         self,
@@ -130,7 +140,7 @@ class ReconciliationPipeline:
         batches: tuple[GatewayBatch, ...],
         by_id: dict[str, GatewayBatch],
         attempts: dict[str, Attempt],
-    ) -> list[ReconException]:
+    ) -> tuple[list[ReconException], list[UnprovenCredit]]:
         """Say what is wrong with each credit nothing could claim.
 
         A credit whose claim was withdrawn is not the same as one nothing
@@ -144,6 +154,13 @@ class ReconciliationPipeline:
         would have reported, instead of a summary of it.
         """
         explanations: list[ReconException] = []
+        # Nearly every shortfall in the system is found here rather than in
+        # `_prove_matches`, and that is the architecture working: proving
+        # vetoes matching *inside* the cascade, so a credit that will not
+        # reconstruct has its claim withdrawn before it is ever reported as
+        # matched. The reconstruction still happened, and it is what the
+        # categoriser reads.
+        shortfalls: list[UnprovenCredit] = []
         for credit in data.bank_credits:
             attempt = attempts.get(credit.credit_id)
             if attempt is None or attempt.resolved:
@@ -154,13 +171,14 @@ class ReconciliationPipeline:
                 group = BatchGroup.of(*withdrawn)
                 result = prove(credit, group, attempt.strategy, attempt.confidence, self._rates)
                 if isinstance(result, UnprovenCredit):
+                    shortfalls.append(result)
                     explanations.append(
                         self._categoriser.unproven_credit(result, group, data.settlement_rows)
                     )
                     continue
 
             explanations.append(self._categoriser.unmatched_credit(credit, attempt, batches))
-        return explanations
+        return explanations, shortfalls
 
     def _find_unsettled_payments(self, data: ReconInput) -> list[ReconException]:
         """Captured money the settlement report never accounts for."""

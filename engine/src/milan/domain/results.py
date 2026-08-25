@@ -103,6 +103,25 @@ class ReconException(BaseModel):
     report how much of the categorisation was deterministic."""
 
 
+class UnprovenCredit(BaseModel):
+    """A match that could not be reconstructed to the paisa.
+
+    `Proof`'s sibling, and it lives here for the same reason `Proof` does: it
+    describes an outcome rather than the algorithm that produced one. It sat
+    in `recon.waterfall` until `ReconReport` needed to carry these, at which
+    point keeping it there would have meant the domain importing from the
+    package that is supposed to depend on it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    credit_id: str
+    settlement_ids: tuple[str, ...]
+    residual: Paise
+    lines: tuple[ProofLine, ...]
+    reason: str
+
+
 class ReconReport(BaseModel):
     """The result of one reconciliation run."""
 
@@ -114,6 +133,18 @@ class ReconReport(BaseModel):
     proofs: tuple[Proof, ...]
     exceptions: tuple[ReconException, ...]
     duration_seconds: float
+
+    shortfalls: tuple[UnprovenCredit, ...] = ()
+    """Credits that were matched and then would not reconstruct.
+
+    Each of these already appears in `exceptions`, categorised. What is kept
+    here is the reconstruction itself - the group of settlements and the
+    residual - because the categorised exception is a conclusion and this is
+    the evidence it was drawn from.
+
+    It exists so the ablation can put the same shortfall to a model and check
+    the answer against the same arithmetic, without a second copy of the
+    matching pipeline that would drift out of step with this one."""
 
     @property
     def credits_resolved(self) -> int:

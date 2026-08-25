@@ -34,11 +34,12 @@ from milan.domain.enums import EntityType, MatchStrategy, PaymentMethod
 from milan.domain.money import Paise
 from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import BankCredit, SettlementRow
+from milan.domain.results import UnprovenCredit
 from milan.recon.batches import BatchGroup, rebuild_batches
 from milan.recon.matching.base import Verdict
 from milan.recon.matching.fuzzy import SIMILARITY_FLOOR, normalise, similarity
 from milan.recon.matching.subset import SubsetSumStrategy
-from milan.recon.waterfall import UnprovenCredit, provable, prove
+from milan.recon.waterfall import provable, prove
 
 SETTLED_ON = datetime(2026, 7, 3, 11, 0)
 VALUE_DATE = date(2026, 7, 3)

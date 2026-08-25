@@ -14,6 +14,7 @@ from rich.table import Table
 
 from milan.domain.money import Paise, format_inr
 from milan.domain.results import Proof, ReconReport
+from milan.evaluation.ablation import Ablation
 from milan.evaluation.harness import Evaluation
 from milan.evaluation.metrics import Scorecard
 from milan.evaluation.sweep import Sweep
@@ -310,3 +311,46 @@ def sweep_markdown(result: Sweep) -> str:
         for spread in result.spreads
     )
     return "\n".join((SWEEP_OPEN, *header, *rows, MARKDOWN_CLOSE))
+
+
+def ablation_table(result: Ablation) -> Table:
+    """What the model was worth, next to what it cost.
+
+    Laid out so the two questions stay apart. Agreement says whether the model
+    can do the job at all; contribution says whether it added anything to a
+    job the rules had already finished. A reader who conflates them will
+    conclude either that a competent model is useless or that a useless model
+    is competent.
+    """
+    table = Table(
+        title=f"{result.provider}{f' - {result.model}' if result.model else ''}",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Measure")
+    table.add_column("Value", justify="right")
+    table.add_column("Of", justify="right")
+
+    answered = f"{result.answered}/{result.asked}"
+    table.add_row("questions answered", answered, "")
+    table.add_section()
+    table.add_row(
+        "agreement with the rules",
+        f"{result.agreement_rate:.1%}",
+        f"{result.agreement_hits}/{result.agreement_cases}",
+    )
+    table.add_row(
+        "contribution beyond them",
+        f"{result.contribution_rate:.1%}",
+        f"{result.contributions}/{result.open_cases}",
+    )
+    table.add_section()
+    table.add_row("proposals rejected by arithmetic", str(result.rejected), "")
+    table.add_row("identifiers invented", str(result.invented_ids), "")
+    if result.kinds:
+        table.add_section()
+        for kind, count in sorted(result.kinds.items(), key=lambda pair: -pair[1]):
+            table.add_row(f"  proposed {kind}", str(count), "")
+    return table

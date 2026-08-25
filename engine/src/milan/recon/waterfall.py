@@ -12,26 +12,12 @@ proof; it is not a proof.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
-
 from milan.domain.enums import EntityType, MatchStrategy
 from milan.domain.money import Paise, apply_rate, format_inr
 from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit, SettlementRow
-from milan.domain.results import Proof, ProofLine
+from milan.domain.results import Proof, ProofLine, UnprovenCredit
 from milan.recon.batches import BatchGroup
-
-
-class UnprovenCredit(BaseModel):
-    """A match that could not be reconstructed to the paisa."""
-
-    model_config = ConfigDict(frozen=True)
-
-    credit_id: str
-    settlement_ids: tuple[str, ...]
-    residual: Paise
-    lines: tuple[ProofLine, ...]
-    reason: str
 
 
 def residual(credit: BankCredit, group: BatchGroup, rates: RateCard) -> Paise:

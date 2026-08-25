@@ -44,8 +44,10 @@ becomes an exception, and the exception says what was missing.
 ## Status
 
 Under active development for the 5 September 2026 deadline. The deterministic
-engine and the exception queue are built; the LLM triage layer is not, and no
-graded number depends on it. See [docs/07-BUILD-ORDER.md](docs/07-BUILD-ORDER.md).
+engine, the exception queue and the model layer are built. No graded number
+depends on the model, and that is now enforced by a test rather than promised
+— see **Where the model earns its place** below. See
+[docs/07-BUILD-ORDER.md](docs/07-BUILD-ORDER.md).
 
 Measured numbers are published in the eval harness output and nowhere else.
 No figure appears in this README that did not come out of a seeded run.
@@ -218,6 +220,53 @@ The visual language is [Blade](https://github.com/razorpay/blade), the design
 system behind the Razorpay dashboard. Its tokens are transcribed rather than
 approximated, and money is set the way Blade sets it: the ₹ small, the rupees
 large, the paise small and muted.
+
+## Where the model earns its place
+
+A local Qwen 2.5 3B runs through Ollama, with free Groq and Gemini tiers
+behind the same interface. It is asked exactly one kind of question — *why is
+this credit short?* — and it is never believed.
+
+**A model may propose. Only arithmetic may conclude.** It does not return
+prose. It returns a typed claim naming a cause and a record that must already
+exist in the report, and that claim is then put through the same arithmetic
+the rule-based categoriser uses. A claim that does not foot to the paisa is
+discarded before anything is printed.
+
+Which makes the model's contribution a number rather than an adjective. Over
+the 77 shortfalls in twenty adversarial seeds, every one of which the
+deterministic rules had already named:
+
+| | Qwen 2.5 3B, local |
+|---|---|
+| questions answered | 77/77 |
+| **agreement with the rules** | **19.5%** (15/77) |
+| contribution beyond them | 0/0 — the rules named every shortfall the engine reached |
+| proposals rejected by arithmetic | 26 |
+| **identifiers invented** | **5** |
+
+```bash
+uv run milan ablate --provider ollama --seeds 20
+```
+
+Read the last two rows together. The model made 41 confident proposals; 26
+were wrong, and **5 of them named a refund that does not exist anywhere in the
+report**. Had it been allowed to write summaries, this system would have sent
+a finance team looking through their ledger for records that were never
+there. Every one of those was caught by arithmetic, cost nothing, and never
+reached a screen.
+
+The contribution row is 0/0 rather than 0%, and the distinction is the honest
+one: there were no shortfalls left for the model to attempt, because the
+deterministic checks now name every shortfall the engine reaches on all four
+tiers. That is a measured result and not an assumption — it was measured with
+a model actually running, because "the rules already win" inferred from never
+switching one on is an argument from silence.
+
+**The seal is structural.** `milan.recon`, `milan.domain` and `milan.chaos`
+produce every published figure, and none of them may import `milan.llm`. A
+test parses their imports and fails if one ever does, because a claim like
+this is true when written and quietly stops being true nine commits later.
 
 ## Design stance
 

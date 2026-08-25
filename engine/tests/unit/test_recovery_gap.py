@@ -24,9 +24,9 @@ from milan.domain.enums import EntityType, ExceptionCode, PaymentMethod
 from milan.domain.money import Paise, from_rupees
 from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import SettlementRow
+from milan.domain.results import UnprovenCredit
 from milan.recon.batches import BatchGroup, rebuild_batches
 from milan.recon.triage import Categoriser
-from milan.recon.waterfall import UnprovenCredit
 
 GROUP_SETTLEMENT = "setl_here"
 OTHER_SETTLEMENT = "setl_elsewhere"

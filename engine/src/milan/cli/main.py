@@ -19,8 +19,10 @@ from milan.cli import render
 from milan.cli.render import console
 from milan.domain.dataset import Dataset
 from milan.domain.rates import RateCard
+from milan.evaluation.ablate import ablate
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.sweep import sweep
+from milan.llm.registry import available, resolve
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
@@ -225,6 +227,49 @@ def sweep_command(
         print(render.sweep_markdown(result))
         return
     console.print(render.sweep_table(result))
+
+
+@app.command(name="ablate")
+def ablate_command(
+    provider: Annotated[
+        str,
+        typer.Option("--provider", help="Which model to put the questions to."),
+    ] = "ollama",
+    seeds: Annotated[int, typer.Option("--seeds", help="How many seeds to run.")] = 5,
+    difficulty: DifficultyOption = Difficulty.ADVERSARIAL,
+    orders: Annotated[int, typer.Option("--orders", help="Orders per seed.")] = 600,
+) -> None:
+    """Measure what a model adds to the shortfall explanations.
+
+    Two numbers, and they answer different questions. **Agreement** is scored
+    on shortfalls the rules already named, so it says whether the model is
+    competent at this task at all. **Contribution** is scored on the ones they
+    could not name, and it is the only figure that could justify a model being
+    in the pipeline.
+
+    Nothing here can move a graded number. The reconciliation runs first and
+    runs unchanged; the model is asked afterwards about the same shortfalls,
+    and every answer it gives is put through the same arithmetic the rules
+    use before it counts for anything.
+    """
+    if provider not in available():
+        console.print(
+            f"[red]No provider called {provider!r}.[/] Registered: {', '.join(available())}."
+        )
+        raise typer.Exit(code=2)
+
+    built = resolve(provider)
+    model = getattr(built, "model", "")
+    result = ablate(built, difficulty, tuple(range(1, seeds + 1)), orders, model)
+
+    if result.asked and not result.answered:
+        console.print(
+            f"[yellow]{provider} answered none of {result.asked} questions.[/] "
+            "The reconciliation is unaffected - every figure it reports is "
+            "computed before a provider is consulted - but this ablation has "
+            "measured an absent model rather than a poor one."
+        )
+    console.print(render.ablation_table(result))
 
 
 @app.command()

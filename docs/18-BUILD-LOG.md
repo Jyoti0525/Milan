@@ -1197,3 +1197,98 @@ alignment, the chip stacking, the clipped command, the empty pane) only appear
 at a particular width or in a particular state. The redesign was argued from
 Blade's published tokens, which was the right source — but a token file cannot
 tell you that a cascade rule you did not write will beat the class you did.
+
+---
+
+## Day 8 — the day a model finally ran, and lost
+
+The plan for today was Ollama, the provider seam, and LLM triage to move the
+weakest number in the project: shortfalls named, 55%. It did not go that way,
+and what happened instead is worth more than what was planned.
+
+### The number was not a number
+
+Before wiring a model to move 55%, the 54 unnamed shortfalls got read rather
+than assumed. They split cleanly and they split into two different failures:
+
+| | count | what actually failed |
+|---|---|---|
+| matched, shortfall found, cause not named | 11 | explanation |
+| never matched at all | 43 | matching |
+
+The 43 had corrupted bank references. No candidate was ever found, so there
+was no shortfall to explain — and they were being counted against the
+explanation metric, because unprovable credits sit outside the match-rate
+denominator by design. A credit that failed *both* was therefore scored only
+against the one it did not fail for.
+
+That exclusion is correct — the right output for an unprovable credit is an
+exception, not a match — but it left a matching failure with nowhere to be
+reported. The README now says plainly that 100% is over credits that are
+matchable *and* provable.
+
+### The 11 were one word
+
+Every one of them sat within one or two paise of a refund recorded elsewhere
+in the report, with the next-nearest candidate hundreds of paise away.
+`_as_recovery_gap` demanded `row.debit == shortfall` exactly, while `prove` —
+two modules away, in the same package — was already treating that same paisa
+as rounding drift and carrying a derived allowance for it.
+
+A residual inherits the per-row against batch-level tax rounding that every
+other figure here inherits. The check now matches inside
+`group.rounding_allowance`, the same quantity computed the same way, and
+requires the candidate to be unique: if two refunds both fit, the evidence
+does not say which, and naming the nearer one would be the guess this system
+refuses to make everywhere else.
+
+55.0% to 64.2%. Matched-but-unnamed is now **zero on all four tiers**.
+
+### So what was left for a model to do
+
+Nothing, on the evidence. Which is exactly when it has to be measured rather
+than assumed — the TODO's own rule is *never argue from silence*, and "the
+rules already win" inferred from never switching a model on is silence.
+
+Ollama installed, Qwen 2.5 3B pulled, 73 seconds cold and 0.08 to 0.38 warm on
+a 4 GB RTX 3050. Groq and Gemini adapters behind the same interface. Then
+`milan ablate` puts every shortfall the rules solved to the model and checks
+its answer with the same arithmetic:
+
+```
+questions answered                77/77
+agreement with the rules          19.5%  15/77
+contribution beyond them           0.0%    0/0
+proposals rejected by arithmetic     26
+identifiers invented                  5
+```
+
+**19.5% agreement on a task where the right answer was already known.** 41
+confident proposals, 26 of them wrong, and 5 naming refunds that do not exist
+in the report at all. Every one caught, none printed.
+
+That is the whole architectural argument, measured. The design was never "use
+a model carefully"; it was "let the model propose and let arithmetic decide",
+and this is what the arithmetic decided.
+
+### Two bugs in the measurement, found by reading its own output
+
+The first run reported 6 disagreements and 0 rejections, which cannot both be
+true. Rejections were only counted on cases the rules had *not* solved, so a
+model blaming the wrong refund on a solved case was filed as a plain
+disagreement rather than as arithmetic catching a wrong answer.
+
+And "identifiers invented" was structurally incapable of being anything but
+zero: `parse` downgraded a hallucinated id to `unknown` and threw the id away,
+so the column was measuring the guard rather than the model. It records what
+it rejected now — and the answer turned out to be 5, which is the single most
+important number on that table.
+
+### The seal
+
+The claim that no graded figure depends on a model is the sort that is true
+when written and quietly false nine commits later. It is asserted
+structurally now: a test parses the imports of `milan.recon`, `milan.domain`
+and `milan.chaos` and fails if any of them ever reaches `milan.llm`. A
+behavioural test would only have proved the model was not consulted on that
+data. This proves it cannot be.

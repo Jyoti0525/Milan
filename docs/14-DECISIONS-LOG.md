@@ -545,3 +545,31 @@ If a decision is not here, it is not settled.
      decided by a cascade rule in neither file, chips that stack only when the
      pane is narrow, a command clipped only when it is long, a pane empty only
      before the first click.
+140. **A model may propose; only arithmetic may conclude.** The LLM returns a
+     typed claim naming a cause and a record that must already exist, never
+     prose, and that claim goes through the same categoriser the rules use. A
+     wrong proposal is discarded before anything is printed, which is what
+     makes a model safe to consult at all.
+141. **Diagnose before designing.** The number day 8 existed to move turned
+     out to be two different failures under one name - 11 explanation misses
+     and 43 matching misses - and the fix for the 11 was a tolerance the
+     prover two modules away already had. A model was never the answer, and
+     an hour of reading the failures said so before any of it was built.
+142. **A tolerance may only be widened together with a uniqueness rule.**
+     Matching a refund inside the rounding allowance closes 11 of 11 gaps; the
+     same change without requiring the candidate to be unique would eventually
+     name the nearer of two refunds and state a guess as a finding.
+143. **The model's contribution is a number, not an adjective.** Qwen 2.5 3B
+     agrees with the deterministic rules 19.5% of the time on a task where the
+     answer is known, and invented 5 record identifiers in 41 proposals. That
+     is measured with the model running, because inferring it from a model
+     never switched on would be an argument from silence.
+144. **The seal on the graded numbers is structural, not behavioural.** A test
+     parses the imports of `recon`, `domain` and `chaos` and fails if any of
+     them reaches `milan.llm`. Running the pipeline twice and comparing would
+     only prove no model was consulted on that data.
+145. **Read the measurement's own output for contradictions.** The ablation
+     reported six disagreements and zero rejections in the same table, which
+     cannot both be true, and an "identifiers invented" column that could
+     never be non-zero because the guard threw away what it rejected. Both
+     were bugs in the instrument, not the subject.

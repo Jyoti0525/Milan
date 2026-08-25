@@ -18,12 +18,13 @@ from milan.domain.enums import EntityType, ExceptionCode, MatchStrategy, Payment
 from milan.domain.money import Paise, from_rupees
 from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import BankCredit, SettlementRow
+from milan.domain.results import UnprovenCredit
 from milan.evaluation.harness import to_recon_input
 from milan.recon.batches import BatchGroup, rebuild_batches
 from milan.recon.matching.cascade import Cascade
 from milan.recon.matching.exact import extract_utr
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
-from milan.recon.waterfall import UnprovenCredit, prove
+from milan.recon.waterfall import prove
 
 SETTLED_AT = datetime(2026, 7, 8, 11, 0)
 EXACT = MatchStrategy.EXACT_UTR

@@ -19,10 +19,9 @@ from milan.domain.enums import EntityType, ExceptionCode
 from milan.domain.money import Paise, format_inr
 from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit, Payment, SettlementRow
-from milan.domain.results import ReconException
+from milan.domain.results import ReconException, UnprovenCredit
 from milan.recon.batches import BatchGroup, GatewayBatch
 from milan.recon.matching.base import Attempt, Verdict
-from milan.recon.waterfall import UnprovenCredit
 
 _GST_SLABS = (Decimal("0.05"), Decimal("0.12"), Decimal("0.18"), Decimal("0.28"))
 """India's GST rate slabs. A shortfall is only called a tax variance when it
