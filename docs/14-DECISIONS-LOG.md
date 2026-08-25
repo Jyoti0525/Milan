@@ -435,3 +435,47 @@ If a decision is not here, it is not settled.
      seeds. Skipping it takes the sweep to 1.4 seconds, which is what lets
      the README's pooled table be verified in the ordinary test run rather
      than in a slow lane nobody runs.
+118. **The API is thin because a second implementation of the rules would
+     drift.** Every decision worth making has been made in the engine. What
+     the API adds is what the engine's own output cannot carry: an exception
+     joined back to the record it is about, and a running total computed on
+     the side of the wire that has tests.
+119. **The answer key does not cross the wire, and a test greps for it.**
+     `milan.recon` may not import ground truth; a JSON route serving it to a
+     browser would walk around that boundary rather than break it, which is
+     worse - nothing would fail. Scores are still reported, computed inside
+     the evaluation package and never exposed record by record.
+120. **Money crosses as integer paise, never a float, never a formatted
+     string.** A test walks the whole payload at any depth. Formatting is a
+     display concern, and sending "Rs 1,234.50" would make the number
+     unusable for anything except printing it back out. The cost is that the
+     browser has to do Indian digit grouping itself, which is why that
+     formatter is held to the same table as `format_inr`.
+121. **Listing runs does not verify them; opening one does.** A single stale
+     dataset in the data directory made `/api/runs` return a 500, so the
+     picker could not show the run the person needed to be told to
+     regenerate. Metadata should survive what content cannot.
+122. **`MILAN_WEB_ORIGIN` rather than a wider CORS allowlist.** `next dev`
+     moving to another port is exactly the moment the temptation to open it
+     appears. A per-machine addition is a decision; `allow_origins=["*"]` is
+     a permanent hole that gets added during a hackathon and never removed.
+123. **Ambiguity has two shapes and the queue was reporting the wrong one.**
+     A credit fitting several settlements asks which payout arrived; several
+     credits fitting one settlement asks which bank line is the payout. The
+     collision resolver produced the second and the categoriser described the
+     first, printing `fits 1 settlements equally well`. The grammar made it
+     visible; the substance is that it sends somebody to the wrong file.
+     `Attempt.contested_by` now carries the rivals.
+124. **Every number was right and the sentence was wrong.** That defect had
+     been in every run since the collision resolver was written, and no test
+     looked at the sentence. Exception text is a deliverable of this project,
+     not a log line, and it now has tests of its own.
+125. **Loading state is derived, not stored.** The loaded run is held with the
+     key of the run it belongs to. A slow response for a run the user has
+     navigated away from cannot arrive last and win, and a spinner cannot be
+     left on after a failure. React 19's lint rule caught the first version.
+126. **The interface is dense on purpose.** Thirty-pixel rows, hairline rules,
+     tabular numerals, colour only on state. Somebody reconciling a month is
+     scanning a few hundred rows for the one that is wrong, and padding is
+     rows they cannot see. The tech-stack doc's "must not look
+     AI-generated" is a usability constraint, not a style note.

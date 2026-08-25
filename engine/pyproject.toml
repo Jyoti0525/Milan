@@ -10,6 +10,8 @@ dependencies = [
     "duckdb>=1.1",
     "typer>=0.15",
     "rich>=13.9",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.4",
 ]
 
 [project.scripts]
@@ -23,6 +25,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "pytest-cov>=7.1.0",
+    "httpx>=0.28.1",
 ]
 
 [build-system]

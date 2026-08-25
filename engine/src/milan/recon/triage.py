@@ -43,22 +43,7 @@ class Categoriser:
     ) -> ReconException:
         """A bank credit no settlement claims."""
         if attempt.verdict is Verdict.AMBIGUOUS:
-            return ReconException(
-                code=ExceptionCode.UNEXPLAINED,
-                subject_id=credit.credit_id,
-                amount=credit.amount,
-                summary=(
-                    f"{format_inr(credit.amount)} on {credit.value_date} fits "
-                    f"{len(attempt.candidates)} settlements equally well. "
-                    "Picking one would be a guess."
-                ),
-                evidence={
-                    "reason": "ambiguous",
-                    "candidates": ", ".join(attempt.candidates),
-                    "narration": credit.narration,
-                    "strategy": attempt.strategy.value,
-                },
-            )
+            return self._ambiguous(credit, attempt)
 
         same_day = [b for b in batches if b.settled_on == credit.value_date]
         return ReconException(
@@ -75,6 +60,54 @@ class Categoriser:
                 "narration": credit.narration,
                 "settlements_that_day": str(len(same_day)),
                 "last_attempt": attempt.note,
+            },
+        )
+
+    def _ambiguous(self, credit: BankCredit, attempt: Attempt) -> ReconException:
+        """Say which of the two kinds of ambiguity this is.
+
+        A credit that fits several settlements and a settlement fitted by
+        several credits are different questions for whoever picks this up:
+        the first asks which payout arrived, the second asks which of these
+        bank lines is the payout. Reporting the second as the first is not a
+        wording problem - it sends somebody looking at the wrong file.
+        """
+        if attempt.contested_by:
+            rivals = len(attempt.contested_by) + 1
+            settlement = attempt.candidates[0] if attempt.candidates else "one settlement"
+            return ReconException(
+                code=ExceptionCode.UNEXPLAINED,
+                subject_id=credit.credit_id,
+                amount=credit.amount,
+                summary=(
+                    f"{format_inr(credit.amount)} on {credit.value_date} and "
+                    f"{rivals - 1} other credit{'s' if rivals > 2 else ''} all fit "
+                    f"settlement {settlement}. Only one of them can be it, and "
+                    "nothing in the evidence says which."
+                ),
+                evidence={
+                    "reason": "contested settlement",
+                    "settlement": settlement,
+                    "also claimed by": ", ".join(attempt.contested_by),
+                    "narration": credit.narration,
+                    "strategy": attempt.strategy.value,
+                },
+            )
+
+        count = len(attempt.candidates)
+        return ReconException(
+            code=ExceptionCode.UNEXPLAINED,
+            subject_id=credit.credit_id,
+            amount=credit.amount,
+            summary=(
+                f"{format_inr(credit.amount)} on {credit.value_date} fits "
+                f"{count} settlements equally well. Picking one would be a guess."
+            ),
+            evidence={
+                "reason": "ambiguous",
+                "candidates": ", ".join(attempt.candidates),
+                "narration": credit.narration,
+                "strategy": attempt.strategy.value,
             },
         )
 

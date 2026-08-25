@@ -386,3 +386,36 @@ six. The README had published two different noise readings of it.
 - [x] The README carries the pooled table, checked by a test
 - [x] The weakest figure is stated plainly: detection 100%, explanation 55%
 
+---
+
+## Day 7 — the exception queue
+
+Tier 1 item 6, the one the cut rules say is never cut.
+
+- [x] FastAPI layer over the engine (`milan.api`), 14 tests
+- [x] The answer key cannot reach the browser, asserted by a test that greps
+      the whole payload
+- [x] Money crosses the wire as integer paise, asserted at any depth
+- [x] Next.js workspace: run bar, queue, proved list, two detail panels
+- [x] The browser's money formatter, held to the same table as `format_inr`
+- [x] `milan serve`, `make serve` / `make web`
+
+### Found by running it, not by testing it
+
+- [x] `/api/runs` returned 500 when one dataset on disk was stale — listing is
+      metadata, opening is what has to be trustworthy
+- [x] CORS blocked a dev server that had moved to port 3002. Added
+      `MILAN_WEB_ORIGIN` rather than widening the allowlist
+- [x] The queue printed `fits 1 settlements equally well`. Two shapes of
+      ambiguity were being reported as one, which sends somebody to the wrong
+      file. `Attempt.contested_by`, nine tests
+
+### Still open, and deliberately so
+
+- Leak detection reads `LeakTruth`, which is still unread by any code — day 9
+- The queue has no filter or search. At 37 cases it does not need one; at 400
+  it would. Recorded rather than built, because the demo is a month of one
+  merchant and inventing scale it does not have is how a screen gets busy
+- No write actions. Nothing in this system resolves a case yet, and a button
+  that pretended to would be the dishonest kind of demo
+

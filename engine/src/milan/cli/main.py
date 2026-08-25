@@ -182,6 +182,26 @@ def _report_no_proof(report: object, credit: str) -> None:
         console.print(f"[red]No credit starting {credit} in this run.[/red]")
 
 
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option("--host", help="Interface to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port to bind.")] = 8000,
+    root: RootOption = None,
+) -> None:
+    """Serve the reconciliation API for the exception queue.
+
+    Binds to loopback unless told otherwise. This serves a merchant's
+    settlement data and has no authentication, so the default has to be the
+    one that is safe when nobody thought about it.
+    """
+    import uvicorn
+
+    from milan.api.app import create_app
+
+    console.print(f"[dim]serving {_root(root)} on http://{host}:{port}[/dim]")
+    uvicorn.run(create_app(_root(root)), host=host, port=port, log_level="warning")
+
+
 @app.command(name="sweep")
 def sweep_command(
     seeds: Annotated[int, typer.Option("--seeds", help="How many seeds to score.")] = 20,

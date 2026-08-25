@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+/*
+  A finance tool, not a landing page.
+
+  The reference points are the Stripe dashboard, Linear and Mercury: dense
+  tabular data, small rows, hairline rules, numbers in a tabular face so
+  columns of rupees line up on the decimal. Colour signals state and nothing
+  else - there is no brand gradient here, and no card with forty pixels of
+  padding around three words.
+
+  This is a deliberate constraint rather than taste. Someone reconciling a
+  month of settlements is scanning a few hundred rows for the one that is
+  wrong, and every pixel of padding is a row they cannot see.
+*/
+
+:root {
+  --paper: #fbfbfa;
+  --surface: #ffffff;
+  --raised: #f4f4f2;
+  --ink: #16181d;
+  --ink-soft: #5c626d;
+  --ink-faint: #8b909b;
+  --rule: #e4e4e0;
+  --rule-strong: #d2d2cd;
+  --select: #eef2f7;
+  --select-edge: #1f5fa9;
+
+  /* State. Used on text and on a 2px marker, never as a filled pill. */
+  --good: #16704a;
+  --warn: #91600c;
+  --bad: #a52216;
+  --quiet: #6b7280;
+
+  --row: 30px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e0f12;
+    --surface: #131519;
+    --raised: #1a1d22;
+    --ink: #e8e9ec;
+    --ink-soft: #9aa0ab;
+    --ink-faint: #6b717c;
+    --rule: #24272d;
+    --rule-strong: #31353d;
+    --select: #172230;
+    --select-edge: #5b9dd9;
+
+    --good: #4bb98a;
+    --warn: #d9a441;
+    --bad: #e2685c;
+    --quiet: #8b909b;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-select: var(--select);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family:
+    ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+  Every figure in this application uses this class. Tabular numerals are not
+  a nicety in a column of money: without them a 1 is narrower than a 7 and the
+  decimal points stop lining up, which is exactly when a misread digit becomes
+  a misread rupee.
+*/
+.figure {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+
+.ident {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+/* Small-caps column headings, the way a ledger prints them. */
+.label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rule-t {
+  border-top: 1px solid var(--rule);
+}
+.rule-b {
+  border-bottom: 1px solid var(--rule);
+}
+.rule-r {
+  border-right: 1px solid var(--rule);
+}
+
+/* A 2px edge instead of a coloured background: it reads at a glance in a
+   dense list without turning the table into a set of highlighter stripes. */
+.marker {
+  box-shadow: inset 2px 0 0 currentColor;
+}
+
+.row {
+  height: var(--row);
+}
+
+.hoverable:hover {
+  background: var(--raised);
+}
+
+.selected {
+  background: var(--select);
+  box-shadow: inset 2px 0 0 var(--select-edge);
+}
+
+::selection {
+  background: var(--select);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--select-edge);
+  outline-offset: -2px;
+}
+
+/* Scrollbars that do not shout. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}

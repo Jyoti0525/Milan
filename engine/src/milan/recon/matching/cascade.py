@@ -164,13 +164,17 @@ class Cascade:
 
         resolved = dict(attempts)
         for credit_id, settlement_id in blamed.items():
-            rivals = len(disputed[settlement_id])
+            rivals = tuple(other for other in disputed[settlement_id] if other != credit_id)
             resolved[credit_id] = attempts[credit_id].model_copy(
                 update={
                     "verdict": Verdict.AMBIGUOUS,
                     "settlement_ids": (),
+                    "candidates": (settlement_id,),
                     "confidence": 0.0,
-                    "note": f"{rivals} credits fit settlement {settlement_id} equally well",
+                    "contested_by": rivals,
+                    "note": (
+                        f"{len(rivals) + 1} credits fit settlement {settlement_id} equally well"
+                    ),
                 }
             )
         return resolved

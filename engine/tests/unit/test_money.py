@@ -62,3 +62,38 @@ class TestFormatting:
     )
     def test_display(self, paise: int, expected: str) -> None:
         assert format_inr(Paise(paise)) == expected
+
+    @pytest.mark.parametrize(
+        ("paise", "grouped"),
+        [
+            (0, "0.00"),
+            (1, "0.01"),
+            (99, "0.99"),
+            (100, "1.00"),
+            (500, "5.00"),
+            (505, "5.05"),
+            (550, "5.50"),
+            (99_999, "999.99"),
+            (100_000, "1,000.00"),
+            (1_000_000, "10,000.00"),
+            (10_000_000, "1,00,000.00"),
+            (100_000_000, "10,00,000.00"),
+            (123_456_789, "12,34,567.89"),
+            (1_000_000_000, "1,00,00,000.00"),
+            (999_999_999_999, "9,99,99,99,999.99"),
+        ],
+    )
+    def test_the_browser_formats_it_the_same_way(self, paise: int, grouped: str) -> None:
+        """The shared table, held to by two implementations.
+
+        The API sends integer paise and refuses to send a formatted string,
+        which is right and which means the grouping is written twice - here
+        and in `web/lib/money.ts`. Two implementations of the Indian
+        convention that drift apart would drift in the place a reader is
+        least likely to check: the middle of a large number, where a comma
+        moving one digit changes ten thousand rupees into a lakh.
+
+        This exact table is asserted in `web/lib/money.test.ts`. Changing
+        either side alone breaks one of them.
+        """
+        assert format_inr(Paise(paise)).replace("Rs ", "") == grouped

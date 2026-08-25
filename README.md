@@ -43,8 +43,9 @@ becomes an exception, and the exception says what was missing.
 
 ## Status
 
-Under active development for the 5 September 2026 deadline. The engine's
-deterministic core is being built first; see [docs/07-BUILD-ORDER.md](docs/07-BUILD-ORDER.md).
+Under active development for the 5 September 2026 deadline. The deterministic
+engine and the exception queue are built; the LLM triage layer is not, and no
+graded number depends on it. See [docs/07-BUILD-ORDER.md](docs/07-BUILD-ORDER.md).
 
 Measured numbers are published in the eval harness output and nowhere else.
 No figure appears in this README that did not come out of a seeded run.
@@ -159,6 +160,37 @@ be a near-unique fingerprint once the fee stack is modelled properly, so this
 class of matching is easier than it looks. What is hard is proving a credit to
 the paisa, refusing the ones the evidence cannot settle, and finding money
 that is wrong while everything still balances.
+
+## The exception queue
+
+Two halves of one honest answer. **Queue** is what could not be resolved, and
+why — each case joined back to the record it is about, with what the engine
+looked at before it gave up.
+
+![The exception queue](docs/images/queue.png)
+
+**Proved** is what could be, rebuilt line by line: the sale, every deduction
+that happened to it, and a running total that lands exactly on what the bank
+paid. Every line carries the source record ids behind it, so a finance team
+can check it against their own export rather than take it on trust.
+
+![A credit proved to the paisa](docs/images/proof.png)
+
+The last row is the point. `Unexplained  0.00` is the claim this project
+makes, stated so it can be checked rather than believed.
+
+```bash
+# terminal one
+cd engine && uv run milan serve
+
+# terminal two
+cd web && npm install && npm run dev
+```
+
+Money crosses that API as integer paise and never as a float or a formatted
+string; the browser does its own Indian-grouping arithmetic, tested against
+the same table as the engine's. The API also refuses to serve the answer key —
+a queue that can see the answers is a demo, and a test asserts it cannot.
 
 ## Design stance
 

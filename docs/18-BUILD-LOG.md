@@ -919,3 +919,118 @@ amount rungs. If a defect class turns up where many weak signals across
 several columns have to be weighed together - which is the problem Splink is
 actually built for - the answer changes, and the first move would be to
 generate that defect rather than to reach for the library.
+
+---
+
+## Day 7 — the exception queue
+
+The one the cut rules say is never cut, because it carries the video.
+
+### The API had to exist first
+
+`web/` was empty and had nothing to read from. The architecture doc says
+FastAPI is the backend, so that is what got built - thin, because every
+decision worth making has already been made in the engine and an API that
+starts making its own is a second implementation of the same rules that will
+disagree with the first one eventually.
+
+Two things it does that the engine's own output does not:
+
+**It joins exceptions back to their subject.** A `ReconException` names its
+subject by id, which is all the pipeline needs and nothing a person can act
+on. "bank_x9f2 is short Rs 812" is a spreadsheet row; the same case with the
+amount, the date and the bank's verbatim narration beside it is something
+somebody can pick up. And the three kinds of subject are genuinely different
+people's problems - a credit that arrived unexplained, a payout the gateway
+says it sent that never arrived, and a payment the customer made that the
+report never mentions - so they are distinguished rather than flattened into
+"an id and an amount".
+
+**It computes the running total server-side.** A reader is being invited to
+check that the proof lines close, and arithmetic that matters belongs on the
+side of the wire that has tests.
+
+Two boundaries are enforced by tests rather than by care:
+
+- **The answer key never leaves the engine.** `milan.recon` may not import
+  ground truth; a JSON route serving it to a browser would walk around that
+  boundary rather than break it, which is worse, because nothing would fail.
+  A test greps the whole payload for `matchable`, `provable`, `answer_key`
+  and friends. Scores are still reported - computed inside the evaluation
+  package, never exposed record by record.
+- **Money crosses as integer paise.** Not a formatted string and above all
+  not a float. A test walks the entire response at any depth and fails on a
+  float in any field named like money.
+
+### The interface
+
+Next.js 16 as scaffolded (the plan said 15; the current release is 16 and
+nothing in the breaking-change list touches this code - no `params`, no
+middleware, no `next/image`, no caching APIs).
+
+The design brief in the tech-stack doc is a constraint rather than taste:
+**must not look AI-generated.** No gradients, no hero, no forty-pixel cards,
+no default shadcn. Finance tools are dense and precise - thirty-pixel rows,
+hairline rules, tabular numerals so a column of rupees lines up on the
+decimal, colour spent only on state. Somebody reconciling a month is scanning
+a few hundred rows for the one that is wrong, and padding is rows they cannot
+see.
+
+The screen is a run bar, a list, and a detail pane. Two tabs on the list
+because there are two halves to an honest answer: **Queue** is what could not
+be resolved, **Proved** is what could, openable line by line down to
+`Unexplained 0.00`.
+
+Loading state is derived, not stored. The loaded run is held together with the
+key of the run it belongs to, so a slow response for a run you have navigated
+away from cannot arrive last and win, and a spinner cannot be left on after a
+failure. React 19's lint rule caught the first version of that, correctly.
+
+### Three defects found by running it rather than by testing it
+
+**`/api/runs` returned a 500 because one run on disk was stale.** A dataset
+generated before the sampler change was still in `data/`, and the freshness
+check raised inside the listing. So the picker could not show the very run the
+person needed to be told to regenerate. Listing is metadata; opening is the
+thing that has to be trustworthy. Runs are now listed unverified and marked
+`stale`, and the check stays where it matters.
+
+**CORS blocked the browser, and the temptation was to widen it.** `next dev`
+found port 3000 taken and moved to 3002, which the allowlist deliberately does
+not include. The allowlist is narrow because this serves settlement data, and
+the version of it that ships with `allow_origins=["*"]` because it was
+convenient during a hackathon is the version that stays that way. Added
+`MILAN_WEB_ORIGIN` instead: a deliberate, per-machine addition rather than a
+permanent hole.
+
+**The queue said `fits 1 settlements equally well`.** The grammar is what made
+it visible. The substance is why it mattered: ambiguity has two shapes and
+this was reporting the wrong one. A credit that fits several settlements asks
+*which payout arrived*; several credits that fit one settlement ask *which of
+these bank lines is the payout*. They send whoever picks up the case to
+different files, and `_resolve_collisions` was producing the second while the
+categoriser described the first.
+
+`Attempt.contested_by` now carries the rival credits, and the queue says:
+
+> Rs 2,06,784.14 on 2026-07-21 and 1 other credit all fit settlement
+> setl_xzxbqya4bcfsrh. Only one of them can be it, and nothing in the evidence
+> says which.
+
+with the rival's id in the evidence, so both bank lines can be pulled up
+together. Nine tests cover the two shapes and assert they never produce the
+same sentence.
+
+That defect had been in every run since the collision resolver was written.
+Every number was right; the sentence explaining one class of refusal was
+wrong, and no test looked at the sentence.
+
+### Where it stands
+
+318 tests, 97% coverage, plus 11 on the browser's money formatter - which
+exists because the API refuses to send formatted strings, and which is held to
+the same table as `format_inr` so the two implementations of Indian digit
+grouping cannot drift apart in the middle of a large number.
+
+Tier 1 is complete. Every item on the list is built, tested, and its numbers
+appear in the eval harness output.

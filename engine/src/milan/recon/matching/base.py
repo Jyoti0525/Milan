@@ -47,6 +47,17 @@ class Attempt(BaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     note: str = ""
 
+    contested_by: tuple[str, ...] = ()
+    """Other credits that claimed the same settlement this one did.
+
+    Ambiguity has two shapes and they are not the same case. One credit that
+    fits several settlements is a question about which payout arrived; several
+    credits that fit one settlement is a question about which bank line is the
+    payout. `candidates` describes the first. This describes the second, and
+    without it the queue reported a collision as "fits 1 settlements equally
+    well" - wrong in its grammar and, worse, wrong about what was uncertain.
+    """
+
     withdrawn_ids: tuple[str, ...] = ()
     """Settlements this credit was matched to and then withdrawn from.
 
