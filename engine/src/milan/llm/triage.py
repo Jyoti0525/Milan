@@ -213,11 +213,28 @@ def parse(text: str, known_ids: frozenset[str]) -> Hypothesis:
 class LlmTriage:
     """One question per unexplained shortfall, and a typed answer back."""
 
-    def __init__(self, provider: Provider, max_tokens: int = 96) -> None:
+    def __init__(self, provider: Provider, max_tokens: int = 96, temperature: float = 0.0) -> None:
         self._provider = provider
         self._max_tokens = max_tokens
+        self._temperature = temperature
+        """Zero everywhere the numbers come from, and settable for one
+        experiment: asking the same question twice with sampling on, to show
+        what a model-driven matcher would do to a set of books."""
+
         self.asked = 0
         self.answered = 0
+
+        # What it cost to ask, in the only units a bill is written in.
+        # Accumulated here rather than in the ablation because this is the
+        # only place that touches a provider, and a token counted anywhere
+        # else would be a token counted twice.
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.replayed = 0
+        """Answers that came from the cache. The difference between a run
+        that spent a GPU and a run that spent nothing."""
+
+        self.seconds = 0.0
 
     def propose(
         self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
@@ -232,8 +249,15 @@ class LlmTriage:
                 prompt=build_prompt(unproven, group, all_rows),
                 system=SYSTEM,
                 max_tokens=self._max_tokens,
+                temperature=self._temperature,
             )
         )
+        self.prompt_tokens += completion.prompt_tokens
+        self.completion_tokens += completion.completion_tokens
+        self.seconds += completion.latency_seconds
+        if completion.cached:
+            self.replayed += 1
+
         if not completion.answered:
             return Hypothesis(kind=HypothesisKind.UNKNOWN, source=self._provider.name)
         self.answered += 1

@@ -1,0 +1,9 @@
+{
+  "text": "{\"kind\": \"recovery_gap\", \"entity_id\": \"rfnd_61e10rr14sezw2\"}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.183197500067763,
+  "prompt_tokens": 600,
+  "completion_tokens": 29
+}

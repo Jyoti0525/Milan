@@ -89,6 +89,21 @@ class Ablation(BaseModel):
 
     kinds: dict[str, int]
 
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    replayed: int = 0
+    """Answers served from the committed cache rather than from a model.
+
+    The figure that decides what a reader can reproduce. A run that is fully
+    replayed needs no GPU, no key and no network, and produces the same
+    numbers as the run that paid for them."""
+
+    seconds: float = 0.0
+
+    @property
+    def tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
     @property
     def agreement_rate(self) -> float:
         return self.agreement_hits / self.agreement_cases if self.agreement_cases else 0.0
@@ -196,4 +211,8 @@ class AblationRun:
             invented_ids=self._invented,
             rejected=self._rejected,
             kinds=dict(self._kinds),
+            prompt_tokens=self._triage.prompt_tokens,
+            completion_tokens=self._triage.completion_tokens,
+            replayed=self._triage.replayed,
+            seconds=self._triage.seconds,
         )

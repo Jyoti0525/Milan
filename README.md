@@ -202,6 +202,45 @@ class of matching is easier than it looks. What is hard is proving a credit to
 the paisa, refusing the ones the evidence cannot settle, and finding money
 that is wrong while everything still balances.
 
+### Does it hold as the data gets worse
+
+Every figure above is from the adversarial tier, which is the honest choice
+for a single number and says nothing about the shape of the curve. Same twenty
+seeds, every tier:
+
+<!-- generated: curve -->
+| Measure | clean | realistic | messy | adversarial |
+|---|---|---|---|---|
+| match rate | 100.0% <sub>752/752</sub> | 100.0% <sub>613/613</sub> | 100.0% <sub>532/532</sub> | 100.0% <sub>389/389</sub> |
+| settlement attributed | 100.0% <sub>752/752</sub> | 99.6% <sub>670/673</sub> | 99.3% <sub>608/612</sub> | 98.0% <sub>499/509</sub> |
+| precision | 100.0% <sub>752/752</sub> | 100.0% <sub>613/613</sub> | 100.0% <sub>532/532</sub> | 100.0% <sub>389/389</sub> |
+| refusal rate | - | 100.0% <sub>40/40</sub> | 100.0% <sub>100/100</sub> | 100.0% <sub>200/200</sub> |
+| shortfalls named | - | 96.7% <sub>58/60</sub> | 95.0% <sub>76/80</sub> | 91.7% <sub>110/120</sub> |
+| leaks caught | - | - | 100.0% <sub>434/434</sub> | 100.0% <sub>762/762</sub> |
+| leak precision | - | - | 100.0% <sub>434/434</sub> | 100.0% <sub>762/762</sub> |
+| merged credits resolved | - | 100.0% <sub>40/40</sub> | 100.0% <sub>80/80</sub> | 100.0% <sub>120/120</sub> |
+| missing payouts flagged | - | 100.0% <sub>20/20</sub> | 100.0% <sub>40/40</sub> | 100.0% <sub>40/40</sub> |
+| unsettled payments flagged | - | 100.0% <sub>47/47</sub> | 100.0% <sub>112/112</sub> | 100.0% <sub>153/153</sub> |
+<!-- /generated -->
+
+```bash
+uv run milan curve --seeds 20 --orders 600
+```
+
+**Read the denominators, not the rates.** Three of these measures have nothing
+to score on the clean tier - it generates no impossible credits, no merged
+payouts and no mispriced rows - so they show a dash rather than a flattering
+100%. A rate over an empty denominator is not a measurement.
+
+Match rate and precision are flat, and that is a fact about this problem
+rather than a compliment: a settlement total is close to a unique fingerprint
+once the fee stack is modelled, so matching survives the reference being
+destroyed. **The two rates that move are the two that should.** Working out
+which payout a credit was falls from 100% to 98.0% as the defects pile up, and
+naming why a payout came up short falls from 96.7% to 91.7%. Those are the
+measures where the evidence genuinely thins, and a system that held 100% on
+both across every tier would be evidence that the hard tier was not hard.
+
 ## The money that is wrong while everything balances
 
 Every figure above answers one question: *did the payout arrive*. This answers
@@ -314,39 +353,103 @@ the rule-based categoriser uses. A claim that does not foot to the paisa is
 discarded before anything is printed.
 
 Which makes the model's contribution a number rather than an adjective. Over
-the 77 shortfalls in twenty adversarial seeds, every one of which the
+the 110 shortfalls in twenty adversarial seeds, every one of which the
 deterministic rules had already named:
 
 | | Qwen 2.5 3B, local |
 |---|---|
-| questions answered | 77/77 |
-| **agreement with the rules** | **19.5%** (15/77) |
-| contribution beyond them | 0/0 — the rules named every shortfall the engine reached |
-| proposals rejected by arithmetic | 26 |
+| questions answered | 110/110 |
+| **agreement with the rules** | **16.4%** (18/110) |
+| contribution beyond them | 0/0 - the rules named every shortfall the engine reached |
+| proposals rejected by arithmetic | 47 |
 | **identifiers invented** | **5** |
+| tokens in / out | 66,146 / 2,453 |
+| spent | Rs 0.00 |
 
 ```bash
-uv run milan ablate --provider ollama --seeds 20
+uv run milan ablate --provider ollama --seeds 20 --orders 600
 ```
 
-Read the last two rows together. The model made 41 confident proposals; 26
-were wrong, and **5 of them named a refund that does not exist anywhere in the
-report**. Had it been allowed to write summaries, this system would have sent
-a finance team looking through their ledger for records that were never
-there. Every one of those was caught by arithmetic, cost nothing, and never
-reached a screen.
+Read the last two rows of the top block together. The model made 65 confident
+proposals; 47 were wrong, and **5 of them named a refund that does not exist
+anywhere in the report**. Had it been allowed to write summaries, this system
+would have sent a finance team looking through their ledger for records that
+were never there. Every one of those was caught by arithmetic, cost nothing,
+and never reached a screen.
 
 The contribution row is 0/0 rather than 0%, and the distinction is the honest
 one: there were no shortfalls left for the model to attempt, because the
 deterministic checks now name every shortfall the engine reaches on all four
-tiers. That is a measured result and not an assumption — it was measured with
+tiers. That is a measured result and not an assumption - it was measured with
 a model actually running, because "the rules already win" inferred from never
 switching one on is an argument from silence.
+
+**A smaller model is not a safer one, it is an emptier one.** The same 110
+questions, through the same verifier, at half the parameters:
+
+| | Qwen 2.5 1.5B | Qwen 2.5 3B |
+|---|---|---|
+| questions answered | 110/110 | 110/110 |
+| proposed a cause at all | 0/110 | 65/110 |
+| agreement with the rules | 0.0% | **16.4%** |
+| proposals rejected by arithmetic | 0 | 47 |
+| identifiers invented | 0 | 5 |
+
+```bash
+uv run milan ablate --provider ollama --seeds 20 --orders 600 --model qwen2.5:1.5b
+```
+
+The 1.5B model answered every question in valid schema and said `unknown` to
+all 110 of them. It invented nothing, and it contributed nothing - a column of
+zeros that reads as caution and is really absence. Both models leave every
+figure in this README exactly where it was, which is the seal working rather
+than a coincidence.
+
+**Nothing was spent, and the volume is measured anyway.** The token counts
+come from the provider's own counters rather than from an estimate, so the
+projection below is arithmetic on a measurement: at Gemini 2.0 Flash's
+published paid rate the same questions would cost **$0.0076**, and at Groq's
+on-demand rate for Llama 3.3 70B, **$0.0410**. Both rates are recorded with
+their source and the date they were read, because a price is somebody else's
+claim and it goes stale.
+
+**A reader with no GPU can reproduce the table.** `data/llm-cache` holds what
+the model actually said, addressed by the hash of the question, and a test
+replays all 110 answers with no model present at all - asserting these exact
+figures, and failing loudly if a single question misses the cache.
 
 **The seal is structural.** `milan.recon`, `milan.domain` and `milan.chaos`
 produce every published figure, and none of them may import `milan.llm`. A
 test parses their imports and fails if one ever does, because a claim like
 this is true when written and quietly stops being true nine commits later.
+
+### Run it twice, two different books
+
+The other half of the reproducibility claim. Milan's output does not move,
+and `milan reproduce` makes that falsifiable. This is what happens when the
+answers come from a model instead - the same thirty questions, asked twice,
+nothing else changed:
+
+| configuration | answers that moved | named a different record |
+|---|---|---|
+| temperature 0, seed left to the daemon | 0/30 | 0 |
+| temperature 0.7, seed pinned | 0/30 | 0 |
+| **temperature 0.7, seed left to the daemon** | **11/30** | **4** |
+
+```bash
+uv run milan twice --seeds 6 --questions 30 --temperature 0.7 --no-pin
+```
+
+The finding is not "models are random". It is that **reproducibility with a
+model is conditional, and the conditions are not the defaults**: greedy
+decoding, or a pinned sampler seed, and Gemini's API offers no seed parameter
+to pin at all. Milan pins both and needs neither, because nothing on the third
+row could have reached a figure in this README - the arithmetic had already
+concluded before the model was asked.
+
+Four of those eleven blamed a different refund the second time. On a system
+that let the model conclude, that is two different sets of books from one
+input.
 
 ## Design stance
 

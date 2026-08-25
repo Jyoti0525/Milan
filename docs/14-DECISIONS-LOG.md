@@ -665,3 +665,31 @@ If a decision is not here, it is not settled.
      read by nothing. Correct, tested, unreachable code is the state that
      looks most like being finished, and the honest response to finding it is
      `git rm`, not a comment explaining why it is still there.
+
+164. **The cache keys on the model that will actually answer, not on the one
+     the caller named.** Callers never name one - they ask a provider - so the
+     key had no model in it and two models shared entries. The failure would
+     have surfaced only as two identical columns in a size benchmark, which
+     reads as a finding rather than a bug.
+165. **Token counts are read from the provider's counters, never estimated.**
+     A cost figure has to be checkable against a bill. Estimating tokens from
+     characters would put a number in a table nobody could verify, which is
+     the same failure as every other unmeasured claim here.
+166. **A published price carries its source and the date it was read.** A rate
+     is somebody else's claim, restated, and it goes stale. A secondary source
+     is labelled as one rather than presented as the vendor's word.
+167. **The reproducibility experiment runs without the cache.** Everywhere
+     else a cached answer is what makes a run with a model reproducible. In
+     `milan twice` a cache hit would prove the point by refusing to run the
+     experiment, so `direct()` exists to build a provider with nothing in
+     front of it.
+168. **A rate with a zero denominator prints as a dash in every surface.**
+     Established for the queue's refusal card and applied to the degradation
+     curve the same day. Clean tiers generate nothing impossible and no leaks,
+     and `0.0%` under those headings claims a failure at work that was never
+     given.
+169. **The ablation is asserted by replaying the committed cache, not by
+     retyping it.** It is the one figure a reader cannot regenerate, because
+     it depends on a model, a quantisation and a daemon. The answers are in
+     the repository and a test replays all 110 with no model present, failing
+     if one question misses.

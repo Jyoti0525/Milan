@@ -15,10 +15,13 @@ from rich.table import Table
 from milan.domain.money import Paise, format_inr
 from milan.domain.results import Proof, ReconReport
 from milan.evaluation.ablation import Ablation
+from milan.evaluation.curve import Curve
 from milan.evaluation.harness import Evaluation
 from milan.evaluation.metrics import Scorecard
-from milan.evaluation.sweep import Sweep
+from milan.evaluation.sweep import Spread, Sweep
+from milan.evaluation.twice import Twice
 from milan.leaks.clusters import LeakReport
+from milan.llm.pricing import RATES
 
 console = Console()
 
@@ -255,6 +258,7 @@ def _short(identifier: str) -> str:
 MARKDOWN_OPEN = "<!-- generated: eval -->"
 MARKDOWN_CLOSE = "<!-- /generated -->"
 SWEEP_OPEN = "<!-- generated: sweep -->"
+CURVE_OPEN = "<!-- generated: curve -->"
 
 
 def evaluation_markdown(evaluation: Evaluation) -> str:
@@ -336,6 +340,76 @@ def sweep_markdown(result: Sweep) -> str:
     return "\n".join((SWEEP_OPEN, *header, *rows, MARKDOWN_CLOSE))
 
 
+def _cell(spread: Spread) -> str:
+    """One tier's reading of one measure, with what it was measured over.
+
+    A dash when the denominator is zero, never `0.0%`. The clean tier
+    generates nothing impossible, nothing merged and nothing mispriced, so
+    three of these measures have nothing to score there - and a percentage
+    printed over an empty denominator claims the system failed at work it was
+    never given.
+    """
+    if spread.denominator == 0:
+        return "[dim]-[/dim]"
+    return f"{spread.pooled:.1%} [dim]{spread.numerator}/{spread.denominator}[/dim]"
+
+
+def curve_table(result: Curve) -> Table:
+    """Every measure across every tier, side by side.
+
+    The rates are the smaller half of this table. The counts beside them are
+    what show the work increasing: clean has no impossible credits to refuse
+    and no leaks to catch, adversarial has both, and a reader comparing two
+    100% figures needs to see that they are not measurements of the same
+    thing.
+    """
+    table = Table(
+        title=(f"{len(result.seeds)} seeds per tier, {result.orders} orders each"),
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    # Not wrapped: "merged credits resolved" broken across two lines puts the
+    # second half of a measure name under the first tier's figure, which reads
+    # as a row of its own.
+    table.add_column("Measure", no_wrap=True)
+    for tier in result.tiers:
+        table.add_column(tier, justify="right")
+
+    for measure in result.measures():
+        table.add_row(measure, *(_cell(spread) for spread in result.row(measure)))
+
+    table.add_section()
+    table.add_row(
+        "rounding drift, gross",
+        *(format_inr(run.drift_gross) for run in result.sweeps),
+    )
+    return table
+
+
+def curve_markdown(result: Curve) -> str:
+    """The curve as markdown, on the same terms as the other two."""
+    header = (
+        "| Measure | " + " | ".join(result.tiers) + " |",
+        "|---" * (len(result.tiers) + 1) + "|",
+    )
+    rows = tuple(
+        "| "
+        + measure
+        + " | "
+        + " | ".join(
+            "-"
+            if spread.denominator == 0
+            else f"{spread.pooled:.1%} <sub>{spread.numerator}/{spread.denominator}</sub>"
+            for spread in result.row(measure)
+        )
+        + " |"
+        for measure in result.measures()
+    )
+    return "\n".join((CURVE_OPEN, *header, *rows, MARKDOWN_CLOSE))
+
+
 def ablation_table(result: Ablation) -> Table:
     """What the model was worth, next to what it cost.
 
@@ -376,6 +450,60 @@ def ablation_table(result: Ablation) -> Table:
         table.add_section()
         for kind, count in sorted(result.kinds.items(), key=lambda pair: -pair[1]):
             table.add_row(f"  proposed {kind}", str(count), "")
+
+    table.add_section()
+    table.add_row("tokens in", f"{result.prompt_tokens:,}", "")
+    table.add_row("  out", f"{result.completion_tokens:,}", "")
+    table.add_row("answers replayed from cache", f"{result.replayed}/{result.asked}", "")
+    # What the answers cost when they were produced, not what this run took.
+    # A replay is three seconds; saying so here would understate the work and
+    # make the cache look like a speedup rather than a record.
+    table.add_row("model time, as measured", f"{result.seconds:.1f}s", "")
+    # Zero, and it stays zero: a local model and free tiers. The projections
+    # below are what this volume would cost somebody who was billed for it,
+    # and each one carries the rate it was quoted at.
+    table.add_row("spent", "Rs 0.00", "")
+    for rate in RATES:
+        table.add_row(
+            f"  at {rate.label}",
+            f"${rate.project(result.prompt_tokens, result.completion_tokens)}",
+            f"[dim]{rate.source}, {rate.checked_on}[/dim]",
+        )
+    return table
+
+
+def twice_table(result: Twice) -> Table:
+    """The same questions, asked twice, side by side.
+
+    The rows are the evidence and the caption is the claim. A reader who only
+    reads the caption should still see the two columns disagreeing.
+    """
+    table = Table(
+        title=(
+            f"{result.provider}{f' - {result.model}' if result.model else ''}"
+            f" at temperature {result.temperature:g}, {result.difficulty} tier, "
+            f"{len(result.seeds)} seed{'s' if len(result.seeds) > 1 else ''}"
+        ),
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Credit", style="dim")
+    table.add_column("First answer")
+    table.add_column("Second answer")
+
+    for question in result.questions:
+        moved = question.changed
+        table.add_row(
+            _short(question.credit_id),
+            str(question.first),
+            f"[yellow]{question.second}[/yellow]" if moved else str(question.second),
+        )
+
+    table.add_section()
+    table.add_row("changed", f"{result.changed}/{result.asked}", "")
+    table.add_row("named a different record", str(result.different_records), "")
     return table
 
 

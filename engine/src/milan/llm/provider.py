@@ -65,6 +65,22 @@ class Completion(BaseModel):
     cached: bool = False
     latency_seconds: float = 0.0
 
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    """What the model actually consumed, read from the provider's own
+    counters rather than estimated from the text.
+
+    Carried because a cost figure has to be measured like everything else
+    here. Estimating tokens from characters would put a number in a table
+    that nobody could check against a bill, which is the same failure as
+    every other unmeasured claim in this project. Zero means the provider
+    did not report them - not that nothing was spent.
+    """
+
+    @property
+    def tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
     @property
     def answered(self) -> bool:
         """Whether a model actually said something.

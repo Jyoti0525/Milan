@@ -20,12 +20,15 @@ import pytest
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
 from milan.cli.render import (
+    CURVE_OPEN,
     MARKDOWN_CLOSE,
     MARKDOWN_OPEN,
     SWEEP_OPEN,
+    curve_markdown,
     evaluation_markdown,
     sweep_markdown,
 )
+from milan.evaluation.curve import curve
 from milan.evaluation.harness import evaluate
 from milan.evaluation.sweep import sweep
 
@@ -72,6 +75,20 @@ class TestTheReadmeIsCurrent:
         assert produced == _published_block(SWEEP_OPEN), (
             "README.md's pooled table is out of date. Refresh it with:\n"
             "  uv run milan sweep --seeds 20 --difficulty adversarial --markdown"
+        )
+
+    def test_the_curve_matches_a_fresh_run(self) -> None:
+        """The tier-by-tier table, on the same terms as the other two.
+
+        This one guards a claim rather than a figure: that accuracy degrades
+        on the two measures where the evidence thins and holds everywhere
+        else. A stale table could keep saying that after it stopped being
+        true.
+        """
+        produced = curve_markdown(curve(PUBLISHED_SEEDS, PUBLISHED.order_count)).strip()
+        assert produced == _published_block(CURVE_OPEN), (
+            "README.md's degradation curve is out of date. Refresh it with:\n"
+            "  uv run milan curve --seeds 20 --orders 600 --markdown"
         )
 
     def test_the_readme_says_how_many_seeds_it_pooled(self) -> None:

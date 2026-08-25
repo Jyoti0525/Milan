@@ -21,11 +21,13 @@ from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType
 from milan.domain.rates import RateCard
 from milan.evaluation.ablate import ablate
+from milan.evaluation.curve import curve
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.sweep import sweep
+from milan.evaluation.twice import run_twice
 from milan.leaks.clusters import summarise
 from milan.leaks.detector import detect
-from milan.llm.registry import available, resolve
+from milan.llm.registry import available, direct, resolve, unpinned
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
@@ -232,6 +234,35 @@ def sweep_command(
     console.print(render.sweep_table(result))
 
 
+@app.command(name="curve")
+def curve_command(
+    seeds: Annotated[int, typer.Option("--seeds", help="How many seeds per tier.")] = 20,
+    orders: Annotated[int, typer.Option("--orders", help="Orders per seed.")] = 600,
+    withholding: WithholdingOption = False,
+    markdown: Annotated[
+        bool, typer.Option("--markdown", help="Print the table as markdown, for the README.")
+    ] = False,
+) -> None:
+    """Score every tier over the same seeds, and put them side by side.
+
+    Every headline figure this project publishes comes from the adversarial
+    tier. That is the right choice for a single number and it says nothing
+    about the shape of the curve, which is the question a reader actually has:
+    does this hold up as the data gets worse, or was the hard tier never hard?
+
+    The answer is in the denominators. The clean tier generates no impossible
+    credits, no merged payouts and no mispriced rows, so three of these
+    measures have nothing to score there at all; the adversarial tier
+    generates all of them. Two rates of 100% are not the same measurement, and
+    the counts beside them are what shows it.
+    """
+    result = curve(tuple(range(1, seeds + 1)), orders, withholding)
+    if markdown:
+        print(render.curve_markdown(result))
+        return
+    console.print(render.curve_table(result))
+
+
 @app.command()
 def leaks(
     seed: SeedOption = 42,
@@ -264,6 +295,10 @@ def ablate_command(
     seeds: Annotated[int, typer.Option("--seeds", help="How many seeds to run.")] = 5,
     difficulty: DifficultyOption = Difficulty.ADVERSARIAL,
     orders: Annotated[int, typer.Option("--orders", help="Orders per seed.")] = 600,
+    model: Annotated[
+        str,
+        typer.Option("--model", help="Override the provider's model, to compare two."),
+    ] = "",
 ) -> None:
     """Measure what a model adds to the shortfall explanations.
 
@@ -285,8 +320,14 @@ def ablate_command(
         raise typer.Exit(code=2)
 
     built = resolve(provider)
-    model = getattr(built, "model", "")
-    result = ablate(built, difficulty, tuple(range(1, seeds + 1)), orders, model)
+    if model:
+        # Named on the command line rather than through the environment, so
+        # two models can be compared in two lines of shell history that say
+        # which was which. The cache keys on the model, so the second run
+        # does not replay the first one's answers.
+        _name_model(built, model)
+    chosen = model or getattr(built, "model", "")
+    result = ablate(built, difficulty, tuple(range(1, seeds + 1)), orders, chosen)
 
     if result.asked and not result.answered:
         console.print(
@@ -296,6 +337,83 @@ def ablate_command(
             "measured an absent model rather than a poor one."
         )
     console.print(render.ablation_table(result))
+
+
+@app.command(name="twice")
+def twice_command(
+    seeds: Annotated[int, typer.Option("--seeds", help="How many seeds to draw from.")] = 5,
+    difficulty: DifficultyOption = Difficulty.ADVERSARIAL,
+    orders: Annotated[int, typer.Option("--orders", help="Orders in the run.")] = 600,
+    provider: Annotated[str, typer.Option("--provider", help="Which model to ask.")] = "ollama",
+    temperature: Annotated[
+        float, typer.Option("--temperature", help="Sampling. Zero is greedy decoding.")
+    ] = 0.7,
+    questions: Annotated[
+        int, typer.Option("--questions", help="How many shortfalls to ask about. 0 for all.")
+    ] = 12,
+    pin: Annotated[
+        bool,
+        typer.Option(
+            "--pin/--no-pin",
+            help="Keep the sampler seed fixed, as every scored run does.",
+        ),
+    ] = True,
+) -> None:
+    """Ask a model the same questions twice, and see whether it agrees with itself.
+
+    The other half of the reproducibility argument. `milan reproduce` shows
+    that the same input produces the same books; this shows what happens when
+    the answers come from a model instead, which is the design this project
+    deliberately did not adopt.
+
+    Run without the cache in front of it, on purpose. Everywhere else a cached
+    answer is what makes a run with a model reproducible; here, replaying the
+    first answer would prove the point by refusing to run the experiment.
+    """
+    if provider not in available():
+        console.print(
+            f"[red]No provider called {provider!r}.[/] Registered: {', '.join(available())}."
+        )
+        raise typer.Exit(code=2)
+
+    built = direct(provider)
+    if not pin:
+        built = unpinned(built)
+    result = run_twice(
+        built,
+        seeds=tuple(range(1, seeds + 1)),
+        difficulty=difficulty,
+        orders=orders,
+        temperature=temperature,
+        limit=questions,
+        model=getattr(built, "model", ""),
+    )
+    if result.asked == 0:
+        console.print("[yellow]No shortfalls in this run to ask about.[/yellow]")
+        return
+
+    console.print(render.twice_table(result))
+    console.print()
+    pinning = "with the sampler seed pinned" if pin else "with the seed left to the daemon"
+    if result.stable:
+        console.print(
+            f"[green]Identical.[/green] At temperature {temperature:g} {pinning}, "
+            "this model repeated itself on every question."
+        )
+    else:
+        console.print(
+            f"[yellow]{result.changed} of {result.asked} answers moved[/yellow] between "
+            f"two passes over the same questions {pinning}, with no input changing. "
+            f"{result.different_records} named a different record the second time.\n"
+            "Milan's own output does not move: [dim]uv run milan reproduce[/dim]."
+        )
+
+
+def _name_model(provider: object, model: str) -> None:
+    """Point a provider at a different model, through its cache if it has one."""
+    target = getattr(provider, "inner", provider)
+    if hasattr(target, "model"):
+        target.model = model
 
 
 @app.command()

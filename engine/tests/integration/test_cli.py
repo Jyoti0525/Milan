@@ -76,6 +76,45 @@ class TestEveryCommandRuns:
         assert result.output.strip().endswith("<!-- /generated -->")
         assert "|---|" in result.output
 
+    def test_curve_scores_every_tier_and_dashes_the_empty_ones(self) -> None:
+        """The dash is the assertion. The clean tier generates nothing
+        impossible, so its refusal rate is 0/0 - and a percentage printed
+        over an empty denominator claims the system failed at work it was
+        never given."""
+        result = runner.invoke(app, ["curve", "--seeds", "2", "--orders", "150"])
+
+        assert result.exit_code == 0, result.output
+        for tier in ("clean", "realistic", "messy", "adversarial"):
+            assert tier in result.output
+        assert "leaks caught" in result.output
+        assert "-" in result.output
+
+    def test_curve_markdown_is_plain_and_fenced(self) -> None:
+        result = runner.invoke(app, ["curve", "--seeds", "2", "--orders", "150", "--markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert result.output.strip().startswith("<!-- generated: curve -->")
+        assert result.output.strip().endswith("<!-- /generated -->")
+
+    def test_twice_with_no_model_says_so_rather_than_claiming_stability(self) -> None:
+        """The `none` provider answers nothing, so both passes come back
+        `unknown` and nothing moves. That is a true statement about an absent
+        model and a false one about a present one, which is why the table
+        names the provider it asked."""
+        result = runner.invoke(
+            app,
+            ["twice", "--provider", "none", "--seeds", "1", "--questions", "3", "--orders", "150"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "none" in result.output
+
+    def test_an_unregistered_provider_is_refused_rather_than_ignored(self) -> None:
+        result = runner.invoke(app, ["twice", "--provider", "nope", "--seeds", "1"])
+
+        assert result.exit_code == 2
+        assert "No provider called" in result.output
+
     def test_withholding_is_accepted_and_changes_the_data(self, tmp_path: Path) -> None:
         """The flag that shipped broken.
 

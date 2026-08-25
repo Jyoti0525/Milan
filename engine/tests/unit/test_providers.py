@@ -17,10 +17,10 @@ from typing import Any
 
 import pytest
 
-from milan.llm.hosted import GeminiProvider, GroqProvider, _first_choice, _first_part
+from milan.llm.hosted import GeminiProvider, GroqProvider, _first_choice, _first_part, _usage
 from milan.llm.ollama import OllamaProvider
 from milan.llm.provider import NullProvider, Request
-from milan.llm.registry import available, resolve
+from milan.llm.registry import available, resolve, unpinned
 from milan.llm.transport import get_json, post_json
 
 UNREACHABLE = "http://127.0.0.1:1"
@@ -244,3 +244,109 @@ class TestTheHappyPathsNobodyRunsInCi:
             Request(prompt="why?", model="llama3:8b", max_tokens=16)
         )
         assert completion.model == "llama3:8b"
+
+
+class TestWhatItCostAndWhetherItCanBePinned:
+    """Two things that only matter because they are published.
+
+    The token counts are the measured half of the cost figure, and a provider
+    that quietly reported zero would make a run look cheaper than it was -
+    the direction an error is least likely to be questioned in. The seed is
+    the difference between a model that repeats itself and one that does not,
+    which is a claim this README makes in a table.
+    """
+
+    def test_ollama_reports_what_the_daemon_counted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "milan.llm.ollama.post_json",
+            lambda *_a, **_k: {
+                "response": "ok",
+                "prompt_eval_count": 601,
+                "eval_count": 22,
+            },
+        )
+        completion = OllamaProvider().complete(question())
+
+        assert completion.prompt_tokens == 601
+        assert completion.completion_tokens == 22
+        assert completion.tokens == 623
+
+    def test_a_missing_counter_is_zero_rather_than_a_crash(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Absent on some builds and on a response cut short. Bookkeeping
+        must never be able to fail a run."""
+        monkeypatch.setattr(
+            "milan.llm.ollama.post_json",
+            lambda *_a, **_k: {"response": "ok", "prompt_eval_count": "many"},
+        )
+        completion = OllamaProvider().complete(question())
+
+        assert completion.prompt_tokens == 0
+        assert completion.answered
+
+    def test_groq_reads_its_usage_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "milan.llm.hosted.post_json",
+            lambda *_a, **_k: {
+                "choices": [{"message": {"content": "answered"}}],
+                "usage": {"prompt_tokens": 700, "completion_tokens": 30},
+            },
+        )
+        completion = GroqProvider(api_key="test-key").complete(question())
+
+        assert (completion.prompt_tokens, completion.completion_tokens) == (700, 30)
+
+    def test_gemini_reads_its_differently_named_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Same two numbers, four different key names between the two APIs.
+        Worth a test precisely because a typo here reads as a free run."""
+        monkeypatch.setattr(
+            "milan.llm.hosted.post_json",
+            lambda *_a, **_k: {
+                "candidates": [{"content": {"parts": [{"text": "answered"}]}}],
+                "usageMetadata": {"promptTokenCount": 810, "candidatesTokenCount": 12},
+            },
+        )
+        completion = GeminiProvider(api_key="test-key").complete(question())
+
+        assert (completion.prompt_tokens, completion.completion_tokens) == (810, 12)
+
+    def test_a_rate_limit_body_reports_no_tokens_rather_than_raising(self) -> None:
+        assert _usage({"error": "slow down"}, "usage", "prompt_tokens", "completion_tokens") == (
+            0,
+            0,
+        )
+        assert _usage(None, "usage", "prompt_tokens", "completion_tokens") == (0, 0)
+
+    def test_the_seed_is_pinned_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, Any] = {}
+
+        def fake(url: str, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            captured["payload"] = payload
+            return {"response": "ok"}
+
+        monkeypatch.setattr("milan.llm.ollama.post_json", fake)
+        OllamaProvider().complete(question())
+
+        assert captured["payload"]["options"]["seed"] == 0
+
+    def test_unpinning_removes_it_entirely(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Removed rather than set to something else. A seed of -1 or of None
+        is a value some daemons accept and others reject; omitting the key is
+        the only way to mean "you choose" to all of them."""
+        captured: dict[str, Any] = {}
+
+        def fake(url: str, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            captured["payload"] = payload
+            return {"response": "ok"}
+
+        monkeypatch.setattr("milan.llm.ollama.post_json", fake)
+        provider = unpinned(OllamaProvider())
+        provider.complete(question())
+
+        assert "seed" not in captured["payload"]["options"]
+
+    def test_unpinning_a_provider_with_no_seed_is_not_an_error(self) -> None:
+        """Gemini has no seed parameter to unset. That is a fact about the
+        API rather than a case to work around, and it must not raise."""
+        assert unpinned(NullProvider()).complete(question()).text == ""

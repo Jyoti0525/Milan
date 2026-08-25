@@ -77,6 +77,50 @@ class TestTheCache:
         provider.complete(Request(prompt="p", temperature=0.7))
         assert inner.calls == 2
 
+    def test_two_models_answering_one_question_do_not_share_an_entry(self, tmp_path: Path) -> None:
+        """The bug this was written for, and where it would have surfaced.
+
+        A caller does not name a model; it asks a provider, and the provider
+        uses the one it was built with. So `Request.model` was empty on every
+        real request and the model was absent from the cache key - two
+        different models answering the same question shared one entry, and
+        the second replayed the first one's answer.
+
+        Invisible everywhere except the one experiment this cache exists to
+        make reproducible: a benchmark across model sizes would have printed
+        two identical columns and read as a finding.
+        """
+
+        class Sized:
+            """A provider that names its model, as the real ones do."""
+
+            name = "sized"
+
+            def __init__(self, model: str, answer: str) -> None:
+                self.model = model
+                self._answer = answer
+                self.calls = 0
+
+            def complete(self, request: Request) -> Completion:
+                del request
+                self.calls += 1
+                return Completion(text=self._answer, provider=self.name, model=self.model)
+
+        cache = ResponseCache(tmp_path)
+        small = Sized("qwen2.5:1.5b", "refund rfnd_a")
+        large = Sized("qwen2.5:3b", "refund rfnd_b")
+
+        # No model on the request, which is the shape every real caller
+        # sends: the triage asks a provider a question and leaves the choice
+        # of model to whatever it was configured with.
+        asked = Request(prompt="why is this credit short?")
+        first = CachedProvider(small, cache).complete(asked)
+        second = CachedProvider(large, cache).complete(asked)
+
+        assert small.calls == 1 and large.calls == 1
+        assert not second.cached
+        assert second.text != first.text
+
     def test_an_unanswered_completion_is_never_stored(self, tmp_path: Path) -> None:
         """Caching a failure would make an outage permanent."""
         cache = ResponseCache(tmp_path)

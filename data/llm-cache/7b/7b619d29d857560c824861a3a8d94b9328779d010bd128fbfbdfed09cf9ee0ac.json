@@ -1,0 +1,9 @@
+{
+  "text": "{\"kind\": \"unknown\", \"entity_id\": null}",
+  "provider": "ollama",
+  "model": "qwen2.5:1.5b",
+  "cached": false,
+  "latency_seconds": 0.27713880001101643,
+  "prompt_tokens": 594,
+  "completion_tokens": 13
+}

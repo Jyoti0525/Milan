@@ -43,6 +43,29 @@ def _unanswered(name: str, model: str, elapsed: float = 0.0) -> Completion:
     return Completion(text="", provider=name, model=model, latency_seconds=elapsed)
 
 
+def _usage(
+    answer: dict[str, Any] | None, block: str, prompt_key: str, output_key: str
+) -> tuple[int, int]:
+    """Both token counters out of a usage block, or zeros.
+
+    The two APIs disagree about every name here - `usage.prompt_tokens`
+    against `usageMetadata.promptTokenCount` - so the keys are arguments
+    rather than a shape. Same defensiveness as the text extractors: a
+    rate-limit body is valid JSON with none of these keys, and a cost figure
+    is never worth failing a run over.
+    """
+    if not isinstance(answer, dict):
+        return 0, 0
+    usage = answer.get(block)
+    if not isinstance(usage, dict):
+        return 0, 0
+    counted = []
+    for key in (prompt_key, output_key):
+        value = usage.get(key)
+        counted.append(value if isinstance(value, int) and value >= 0 else 0)
+    return counted[0], counted[1]
+
+
 class GroqProvider:
     """Groq's OpenAI-compatible chat endpoint."""
 
@@ -53,10 +76,14 @@ class GroqProvider:
         model: str | None = None,
         api_key: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
+        seed: int | None = 0,
     ) -> None:
         self.model = model or os.environ.get(GROQ_MODEL_ENV) or GROQ_DEFAULT_MODEL
         self._key = api_key or os.environ.get(GROQ_KEY_ENV) or ""
         self.timeout = timeout
+        self.seed = seed
+        """Fixed at zero, and honoured on a best-effort basis: Groq documents
+        `seed` as a hint rather than a guarantee. `None` omits it."""
 
     def ready(self) -> bool:
         return bool(self._key)
@@ -72,24 +99,30 @@ class GroqProvider:
             messages.append({"role": "system", "content": request.system})
         messages.append({"role": "user", "content": request.prompt})
 
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+        }
+        if self.seed is not None:
+            body["seed"] = self.seed
+
         answer = post_json(
             GROQ_URL,
-            {
-                "model": model,
-                "messages": messages,
-                "temperature": request.temperature,
-                "max_tokens": request.max_tokens,
-                "seed": 0,
-            },
+            body,
             timeout=self.timeout,
             headers={"Authorization": f"Bearer {self._key}"},
         )
         elapsed = time.perf_counter() - started
+        used = _usage(answer, "usage", "prompt_tokens", "completion_tokens")
         return Completion(
             text=_first_choice(answer),
             provider=self.name,
             model=model,
             latency_seconds=elapsed,
+            prompt_tokens=used[0],
+            completion_tokens=used[1],
         )
 
 
@@ -160,11 +193,14 @@ class GeminiProvider:
             headers={"x-goog-api-key": self._key},
         )
         elapsed = time.perf_counter() - started
+        used = _usage(answer, "usageMetadata", "promptTokenCount", "candidatesTokenCount")
         return Completion(
             text=_first_part(answer),
             provider=self.name,
             model=model,
             latency_seconds=elapsed,
+            prompt_tokens=used[0],
+            completion_tokens=used[1],
         )
 
 
