@@ -28,11 +28,10 @@ first-come. Order of iteration is not evidence.
 
 from __future__ import annotations
 
-from collections import defaultdict
-
 from milan.domain.records import BankCredit
 from milan.recon.batches import BatchGroup, GatewayBatch
-from milan.recon.matching.base import Attempt, Strategy, Verdict, Verifier, always_valid
+from milan.recon.matching.base import Attempt, Strategy, Verifier, always_valid
+from milan.recon.matching.claims import keep_stronger, resolve_collisions
 from milan.recon.matching.exact import ExactUtrStrategy
 from milan.recon.matching.fuzzy import FuzzyNarrationStrategy
 from milan.recon.matching.shortfall import ShortfallStrategy
@@ -106,7 +105,7 @@ class Cascade:
             available = tuple(b for b in batches if b.settlement_id not in claimed)
             attempts = {c.credit_id: strategy.attempt(c, available) for c in unresolved}
             attempts = self._withdraw_unprovable(attempts, unresolved, by_id)
-            settled = self._resolve_collisions(attempts)
+            settled = resolve_collisions(attempts)
 
             still_unresolved: list[BankCredit] = []
             for credit in unresolved:
@@ -115,7 +114,7 @@ class Cascade:
                     claimed.update(attempt.settlement_ids)
                     outcome[credit.credit_id] = attempt
                 else:
-                    outcome[credit.credit_id] = self._keep_stronger(
+                    outcome[credit.credit_id] = keep_stronger(
                         outcome.get(credit.credit_id), attempt
                     )
                     still_unresolved.append(credit)
@@ -151,71 +150,3 @@ class Cascade:
                     "this credit"
                 )
         return checked
-
-    def _resolve_collisions(self, attempts: dict[str, Attempt]) -> dict[str, Attempt]:
-        """Demote every credit involved in a contested settlement."""
-        contested: dict[str, list[str]] = defaultdict(list)
-        for credit_id, attempt in attempts.items():
-            for settlement_id in attempt.settlement_ids if attempt.resolved else ():
-                contested[settlement_id].append(credit_id)
-
-        disputed = {
-            settlement_id: credit_ids
-            for settlement_id, credit_ids in contested.items()
-            if len(credit_ids) > 1
-        }
-        if not disputed:
-            return dict(attempts)
-
-        blamed: dict[str, str] = {}
-        for settlement_id, credit_ids in sorted(disputed.items()):
-            for credit_id in credit_ids:
-                blamed.setdefault(credit_id, settlement_id)
-
-        resolved = dict(attempts)
-        for credit_id, settlement_id in blamed.items():
-            rivals = tuple(other for other in disputed[settlement_id] if other != credit_id)
-            resolved[credit_id] = attempts[credit_id].model_copy(
-                update={
-                    "verdict": Verdict.AMBIGUOUS,
-                    "settlement_ids": (),
-                    "candidates": (settlement_id,),
-                    "confidence": 0.0,
-                    "contested_by": rivals,
-                    "note": (
-                        f"{len(rivals) + 1} credits fit settlement {settlement_id} equally well"
-                    ),
-                }
-            )
-        return resolved
-
-    def _keep_stronger(self, previous: Attempt | None, current: Attempt) -> Attempt:
-        """Prefer the failure that says the most.
-
-        "Two settlements fit this" is a more useful thing to report than
-        "nothing fit", and it comes from a later rung that looked harder. The
-        exception queue reads better when the reason survives the cascade.
-
-        A withdrawn claim outranks both. It names a specific settlement, which
-        is what lets the categoriser say *why* the credit is short instead of
-        reporting that nothing matched.
-        """
-        if previous is None:
-            return current
-        merged = self._carry_withdrawal(previous, current)
-        if current.verdict is Verdict.AMBIGUOUS:
-            return merged
-        if previous.verdict is Verdict.AMBIGUOUS:
-            return previous.model_copy(update={"withdrawn_ids": merged.withdrawn_ids})
-        return merged
-
-    def _carry_withdrawal(self, previous: Attempt, current: Attempt) -> Attempt:
-        """Withdrawals survive later rungs.
-
-        A credit rejected at rung one and then failing rung three has still
-        been identified once, and that identification is the most specific
-        thing known about it.
-        """
-        if current.withdrawn_ids or not previous.withdrawn_ids:
-            return current
-        return current.model_copy(update={"withdrawn_ids": previous.withdrawn_ids})

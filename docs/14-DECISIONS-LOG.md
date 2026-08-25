@@ -717,3 +717,29 @@ If a decision is not here, it is not settled.
      visible answer would have understated a thinking model's cost by an order
      of magnitude, and it is not a coincidence that the error would have run
      in the flattering direction.
+175. **The word "cascade" is now a measurement, not modesty.** Cut rule 9 made
+     the vocabulary conditional on a benchmark that had never been run. It has
+     been run. An adaptive matcher over the same rungs, the same verifier and
+     the same scorer ties on three tiers, loses three attributions and three
+     named shortfalls on the adversarial one, and costs 2.0x the rung
+     attempts. The project keeps the less impressive noun because it earned
+     it.
+176. **The collision rule and the "keep the stronger failure" rule left the
+     cascade.** Both are about whether a claim may be believed and neither is
+     about which rung made it. A second control policy would otherwise have
+     imported private methods off a class it does not extend, or grown its own
+     copy - and a benchmark whose arms disagree about what a collision is
+     measures the disagreement.
+177. **A benchmark arm gets built to win.** The adaptive matcher was wrong
+     three times in the direction that flattered the cascade: it skipped the
+     similarity rung whenever no reference could be extracted, which is
+     exactly that rung's case; it had no way to break a collision on evidence
+     strength; and it never reconsidered a rung after losing one. Each cost it
+     accuracy that would have been published as a fact about adaptivity. A
+     strawman arm does not measure a policy, it measures the person who wrote
+     it.
+178. **The pipeline takes a `Matcher`, not a `Cascade`.** Typing the seam to
+     the protocol is what lets the benchmark run its alternative arm through
+     the same pipeline, the same prover and the same scorer. A benchmark that
+     reimplements the pipeline for one arm is comparing two pipelines.
+

@@ -21,6 +21,7 @@ from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType
 from milan.domain.rates import RateCard
 from milan.evaluation.ablate import ablate
+from milan.evaluation.control import compare
 from milan.evaluation.curve import curve
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.sweep import sweep
@@ -261,6 +262,40 @@ def curve_command(
         print(render.curve_markdown(result))
         return
     console.print(render.curve_table(result))
+
+
+@app.command(name="control")
+def control_command(
+    difficulty: DifficultyOption = Difficulty.ADVERSARIAL,
+    seeds: Annotated[int, typer.Option("--seeds", help="How many seeds to run.")] = 20,
+    orders: Annotated[int, typer.Option("--orders", help="Orders per seed.")] = 600,
+    markdown: Annotated[
+        bool, typer.Option("--markdown", help="Print the table as markdown, for the README.")
+    ] = False,
+) -> None:
+    """Settle whether this is a cascade or an agent, with a number.
+
+    The build order says that until an adaptive matcher has been measured
+    against the fixed one, this project calls itself a cascade and never an
+    agent. This is that measurement: the same rungs, the same verifier, the
+    same scorer, and the only difference is who decides what to try next.
+
+    Read the cost rows first. The accuracy rows are where the two policies
+    agree, and agreeing is the whole result - a policy that reaches identical
+    answers by asking the rungs twice as many times has not earned the more
+    impressive noun.
+    """
+    result = compare(difficulty, tuple(range(1, seeds + 1)), orders)
+    if markdown:
+        print(render.control_markdown(result))
+        return
+    console.print(render.control_table(result))
+    if not result.accuracy_matches:
+        console.print(
+            "\n[yellow]The two policies do not agree.[/yellow] Every measure above is "
+            "pooled over the same seeds, so a difference here is the control policy "
+            "and nothing else."
+        )
 
 
 @app.command()

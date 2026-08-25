@@ -1659,3 +1659,75 @@ Total spent across every run in this section: **Rs 0.00.**
 
 532 tests, 97% coverage. Every hosted answer is committed, so all four columns
 replay with no key and no GPU.
+
+---
+
+# Day 11 - the word "cascade", settled
+
+Build order item 21b. The only unbuilt item that changed what the submission
+is allowed to say: cut rule 9 makes the vocabulary conditional on a benchmark
+that had never been run.
+
+## What was built
+
+An adaptive matcher over the same five rungs, behind the same `Matcher`
+protocol the pipeline now takes, so both arms run through the same pipeline,
+the same prover and the same scorer. It walks credit-first rather than
+rung-first, routes on three cheap features - is there a reference in the
+narration, is this bigger than any single payout, is it near a settlement date
+- skips rungs that cannot succeed on the evidence a credit carries, and
+re-passes until nothing new resolves.
+
+Cost is counted from outside both policies, by wrapping each rung. A policy
+that reports its own effort can be wrong about it in the direction that
+flatters it.
+
+## The result
+
+Pooled over 20 seeds at 600 orders:
+
+| tier | accuracy | attempts | time |
+|---|---|---|---|
+| clean | identical | 1.00x | 1.75x |
+| realistic | identical | 1.56x | 4.34x |
+| messy | identical | 1.73x | 4.04x |
+| adversarial | **worse** - 496/509 vs 499/509 attributed, 107/120 vs 110/120 named | **2.00x** | 4.19x |
+
+It never wins on any measure on any tier, and never asks for less work.
+
+## Why, which is worth more than the result
+
+Three times the adaptive arm fell behind, and three times the repair was to
+hand it something the fixed order provides for free:
+
+1. **An evidence rank to break collisions.** Under a fixed order a
+   reference claim is banked before an amount claim is ever made, so claims of
+   unequal strength never meet. Routing per credit manufactures exactly those
+   meetings.
+2. **Blocking a rung after losing a collision.** The cascade calls this
+   "falling through to the next rung".
+3. **Repeated passes.** The cascade calls this "one pass, rung by rung".
+
+**Choosing per credit destroys the global ordering that made choosing
+unnecessary**, and the fix is to reintroduce that ordering by hand and pay for
+it twice.
+
+## Three ways the arm was a strawman before it was a benchmark
+
+Each of these cost the adaptive arm accuracy, and each would have been
+published as a fact about adaptivity rather than about a bug in one router.
+
+- **It skipped the similarity rung whenever no reference could be
+  extracted.** That reads plausibly and is backwards: the rung scores the raw
+  narration against each candidate's reference, so a reference damaged past
+  recognition is precisely its case. Cost: nine matches.
+- **It had no way to break a collision on evidence strength**, so a
+  strong claim and a weak one on the same settlement refused each other.
+- **It never reconsidered a rung after losing a collision**, so every
+  subsequent pass made the identical losing claim and the loop broke having
+  learned nothing.
+
+Only after all three were fixed did the arm reach the cascade's answers - at
+twice the cost. That is the finding, and it is a stronger one than the first
+draft's nine-match gap would have been.
+

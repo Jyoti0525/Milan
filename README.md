@@ -490,6 +490,61 @@ Four of those eleven blamed a different refund the second time. On a system
 that let the model conclude, that is two different sets of books from one
 input.
 
+## Cascade, not agent - and that is a measurement
+
+This project calls itself a cascade: five rungs tried in a fixed order, no
+planning, no choice about what to try next. That is a less impressive noun
+than the alternative, and the build order's own cut rule says it has to be
+earned - **until an adaptive matcher has been measured against the fixed one,
+this is a cascade and never an agent.**
+
+So here is the adaptive matcher, written to win if it could. Same rungs, same
+verifier, same scorer; the only difference is who decides what to try next. It
+routes per credit on three cheap features, skips rungs that cannot succeed on
+the evidence a credit carries, keeps state about which rungs are spent, and
+re-passes until nothing new resolves.
+
+<!-- generated: control -->
+| Measure | cascade (fixed order) | adaptive (routed per credit) |
+|---|---|---|
+| match rate | 100.0% (389/389) | 100.0% (389/389) |
+| settlement attributed | 98.0% (499/509) | 97.4% (496/509) |
+| precision | 100.0% (389/389) | 100.0% (389/389) |
+| refusal rate | 100.0% (200/200) | 100.0% (200/200) |
+| shortfalls named | 91.7% (110/120) | 89.2% (107/120) |
+| merged credits resolved | 100.0% (120/120) | 100.0% (120/120) |
+| **rung attempts** | **2,488** | **4,975** |
+| **matching time** | **0.64s** | **3.63s** |
+<!-- /generated -->
+
+```bash
+uv run milan control --seeds 20 --orders 600
+```
+
+**It never wins.** It ties on the three easier tiers, loses three attributions
+and three named shortfalls on the adversarial one, and asks the rungs for
+**twice the work** to get there. On the clean tier the two are identical at
+1.00x - every credit resolves at rung one, so there is nothing to route.
+
+The reason is worth more than the result. Each time the adaptive arm fell
+behind, the repair was to hand it something the fixed order was already
+providing for free:
+
+| what had to be added | what the cascade gets for nothing |
+|---|---|
+| an evidence rank to break collisions | rung order - a reference claim is banked before an amount claim is made |
+| blocking a rung after a lost collision | falling through to the next rung |
+| repeated passes until nothing changes | one pass, rung by rung |
+
+**Choosing per credit destroys the global ordering that made choosing
+unnecessary.** A weak-evidence claim and a strong-evidence one never meet
+under a fixed order, because the strong one is already settled; routing
+manufactures exactly those collisions and then needs a priority rule to undo
+them - and that priority rule is the cascade's rung order, reintroduced by
+hand and paid for twice.
+
+That is why the word here is cascade. Not modesty - arithmetic.
+
 ## Design stance
 
 **Precision beats recall.** A wrong silent match corrupts a merchant's books.

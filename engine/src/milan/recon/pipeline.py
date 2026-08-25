@@ -37,7 +37,7 @@ from milan.domain.results import Proof, ReconException, ReconReport, UnprovenCre
 from milan.leaks.detector import detect
 from milan.recon.batches import BatchGroup, GatewayBatch, rebuild_batches
 from milan.recon.inputs import ReconInput
-from milan.recon.matching.base import Attempt
+from milan.recon.matching.base import Attempt, Matcher
 from milan.recon.matching.cascade import Cascade
 from milan.recon.triage import Categoriser
 from milan.recon.waterfall import provable, prove
@@ -54,7 +54,14 @@ class RunMetadata:
 class ReconciliationPipeline:
     """Runs one reconciliation over one set of inputs."""
 
-    def __init__(self, rates: RateCard | None = None, cascade: Cascade | None = None) -> None:
+    def __init__(self, rates: RateCard | None = None, cascade: Matcher | None = None) -> None:
+        """The pipeline takes any control policy, and defaults to the cascade.
+
+        Typed as `Matcher` rather than `Cascade` so the benchmark can hand it
+        an adaptive policy and have every number downstream produced by the
+        same code. A benchmark that reimplements the pipeline to run its
+        alternative arm is measuring two pipelines.
+        """
         self._rates = rates if rates is not None else RateCard()
         self._cascade = cascade if cascade is not None else Cascade()
         self._categoriser = Categoriser(self._rates)

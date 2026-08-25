@@ -104,6 +104,28 @@ class Strategy(Protocol):
         ...
 
 
+class Matcher(Protocol):
+    """A control policy over the rungs.
+
+    The cascade is one of these and is the only one that runs in production.
+    The seam exists because "a fixed sequence is enough" is a claim this
+    project makes in prose, and a claim that cannot be contradicted by an
+    alternative implementation is not a measurement. Anything satisfying this
+    can be handed to the pipeline and scored by the same harness, which is
+    what makes the comparison about the policy rather than about the rungs.
+    """
+
+    def with_verifier(self, verifier: Verifier) -> Matcher:
+        """The same policy, answerable to a proof."""
+        ...
+
+    def run(
+        self, credits: tuple[BankCredit, ...], batches: tuple[GatewayBatch, ...]
+    ) -> dict[str, Attempt]:
+        """Return the final attempt for every credit, resolved or not."""
+        ...
+
+
 class Verifier(Protocol):
     """Checks a claim before the cascade accepts it.
 

@@ -73,7 +73,7 @@ class Sweep(BaseModel):
         return next(spread for spread in self.spreads if spread.name == name)
 
 
-def _spread(name: str, pairs: list[tuple[int, int]]) -> Spread:
+def pool(name: str, pairs: list[tuple[int, int]]) -> Spread:
     """Pool the counts; report the range of the per-seed rates beside them."""
     numerator = sum(hit for hit, _ in pairs)
     denominator = sum(total for _, total in pairs)
@@ -113,34 +113,34 @@ def sweep(
         seeds=seeds,
         orders=orders,
         spreads=(
-            _spread("match rate", [(c.true_positives, c.matchable) for c in cards]),
-            _spread(
+            pool("match rate", [(c.true_positives, c.matchable) for c in cards]),
+            pool(
                 "settlement attributed",
                 [(c.attributed, c.matchable + c.unprovable_expected) for c in cards],
             ),
-            _spread(
+            pool(
                 "precision",
                 [(c.true_positives, c.true_positives + c.false_positives) for c in cards],
             ),
-            _spread("refusal rate", [(c.correct_refusals, c.impossible) for c in cards]),
-            _spread(
+            pool("refusal rate", [(c.correct_refusals, c.impossible) for c in cards]),
+            pool(
                 "shortfalls named",
                 [(c.unprovable_explained, c.unprovable_expected) for c in cards],
             ),
-            _spread("leaks caught", [(c.leaks_found, c.leaks_expected) for c in cards]),
-            _spread(
+            pool("leaks caught", [(c.leaks_found, c.leaks_expected) for c in cards]),
+            pool(
                 "leak precision",
                 [(c.leaks_found, c.leaks_found + c.leaks_false) for c in cards],
             ),
-            _spread(
+            pool(
                 "merged credits resolved",
                 [(c.merged_resolved, c.merged_expected) for c in cards],
             ),
-            _spread(
+            pool(
                 "missing payouts flagged",
                 [(c.missing_settlements_detected, c.missing_settlements_expected) for c in cards],
             ),
-            _spread(
+            pool(
                 "unsettled payments flagged",
                 [(c.unreported_payments_detected, c.unreported_payments_expected) for c in cards],
             ),

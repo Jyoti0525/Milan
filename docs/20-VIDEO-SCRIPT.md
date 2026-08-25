@@ -191,6 +191,15 @@ uv run milan twice --seeds 6 --questions 30 --temperature 0.7 --no-pin
 their vendors between being wired in and being run — so the tool now checks the
 model against the key's live catalogue, not just that a key is set."*
 
+**If you have 30**, this is the better spend:
+
+> "One more. Everyone calls these things agents. So I built the agent version -
+> same rungs, same verifier, but it picks what to try next per record instead
+> of running a fixed order. It never won. It ties on three difficulty tiers,
+> loses on the hardest one, and asks the matchers for twice the work to get
+> there. Every fix it needed was me handing back something the fixed order was
+> already doing for free. That is why this is called a cascade."
+
 ## 4:30 – 5:00 · Close
 
 **On screen:** terminal.
@@ -224,8 +233,10 @@ section, or the eleven-of-thirty result. Those four are the submission.
 
 ## What not to say
 
-- Do not call it an agent. The cascade-vs-adaptive benchmark has not been run,
-  and the build order's own cut rule says that until it is, this is a cascade.
+- Do not call it an agent. The benchmark has now been run and it says cascade:
+  adaptive control ties on three tiers, loses on the fourth, and costs twice
+  the rung attempts. The word is a measurement now, so using the other one
+  would contradict a table in our own README.
 - Do not say "100% accurate". Say what the denominator is: *a hundred percent
   of the credits that are matchable and provable*, which is what the README
   says.

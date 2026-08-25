@@ -108,6 +108,27 @@ class TestEveryCommandRuns:
         assert result.output.strip().startswith("<!-- generated: curve -->")
         assert result.output.strip().endswith("<!-- /generated -->")
 
+    def test_control_puts_both_policies_side_by_side(self) -> None:
+        """The cost rows are the point, so the assertion is on those.
+
+        Two policies that agree on every accuracy row look like a table with
+        nothing in it until you read the two rows underneath the rule.
+        """
+        result = runner.invoke(app, ["control", "--seeds", "2", "--orders", "150"])
+
+        assert result.exit_code == 0, result.output
+        assert "cascade" in result.output
+        assert "adaptive" in result.output
+        assert "rung attempts" in result.output
+        assert "matching time" in result.output
+
+    def test_control_markdown_is_plain_and_fenced(self) -> None:
+        result = runner.invoke(app, ["control", "--seeds", "2", "--orders", "150", "--markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert result.output.strip().startswith("<!-- generated: control -->")
+        assert result.output.strip().endswith("<!-- /generated -->")
+
     def test_twice_with_no_model_says_so_rather_than_claiming_stability(self) -> None:
         """The `none` provider answers nothing, so both passes come back
         `unknown` and nothing moves. That is a true statement about an absent

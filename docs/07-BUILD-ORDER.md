@@ -115,7 +115,9 @@ nice-to-have — never the submission.
 8. **The LLM-matcher ablation is NOT cut.** It is a few hours and it is the
    single strongest answer to "why so little AI". Cut PDF parsing before it.
 9. If the cascade-vs-adaptive benchmark is not run, **we call it a cascade**,
-   never an agent.
+   never an agent. — **Run on day 11. It is a cascade.** Adaptive control ties
+   on three tiers, loses on the fourth, and costs 2.0x the rung attempts. The
+   name is now a measurement rather than a caution: `milan control`.
 
 ## Definition of done for each component
 

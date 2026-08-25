@@ -821,3 +821,143 @@ neither thumb can reach the scale.
 
 The second failure is a cost figure with no rate and no date beside it. A
 projected price is a claim about someone else's price list, and it goes stale.
+
+
+---
+
+# Days 11-15 - the deferred list, reopened
+
+Every item below was deferred on a reason that is written down above. This
+section does not delete those reasons; it says which of them stopped being
+good enough once there was time, and which are being built *differently* from
+how they were originally scoped because the original scope was the problem.
+
+**The engine is submittable today.** That is the constraint this plan is
+ordered around. Every item is independently shippable and nothing here can
+leave the repository in a half-state, so work can stop at any point and the
+submission is still whole. Where an item changes something the video shows,
+it says so, because a re-record is a real cost and finding out afterwards is
+how a deadline gets eaten.
+
+## The two pass/fail deliverables come first in priority, last in sequence
+
+The video and the form are the only things that fail the submission by being
+absent. They are recorded *after* the build settles, because re-recording a
+five-minute take because a screen changed is the most expensive mistake
+available here. The safety valve is a checkpoint: if 2 September arrives with
+work outstanding, everything unfinished is abandoned where it stands and the
+video is recorded against what exists.
+
+## Order of work
+
+### 21b - the cascade-vs-adaptive benchmark
+
+The only item that changes what this project is **allowed to say**. Cut rule 9
+is unambiguous: until this runs, it is a cascade and never an agent.
+
+The claim to test is the one in `cascade.py`'s own docstring - that a fixed
+sequence of rungs, tried in order, does as well as something that chooses. So
+the comparison is against an adaptive matcher that picks its next rung from
+the state of the credit, and the honest outcome is whichever way it falls:
+
+- [x] An adaptive matcher behind the same `Strategy` seam and the same verifier
+- [x] Both scored by the existing harness, pooled across seeds, on every tier
+- [x] Report cost as well as accuracy - an adaptive matcher that ties on
+      accuracy and costs more attempts has lost
+- [x] Whichever wins, the docstring stops arguing and cites the measurement
+
+**Done, and the cascade keeps its name.** Adaptive ties on clean, realistic
+and messy; loses three attributions and three named shortfalls on adversarial;
+and costs 2.0x the rung attempts everywhere it matters. `milan control`.
+
+The reason is the part worth keeping: every repair the adaptive arm needed was
+a reintroduction of something the fixed order supplies for free - an evidence
+rank for collisions, a spent-rung block, repeated passes. Choosing per credit
+destroys the global ordering that made choosing unnecessary.
+
+It also took three attempts to stop the arm being a strawman, and each of the
+three failures flattered the cascade. That is recorded in
+[18-BUILD-LOG.md](18-BUILD-LOG.md) rather than smoothed over, because a
+benchmark whose alternative arm was written to lose measures its author.
+
+### Route, Smart Collect and QR pricing (item 10, reopened)
+
+Deferred as "more rates in the same waterfall, no new class of problem". That
+was true of the rates and false of one of the products: Route splits a single
+payment across multiple accounts, so one payment becomes several settlement
+rows and the leak detector's assumption of one fee per payment stops holding.
+
+- [ ] `RateCard` gains the three rate families with their real slabs
+- [ ] Route's split-payment shape in the generator, as a distinct defect class
+- [ ] Confirm the oracle still balances with splits present
+- [ ] Confirm the leak detector reads a split row against the right contract
+
+### Instant settlement timing (item 11, reopened)
+
+Deferred as a merchant attribute rather than a defect. It is both: a payout
+arriving in minutes lands *outside* the T+2 window `AmountDateStrategy` uses,
+which means the deferral was resting on the date tolerance absorbing it - an
+assumption never tested.
+
+- [ ] Instant-settlement merchants in the generator
+- [ ] Measure what the existing date window does with them before changing it
+- [ ] Widen or split the window on that evidence, not before
+
+### The queue at scale, and case state
+
+Two items that were cut for the same reason - a demo of 37 cases does not need
+them - and that reason is about the demo rather than about the product.
+
+- [ ] Filter and search over the queue, measured against a 400-case run
+- [ ] **Real** case state: assign, resolve with a reason, reopen. Persisted,
+      audited, and never a button that changes nothing. The original objection
+      was to a fake control, and it stands - what is being built here is the
+      control it was pretending to be.
+
+### The ITC / monthly tax view (item 20)
+
+Cut rule 5 called this the nicest-to-have and it was cut first of all. The
+numbers behind it already exist and are already split correctly per finding;
+what is missing is the month view a registered merchant would actually file
+from.
+
+- [ ] Monthly GST summary: charged, recoverable as ITC, permanently lost
+- [ ] Tied to the same figures the leak findings report, not recomputed
+
+### The Q&A agent (item 16)
+
+Cut rule 4 traded this against leak detection and the trade was right. With
+both affordable, the rule that governs it is the one from day 8, unchanged:
+**a model may propose, only arithmetic may conclude.** A Q&A surface that
+computes an answer is the one thing this project claims never to do.
+
+- [ ] Questions answered by retrieving computed figures, never by arithmetic
+      performed in a completion
+- [ ] Refusal when the figure does not exist, rather than an approximation
+- [ ] Measured: answer accuracy against the answer key, and refusal correctness
+
+### Distribution (items 26, 27, 28)
+
+Changes who can run this, not what it does. Last for that reason.
+
+- [ ] Dockerfile
+- [ ] Static demo deploy - needs a snapshot API, since there is no server
+- [ ] The Chaos Engine dataset published, with its generator config beside it
+
+### 21c - PDF bank statements
+
+The most expensive item left and the one cut rule 8 named explicitly. Only if
+everything above lands with days to spare.
+
+- [ ] Render synthetic statements to PDF, which makes the ground truth free
+- [ ] Parse text-PDFs only, and refuse scans rather than guessing at them
+
+## What would make these days a failure
+
+Shipping any of this at a lower standard than days 1-10 held, because it was
+optional. An untested feature added in the last week is worse than an absent
+one: the absence is recorded as a decision, and the untested feature is a
+claim nobody checked.
+
+The second failure is subtler and more likely - **letting this list eat the
+video.** Every item here is optional. Neither deliverable is.

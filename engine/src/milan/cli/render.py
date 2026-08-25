@@ -15,6 +15,7 @@ from rich.table import Table
 from milan.domain.money import Paise, format_inr
 from milan.domain.results import Proof, ReconReport
 from milan.evaluation.ablation import Ablation
+from milan.evaluation.control import Comparison
 from milan.evaluation.curve import Curve
 from milan.evaluation.harness import Evaluation
 from milan.evaluation.metrics import Scorecard
@@ -574,3 +575,67 @@ def leak_report(report: LeakReport) -> Table:
     table.add_row("GST charged on those fees", "", format_inr(report.gst))
     table.add_row("  recoverable as input tax credit", "", "")
     return table
+
+
+CONTROL_OPEN = "<!-- generated: control -->"
+
+
+def control_table(result: Comparison) -> Table:
+    """Both control policies, on accuracy and on cost.
+
+    The accuracy rows are the boring half and that is the finding. What the
+    reader is meant to look at is the two rows under the rule: the same
+    answers, reached by asking the rungs twice as many times.
+    """
+    table = Table(
+        title=(f"{result.difficulty}, {len(result.seeds)} seeds, {result.orders} orders each"),
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Measure", no_wrap=True)
+    for arm in result.arms:
+        table.add_column(arm.label, justify="right")
+
+    for measure in result.measures:
+        table.add_row(measure, *(_cell(arm.named(measure)) for arm in result.arms))
+
+    table.add_section()
+    table.add_row("rung attempts", *(f"{arm.attempts:,}" for arm in result.arms))
+    table.add_row("  per credit", *(f"{arm.attempts_per_credit:.2f}" for arm in result.arms))
+    table.add_row("matching time", *(f"{arm.seconds:.2f}s" for arm in result.arms))
+    return table
+
+
+def control_markdown(result: Comparison) -> str:
+    """The comparison as markdown, on the same terms as the other tables."""
+    header = (
+        "| Measure | " + " | ".join(arm.label for arm in result.arms) + " |",
+        "|---" * (len(result.arms) + 1) + "|",
+    )
+    rows = [
+        "| "
+        + measure
+        + " | "
+        + " | ".join(
+            "-"
+            if arm.named(measure).denominator == 0
+            else (
+                f"{arm.named(measure).pooled:.1%} "
+                f"({arm.named(measure).numerator}/{arm.named(measure).denominator})"
+            )
+            for arm in result.arms
+        )
+        + " |"
+        for measure in result.measures
+    ]
+    rows.append(
+        "| **rung attempts** | " + " | ".join(f"**{arm.attempts:,}**" for arm in result.arms) + " |"
+    )
+    rows.append(
+        "| **matching time** | "
+        + " | ".join(f"**{arm.seconds:.2f}s**" for arm in result.arms)
+        + " |"
+    )
+    return "\n".join((CONTROL_OPEN, *header, *rows, MARKDOWN_CLOSE))

@@ -187,6 +187,30 @@ the commit that fixed it — pick three or four and cut the rest.)*
 > disagreements, so this rate is a floor, not an estimate."* The silent version
 > of that sentence is how 2.7% got printed in the first place.
 >
+> **I built the agent version to check whether I needed one.**
+>
+> Everything here runs as a fixed cascade of five matching rungs, and I had
+> been defending that in prose - my own build rules said that until an
+> adaptive matcher was measured against it, I had to call this a cascade and
+> never an agent. So I built the adaptive one: same rungs, same verifier, same
+> scorer, and the only difference is that it chooses what to try next per
+> record instead of running a fixed order.
+>
+> It never won. It ties on three difficulty tiers, loses three attributions
+> and three named shortfalls on the hardest one, and asks the rungs for twice
+> the work to get there. What makes it a finding rather than a null result is
+> *why*: every repair the adaptive arm needed was me handing back something
+> the fixed order supplies for free - a priority rule for collisions, a
+> spent-rung block, repeated passes. Choosing per record destroys the global
+> ordering that made choosing unnecessary.
+>
+> It also took three tries to stop that arm being a strawman, and all three
+> failures happened to flatter the cascade. The worst skipped the fuzzy-match
+> rung whenever no clean reference could be extracted, which is exactly the
+> case that rung exists for. A benchmark whose losing arm was written to lose
+> measures its author, so those three are in the build log rather than
+> smoothed away.
+>
 > **What I did not build, and why.**
 >
 > I planned to use Splink, a probabilistic record-linkage library, for fuzzy
@@ -212,7 +236,9 @@ the commit that fixed it — pick three or four and cut the rest.)*
 
 If the field is short, use these three in this order: **the oracle test**, **the
 number that was measuring the wrong thing**, and **the rate limit that printed
-itself as an agreement rate**. They cover all four rubric lines — build quality,
+itself as an agreement rate**. If there is room for a fourth, add **the agent
+version that lost** - it is the only one that answers "why so little AI" with
+a table instead of an argument. They cover all four rubric lines — build quality,
 problem taste, AI judgment, failure recovery — in about two hundred words, and
 the third one is the most quotable: *a crash gets investigated, a percentage
 gets published.*
