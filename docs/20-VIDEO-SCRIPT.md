@@ -210,7 +210,7 @@ uv run milan reproduce --seed 42 --difficulty adversarial --orders 600
 
 > "Same seed, same digest, every time. *Identical.*
 >
-> Five hundred and eleven tests, ninety-seven percent coverage. Every dataset is
+> Five hundred and fifty-four tests, ninety-seven percent coverage. Every dataset is
 > a pure function of its seed, so nothing is stored in the repository and
 > anything on screen can be regenerated on your machine in one command — including
 > the model's answers, which are committed so you can replay the ablation with no
