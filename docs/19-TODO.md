@@ -629,3 +629,73 @@ named shortfall with equal authority. It does not deserve equal authority. One
 named against a settlement the reference rung identified is a fact; one named
 against a settlement this rung found nearby on the right date is an argument
 at 35% confidence. Both now say which they are.
+
+
+---
+
+# Day 9 - the money that is wrong while everything balances
+
+## Why this is the differentiator, stated precisely
+
+Every number this project has published so far answers *did the payout
+arrive*. Leak detection answers a different question: **the payout arrived,
+in full, and the merchant was still robbed.**
+
+A domestic consumer card is contracted at 2%. The gateway charges 2.15%. The
+settlement row foots, the batch total foots, the bank credit matches to the
+paisa, and the reconciliation is clean. There is nothing unmatched to notice,
+which is exactly why no matcher on earth finds this - and why it survives in
+real merchant accounts for years.
+
+The generator has been injecting these since day 1 and **no code has ever
+read them.** `LeakTruth` is written into every answer key and only
+`test_chaos_engine.py` has ever looked at it.
+
+| tier | leaks in 5 seeds | overcharged |
+|---|---|---|
+| clean | 0 | Rs 0.00 |
+| realistic | 0 | Rs 0.00 |
+| messy | 102 | Rs 376.97 |
+| adversarial | 179 | Rs 683.85 |
+
+About 36 a run, and the engine currently finds none of them.
+
+## How it is detected
+
+Not by matching. By reading one row against the contract:
+
+    expected = platform_rate(row.method, row.card_type) applied to row.amount
+    leak     = row.fee != expected
+
+The row declares a domestic consumer card and carries a corporate-rate fee,
+so the report contradicts itself on a single line. Deterministic, no model,
+and the answer key makes it measurable rather than demonstrable.
+
+**Report the GST correctly or the figure is wrong.** GST is charged on the
+inflated fee, so the cash leaving the merchant is the overcharge plus 18% of
+it. For a GST-registered merchant that 18% is recoverable as input tax
+credit, so the *permanent* loss is the overcharge alone. Publishing the
+larger number without that distinction would be overstating the harm, which
+is the same sin as understating it.
+
+## The order of work
+
+- [ ] `milan/leaks/detector.py` - find rate mismatches against the rate card
+- [ ] Scored against `LeakTruth`: found, missed, and **false leaks**, because
+      accusing a gateway of overcharging when it did not is the expensive
+      mistake here
+- [ ] Root-cause clustering: 36 rows become "every corporate-rate charge on a
+      domestic consumer card, 36 payments, Rs X". A list is not a finding.
+- [ ] Both figures in the eval harness and the sweep, per the definition of
+      done
+- [ ] `milan leaks` on the CLI
+- [ ] Surface it in the queue, because this is what carries the video
+- [ ] Tests, including the two that matter: a clean tier reports no leaks at
+      all, and a leak is still found when the batch balances perfectly
+
+## What would make this day a failure
+
+Reporting a leak that is not one. A false exception costs somebody five
+minutes; a false accusation of overcharging costs them a call with their
+account manager and their credibility. The precision bar here is higher than
+anywhere else in the project, not lower.

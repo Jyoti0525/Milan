@@ -18,10 +18,13 @@ from milan.chaos.generator import ChaosEngine
 from milan.cli import render
 from milan.cli.render import console
 from milan.domain.dataset import Dataset
+from milan.domain.enums import EntityType
 from milan.domain.rates import RateCard
 from milan.evaluation.ablate import ablate
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.sweep import sweep
+from milan.leaks.clusters import summarise
+from milan.leaks.detector import detect
 from milan.llm.registry import available, resolve
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
@@ -227,6 +230,29 @@ def sweep_command(
         print(render.sweep_markdown(result))
         return
     console.print(render.sweep_table(result))
+
+
+@app.command()
+def leaks(
+    seed: SeedOption = 42,
+    difficulty: DifficultyOption = Difficulty.ADVERSARIAL,
+    data_root: RootOption = None,
+) -> None:
+    """Find money that is wrong while the books balance.
+
+    Every other command in this tool asks whether a payout arrived. This one
+    asks whether it should have been that size, and it is the only question
+    here that still has an answer when the reconciliation is perfectly clean:
+    a card contracted at 2% charged at 2.15% leaves a settlement report that
+    foots, a batch that balances, and a bank credit that proves to the paisa.
+
+    Nothing is unmatched, so no matcher can see it. It is found by reading a
+    row against the contract instead of against another row.
+    """
+    dataset = _load(data_root, seed, difficulty)
+    payments = [row for row in dataset.settlement_rows if row.type is EntityType.PAYMENT]
+    report = summarise(detect(tuple(dataset.settlement_rows), RateCard()), len(payments))
+    console.print(render.leak_report(report))
 
 
 @app.command(name="ablate")

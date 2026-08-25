@@ -127,6 +127,11 @@ def sweep(
                 "shortfalls named",
                 [(c.unprovable_explained, c.unprovable_expected) for c in cards],
             ),
+            _spread("leaks caught", [(c.leaks_found, c.leaks_expected) for c in cards]),
+            _spread(
+                "leak precision",
+                [(c.leaks_found, c.leaks_found + c.leaks_false) for c in cards],
+            ),
             _spread(
                 "merged credits resolved",
                 [(c.merged_resolved, c.merged_expected) for c in cards],

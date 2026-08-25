@@ -18,6 +18,7 @@ from milan.evaluation.ablation import Ablation
 from milan.evaluation.harness import Evaluation
 from milan.evaluation.metrics import Scorecard
 from milan.evaluation.sweep import Sweep
+from milan.leaks.clusters import LeakReport
 
 console = Console()
 
@@ -172,6 +173,19 @@ def scorecard_detail(card: Scorecard) -> Table:
         f"{card.attributed}/{card.matchable + card.unprovable_expected} "
         f"({card.attribution_rate:.1%})",
     )
+    # The one finding here that survives everything reconciling, so it sits
+    # with the scored figures rather than in a footnote. Precision first,
+    # because a leak claimed that is not there costs a merchant a phone call
+    # with their account manager and some of their credibility.
+    table.add_row(
+        "Charges above contract found",
+        f"{card.leaks_found}/{card.leaks_expected} ({card.leak_recall:.0%})",
+    )
+    table.add_row(
+        "  claimed that were not there",
+        f"{card.leaks_false} ({card.leak_precision:.0%} precise)",
+    )
+    table.add_row("  overcharged", format_inr(card.leak_overcharge))
     table.add_row(
         "Shortfalls named, not claimed",
         f"{card.unprovable_explained}/{card.unprovable_expected} ({card.explained_rate:.0%})",
@@ -362,4 +376,54 @@ def ablation_table(result: Ablation) -> Table:
         table.add_section()
         for kind, count in sorted(result.kinds.items(), key=lambda pair: -pair[1]):
             table.add_row(f"  proposed {kind}", str(count), "")
+    return table
+
+
+def leak_report(report: LeakReport) -> Table:
+    """The findings, worst first, with the rows behind each one.
+
+    The headline is a sentence rather than a figure because the figure alone
+    invites the wrong reaction. "Rs 136.83" on a month of settlements reads as
+    a rounding error and gets ignored; the same number said as a rate applied
+    to the wrong card type, every day for a month, is a contract problem worth
+    a phone call.
+    """
+    table = Table(
+        title=report.headline(),
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Finding")
+    table.add_column("Payments", justify="right")
+    table.add_column("Overcharged", justify="right")
+
+    if report.clean:
+        return table
+
+    for group in report.clusters:
+        what = (group.card_type or group.method).replace("_", " ")
+        table.add_row(
+            f"{what} charged {group.charged_rate:.2%}, contracted {group.contracted_rate:.2%}",
+            str(group.payments),
+            format_inr(group.overcharge),
+        )
+        table.add_row(
+            f"  on {format_inr(group.gross_affected)} settled, "
+            f"{group.first_seen} to {group.last_seen}",
+            "",
+            "",
+        )
+        if group.networks:
+            table.add_row(f"  networks: {', '.join(group.networks)}", "", "")
+        # Five is enough to check the claim against an export without turning
+        # the finding back into the list it was written to replace.
+        shown = ", ".join(group.payment_ids[:5])
+        more = len(group.payment_ids) - 5
+        table.add_row(f"  {shown}{f' +{more} more' if more > 0 else ''}", "", "")
+        table.add_section()
+
+    table.add_row("GST charged on those fees", "", format_inr(report.gst))
+    table.add_row("  recoverable as input tax credit", "", "")
     return table

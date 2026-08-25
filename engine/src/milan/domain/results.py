@@ -10,6 +10,8 @@ exception, and the exception says what was missing.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from milan.domain.enums import ExceptionCode, MatchStrategy
@@ -103,6 +105,55 @@ class ReconException(BaseModel):
     report how much of the categorisation was deterministic."""
 
 
+class Leak(BaseModel):
+    """One row charged at a rate the merchant is not contracted to.
+
+    A result shape, so it lives here beside `Proof` rather than in the module
+    that finds it - `ReconReport` carries these, and the domain cannot import
+    from the packages that are supposed to depend on it. The arithmetic that
+    produces one stays in `milan.leaks.detector`.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    payment_id: str
+    settlement_id: str
+
+    gross: Paise
+    charged_fee: Paise
+    contracted_fee: Paise
+
+    charged_rate: Decimal
+    contracted_rate: Decimal
+
+    method: str
+    card_type: str | None
+    card_network: str | None
+    card_issuer: str | None
+    settled_on: str
+
+    @property
+    def overcharge(self) -> Paise:
+        """The fee difference. What the merchant loses permanently."""
+        return Paise(self.charged_fee - self.contracted_fee)
+
+    @property
+    def gst_on_overcharge(self) -> Paise:
+        """The tax charged on money that should never have been charged.
+
+        Real cash out of the account, and separately reported because for a
+        GST-registered merchant it comes back as input tax credit. Rolling it
+        into the headline would overstate the permanent loss by 18%, and
+        overstating harm is the same failure as understating it.
+        """
+        return Paise(self.cash_impact - self.overcharge)
+
+    @property
+    def cash_impact(self) -> Paise:
+        """Fee difference plus the GST charged on it. What actually left."""
+        return Paise(round(self.overcharge * Decimal("1.18")))
+
+
 class UnprovenCredit(BaseModel):
     """A match that could not be reconstructed to the paisa.
 
@@ -144,6 +195,14 @@ class ReconReport(BaseModel):
     proofs: tuple[Proof, ...]
     exceptions: tuple[ReconException, ...]
     duration_seconds: float
+
+    leaks: tuple[Leak, ...] = ()
+    """Rows charged above the merchant's contracted rate.
+
+    Not exceptions, and deliberately a separate field. An exception is
+    something that did not reconcile; every one of these reconciled perfectly.
+    Filing them together would bury the only finding in the report that
+    survives everything balancing."""
 
     shortfalls: tuple[UnprovenCredit, ...] = ()
     """Credits that were matched and then would not reconstruct.

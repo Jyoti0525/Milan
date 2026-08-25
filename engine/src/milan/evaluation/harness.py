@@ -172,6 +172,10 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
         false_negatives=sum(1 for t in resolvable if t.credit_id not in claimed),
         correct_refusals=sum(1 for t in impossible if t.credit_id not in claimed),
         attributed=_attributed(report, resolvable, unprovable),
+        leaks_expected=len(answers.leaks),
+        leaks_found=len(_true_leaks(report, answers)),
+        leaks_false=len(report.leaks) - len(_true_leaks(report, answers)),
+        leak_overcharge=Paise(sum(leak.overcharge for leak in report.leaks)),
         proofs_balanced=len(balanced),
         proofs_claimed=len(report.proofs),
         proofs_with_drift=sum(1 for proof in balanced if proof.drift),
@@ -192,6 +196,18 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
         unexplained_by_defect=_unexplained_by_defect(report, unprovable),
         categorised_by=dict(Counter(e.categorised_by for e in report.exceptions)),
     )
+
+
+def _true_leaks(report: ReconReport, answers: AnswerKey) -> set[str]:
+    """Claimed leaks that the answer key agrees are leaks.
+
+    Matched on the payment id rather than on the amount, because a detector
+    that found the right number of rupees against the wrong payment would be
+    scored as correct and is not - the merchant would take the wrong
+    transaction to their account manager.
+    """
+    real = {leak.payment_id for leak in answers.leaks}
+    return {leak.payment_id for leak in report.leaks if leak.payment_id in real}
 
 
 def _attributed(

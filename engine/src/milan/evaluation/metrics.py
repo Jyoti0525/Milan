@@ -98,6 +98,22 @@ class Scorecard(BaseModel):
     single out, how many did the engine actually pin to the right settlement -
     whether it went on to prove them or to name what they were short by."""
 
+    leaks_expected: int = 0
+    leaks_found: int = 0
+    leaks_false: int = 0
+    """Charges above contract: how many exist, how many were found, and how
+    many were claimed that were not there.
+
+    The third number is the one that matters and it is why this is scored at
+    all rather than demonstrated. A missed leak costs a merchant money they
+    were already losing. A *false* leak sends them to their account manager
+    to complain about an overcharge that did not happen, and there is no
+    faster way for a tool like this to stop being believed."""
+
+    leak_overcharge: Paise = ZERO
+    """Fees charged above contract, in paise. The permanent loss - the GST on
+    top of it is recoverable as input tax credit and is not counted here."""
+
     merged_expected: int = 0
     merged_resolved: int = 0
     """Credits covering more than one settlement. Broken out because they
@@ -154,6 +170,17 @@ class Scorecard(BaseModel):
     def explained_rate(self) -> float:
         """Of the credits no proof can close, the share we could still name."""
         return _ratio(self.unprovable_explained, self.unprovable_expected)
+
+    @property
+    def leak_recall(self) -> float:
+        """Share of the leaks in the data that were found."""
+        return _ratio(self.leaks_found, self.leaks_expected)
+
+    @property
+    def leak_precision(self) -> float:
+        """Share of claimed leaks that were real. Must be 1.0."""
+        claimed = self.leaks_found + self.leaks_false
+        return _ratio(self.leaks_found, claimed)
 
     @property
     def attribution_rate(self) -> float:

@@ -610,3 +610,36 @@ If a decision is not here, it is not settled.
      compared `cards[-2]` to `cards[-1]`; adding a fifth rung silently
      repointed it at two configurations it was never written about, and it
      failed for a reason that had nothing to do with fuzzy.
+
+153. **A leak is found by reading a row against the contract, not against
+     another row.** Every other check in this engine compares two records; this
+     one compares a fee against the rate the row's own columns imply. It is the
+     only finding that survives everything reconciling, which is exactly why no
+     matcher can produce it.
+154. **Precision on leaks is a higher bar than anywhere else in the project.**
+     A missed leak costs a merchant money they were already losing; a false one
+     sends them to their account manager to complain about an overcharge that
+     never happened. An undercharge, a refund's flat fee, an international card
+     at its contracted 3%, and a row with no method are all silent.
+155. **The comparison is exact, with no rounding tolerance.** `apply_rate` is
+     the same function the fee was computed with, so an honest row reproduces
+     to the paisa. Slack would only hide the smallest leaks, which are the ones
+     most likely to survive a human review.
+156. **GST on an overcharge is reported separately from the overcharge.** It is
+     real cash out of the account and it returns as input tax credit, so the
+     permanent loss is the fee difference alone. Rolling it into the headline
+     would overstate the harm by 18%, which is the same failure as
+     understating it.
+157. **Findings are grouped by the rate pair that caused them, ordered by
+     money.** Forty-seven rows is a complete report nobody reads. Rows sharing
+     a rate pair share a cause by construction, so no distance metric is
+     involved - one would find the same groups less legibly and occasionally
+     find others that mean nothing.
+158. **Leaks are carried beside the exceptions, never among them.** An
+     exception is something that did not reconcile. Every leak reconciled
+     perfectly, and filing them together would bury the one finding that
+     survives the books balancing. A test asserts no payment appears in both.
+159. **Unreachable defensive code is deleted, not excused.** `_rate_of` guarded
+     against a zero amount its only caller had already rejected. Correct dead
+     code is the state that looks most like being careful while being untested
+     by construction.

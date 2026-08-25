@@ -1292,3 +1292,114 @@ structurally now: a test parses the imports of `milan.recon`, `milan.domain`
 and `milan.chaos` and fails if any of them ever reaches `milan.llm`. A
 behavioural test would only have proved the model was not consulted on that
 data. This proves it cannot be.
+
+
+---
+
+## Day 9 - the money that is wrong while everything balances
+
+Every figure this project had published answered one question: *did the payout
+arrive*. Leak detection answers a different one, and it is the only question
+here that still has an answer when the reconciliation is perfectly clean.
+
+A domestic consumer card is contracted at 2%. The gateway charges 2.15%. The
+settlement row foots, the batch total foots, the bank credit reconciles to the
+paisa and the proof closes on zero. **Nothing is unmatched, so nothing looks
+wrong.** That is why this class of error survives in real merchant accounts
+for years, and it is why no matcher will ever find it.
+
+### It had been in the data since day 1 and nothing had ever read it
+
+`LeakTruth` is written into every answer key by the generator. Before today,
+the only code that had ever looked at it was one assertion in
+`test_chaos_engine.py` checking that leaks are generated. Nothing detected
+them, nothing scored them, and no metric reported their absence.
+
+| tier | leaks in 5 seeds | overcharged |
+|---|---|---|
+| clean | 0 | Rs 0.00 |
+| realistic | 0 | Rs 0.00 |
+| messy | 102 | Rs 376.97 |
+| adversarial | 179 | Rs 683.85 |
+
+### How it is found
+
+Not by matching anything. By reading one row against the contract:
+
+    expected = platform_rate(row.method, row.card_type) applied to row.amount
+    leak     = row.fee > expected
+
+The report declares a domestic consumer card and carries a corporate-rate fee,
+so it contradicts itself on a single line. The comparison is exact and can
+afford to be - `apply_rate` is the same function the fee was computed with, so
+an honest row reproduces to the paisa. Allowing rounding slack anyway would
+hide the smallest leaks, which are the ones most likely to survive a human
+review.
+
+**762 of 762 caught across twenty adversarial seeds, with 762 of 762
+precision.**
+
+### The second number is the one that matters
+
+Precision is a higher bar here than anywhere else in this project, not a lower
+one. A missed leak costs a merchant money they were already losing. A *false*
+leak sends them to their account manager to complain about an overcharge that
+never happened, and there is no faster way for a tool like this to stop being
+believed.
+
+So most of what was written today is about what must not be reported: an
+international card at 3% is contracted at 3%; a refund carries a flat instant
+charge rather than a rate; an undercharge is the gateway's money and not a
+finding; a row with no method has no contracted rate to compare against and
+guessing one would invent the contract this check exists to enforce. The clean
+and realistic tiers contain no leaks and the detector reports none - a
+detector that finds something everywhere has learned to find nothing.
+
+### One finding, not forty-seven rows
+
+Forty-seven small charges is a technically complete report that nobody reads,
+which is what makes it a tempting place to stop. Grouped by the rate pair that
+caused them, it becomes one sentence with one owner and one fix: *every
+domestic consumer card charged at the corporate rate, 47 payments, Rs 232.87,
+between 3 and 23 July.* Every row is kept underneath, because a claim about
+money that cannot be drilled into is a claim nobody should act on.
+
+Grouped by a shared rate pair rather than by any statistical clustering. Rows
+sharing one share a cause by construction; a distance metric over these fields
+would find the same groups less legibly and would occasionally find others
+that mean nothing, which in a report about money is worse than useless.
+
+### Stating the GST correctly, which means stating it separately
+
+GST is charged on the inflated fee, so the cash leaving the account is the
+overcharge plus 18% of it. For a GST-registered merchant that 18% returns as
+input tax credit, so the permanent loss is the overcharge alone. Publishing
+the larger figure as the headline would overstate the harm by 18%, and
+overstating harm is the same failure as understating it.
+
+### Three things the existing guards caught
+
+**"Computed but never surfaced."** The conformance check failed the moment the
+leak fields were added to the scorecard, because they were being calculated
+and rendered nowhere. Exactly the failure that check was written for, working
+on a case written months after it.
+
+**Unreachable defensive code.** `_rate_of` had a divide-by-zero guard that
+could never fire, because its only caller already rejects non-positive
+amounts. Coverage found it. It is gone rather than excused - correct dead code
+is the state that looks most like being careful while being untested by
+construction.
+
+**A muddled test.** The first version of `test_a_different_contract_changes_
+what_is_a_leak` asserted `detect(rows, generous) == () or True`, which is
+true for every possible input. It was a badly written duplicate of the test
+directly beneath it, and it was deleted rather than repaired.
+
+### Where it sits
+
+Leaks ride alongside the exceptions on the report and never among them, and a
+test asserts no payment appears in both. An exception is something that did
+not reconcile; every one of these reconciled perfectly. Filing them together
+would bury the only finding in the report that survives the books balancing.
+
+481 tests, 97% coverage, both new modules at 100%.

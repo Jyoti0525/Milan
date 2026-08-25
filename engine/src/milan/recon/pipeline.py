@@ -34,6 +34,7 @@ from milan.domain.enums import CardType
 from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit, Payment, SettlementRow
 from milan.domain.results import Proof, ReconException, ReconReport, UnprovenCredit
+from milan.leaks.detector import detect
 from milan.recon.batches import BatchGroup, GatewayBatch, rebuild_batches
 from milan.recon.inputs import ReconInput
 from milan.recon.matching.base import Attempt
@@ -80,6 +81,11 @@ class ReconciliationPipeline:
         exceptions.extend(self._find_unsettled_payments(data))
 
         return ReconReport(
+            # Run last and kept apart from the exceptions. Every row this
+            # finds reconciled perfectly, which is the whole point of it -
+            # filing these among the things that failed to reconcile would
+            # bury the only finding that survives the books balancing.
+            leaks=detect(data.settlement_rows, self._rates),
             seed=metadata.seed,
             difficulty=metadata.difficulty,
             records_processed=data.record_count,

@@ -141,6 +141,8 @@ averaging the rates, and reports the spread beside each figure:
 | precision | 100.0% | 389/389 | 100.0% | 100.0% | 100.0% |
 | refusal rate | 100.0% | 200/200 | 100.0% | 100.0% | 100.0% |
 | shortfalls named | 91.7% | 110/120 | 66.7% | 100.0% | 100.0% |
+| leaks caught | 100.0% | 762/762 | 100.0% | 100.0% | 100.0% |
+| leak precision | 100.0% | 762/762 | 100.0% | 100.0% | 100.0% |
 | merged credits resolved | 100.0% | 120/120 | 100.0% | 100.0% | 100.0% |
 | missing payouts flagged | 100.0% | 40/40 | 100.0% | 100.0% | 100.0% |
 | unsettled payments flagged | 100.0% | 153/153 | 100.0% | 100.0% | 100.0% |
@@ -199,6 +201,57 @@ be a near-unique fingerprint once the fee stack is modelled properly, so this
 class of matching is easier than it looks. What is hard is proving a credit to
 the paisa, refusing the ones the evidence cannot settle, and finding money
 that is wrong while everything still balances.
+
+## The money that is wrong while everything balances
+
+Every figure above answers one question: *did the payout arrive*. This answers
+a different one, and it is the only question here that still has an answer
+when the reconciliation is perfectly clean.
+
+A domestic consumer card is contracted at 2%. The gateway charges 2.15%. The
+settlement row foots. The batch total foots. The bank credit reconciles to the
+paisa and the proof closes on zero. **Nothing is unmatched, so nothing looks
+wrong** — which is exactly why this survives in real merchant accounts for
+years, and why no matcher will ever find it.
+
+It is found by reading a row against the *contract* rather than against
+another row. The report declares a consumer card and carries a corporate-rate
+fee, so it contradicts itself on a single line.
+
+```
+Rs 232.87 was overcharged across 47 of 570 payments, in 1 pattern.
+A further Rs 41.87 of GST was charged on those fees and is recoverable
+as input tax credit.
+
+Finding                                              Payments  Overcharged
+domestic consumer charged 2.15%, contracted 2.00%          47    Rs 232.87
+  on Rs 1,55,262.30 settled, 2026-07-03 to 2026-07-23
+  networks: MasterCard, Visa, Amex, RuPay
+```
+
+```bash
+uv run milan leaks --seed 42 --difficulty adversarial
+```
+
+**One finding, not forty-seven rows.** A list of small charges is technically
+complete and nobody reads it. The sentence underneath — one rate pair, one
+date range, one owner — is what a merchant takes to their account manager, and
+every row behind it is kept so the claim can be checked against their own
+export.
+
+**The GST is stated separately on purpose.** It is real cash that left the
+account, and for a GST-registered merchant it comes back as input tax credit.
+Folding it into the headline would overstate the permanent loss by 18%, and
+overstating harm is the same failure as understating it.
+
+Scored against the answer key rather than demonstrated on an example: across
+twenty adversarial seeds, **762 of 762 caught, with 762 of 762 precision.**
+The second number is the one that matters. A missed leak costs a merchant
+money they were already losing; a false one sends them to complain about an
+overcharge that never happened, and there is no faster way for a tool like
+this to stop being believed. The clean and realistic tiers contain no leaks
+and the detector reports none — a detector that finds something everywhere has
+learned to find nothing.
 
 ## The exception queue
 
