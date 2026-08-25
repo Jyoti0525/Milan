@@ -162,6 +162,31 @@ the commit that fixed it — pick three or four and cut the rest.)*
 > experiment the cache exists to make reproducible, and it would have surfaced as
 > two identical columns that read like a finding rather than like a bug.
 >
+> **Both hosted models had been retired before I ever ran them.**
+>
+> I wired Groq and Gemini in behind the same interface as the local model, and
+> tested both against recorded response bodies. When a live key finally arrived,
+> neither worked: Groq answers `model_not_found` for the Llama 3.3 70B I had
+> configured, and Gemini answers 404 for `gemini-2.0-flash` with a message
+> naming its replacement. My `ready()` check said both were fine, because it was
+> answering "is a key set" when the question people ask it is "will this
+> answer". It checks the model against the key's live catalogue now — which is
+> the same check my local provider already had, since a running Ollama daemon
+> without the model is the failure people actually hit.
+>
+> **Then the first hosted run printed a number that was really a rate limit.**
+>
+> Groq answered 10 of my 110 questions and the tool reported *2.7% agreement*.
+> That is worse than a crash, because a crash gets investigated and a percentage
+> gets published. Its free tier is 8,000 tokens a minute, and every
+> general-purpose model it now serves reasons for a few hundred tokens before
+> answering, so the budget was gone after ten questions and the rest came back
+> empty — indistinguishable, to a counter, from a model that declined. I added
+> bounded retries on 429 that honour `Retry-After`, and — more importantly —
+> made the command say *"3 of 110 went unanswered; they are scored as
+> disagreements, so this rate is a floor, not an estimate."* The silent version
+> of that sentence is how 2.7% got printed in the first place.
+>
 > **What I did not build, and why.**
 >
 > I planned to use Splink, a probabilistic record-linkage library, for fuzzy
@@ -174,19 +199,23 @@ the commit that fixed it — pick three or four and cut the rest.)*
 > not because it is heavy but because **the evidence a linkage library consumes
 > does not exist in the cases it would be asked to solve** — and that is recorded
 > as a measurement with its boundary rather than as a preference. Same for the
-> model: I measured what it contributes rather
-> than assuming, and it contributes 16% agreement, 47 arithmetically-rejected
-> proposals and 5 invented record identifiers. That is why it proposes and never
-> concludes.
+> model: I measured what four of them contribute rather
+> than assuming. Agreement with the deterministic rules rises with capability —
+> 0%, 16%, 28%, 36% from a 1.5B local model to a 120B hosted one — and the
+> contribution row is 0/0 in every column, because the rules already name every
+> shortfall the engine reaches. The 3B model invented five record identifiers
+> along the way. That is why a model proposes here and never concludes.
 
 ---
 
 ## Length
 
 If the field is short, use these three in this order: **the oracle test**, **the
-number that was measuring the wrong thing**, and **the ablation going stale**.
-They cover all four rubric lines — build quality, problem taste, AI judgment,
-failure recovery — in about two hundred words.
+number that was measuring the wrong thing**, and **the rate limit that printed
+itself as an agreement rate**. They cover all four rubric lines — build quality,
+problem taste, AI judgment, failure recovery — in about two hundred words, and
+the third one is the most quotable: *a crash gets investigated, a percentage
+gets published.*
 
 ## Before you submit
 

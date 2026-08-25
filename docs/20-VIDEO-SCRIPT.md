@@ -154,31 +154,42 @@ uv run milan curve --seeds 20 --orders 600
 
 ```bash
 uv run milan ablate --provider ollama --seeds 20 --orders 600
+uv run milan ablate --provider groq   --seeds 20 --orders 600 --max-tokens 512
 uv run milan twice --seeds 6 --questions 30 --temperature 0.7 --no-pin
 ```
 
 > "This is a track about AI, so here is the honest version.
 >
-> A local Qwen 2.5 3B is asked exactly one kind of question — *why is this
-> credit short* — and it is never believed. **A model may propose. Only
-> arithmetic may conclude.**
+> Four models — two local, two hosted — are asked exactly one kind of question:
+> *why is this credit short*. And they are never believed. **A model may
+> propose. Only arithmetic may conclude.**
 >
-> A hundred and ten shortfalls. It agreed with the deterministic rules on
-> sixteen percent. It made sixty-five confident proposals; forty-seven were
-> wrong, and five named a refund that does not exist anywhere in the report.
+> A hundred and ten shortfalls. A one-point-five billion parameter model agreed
+> with the deterministic rules zero percent of the time. Three billion:
+> sixteen. Gemini Flash Lite: twenty-eight. A hundred and twenty billion:
+> thirty-six.
 >
-> Every one of those was caught by the same arithmetic the rules use, cost
-> nothing, and never reached a screen.
+> Agreement doubles as the models get better. The bottom row does not move. Not
+> one of them reached a case the rules had left open, and not one of them
+> changed a number this project publishes — because they are asked *after* the
+> arithmetic has already concluded.
+>
+> The three-billion model invented five identifiers: refunds that exist nowhere
+> in the report. Had it been writing the summaries, this system would have sent
+> a finance team through their ledger looking for records that were never there.
+> Caught by arithmetic, cost nothing, never reached a screen.
 >
 > And this is why it does not get to decide. The same thirty questions, asked
-> twice, nothing changed in between — with sampling on and the seed left to the
-> daemon, which is what almost every LLM integration ships. Eleven of thirty
-> answers moved. Four blamed a different refund the second time.
+> twice, nothing changed in between — sampling on, seed left to the daemon,
+> which is what almost every LLM integration ships. Eleven of thirty answers
+> moved. Four blamed a different refund the second time.
 >
-> Two different sets of books from one input. Milan's own output does not move,
-> and there is a command that proves it."
+> Two different sets of books from one input. Milan's output does not move, and
+> there is a command that proves it."
 
----
+**If you have 20 spare seconds**, add: *"Both hosted models had been retired by
+their vendors between being wired in and being run — so the tool now checks the
+model against the key's live catalogue, not just that a key is set."*
 
 ## 4:30 – 5:00 · Close
 
