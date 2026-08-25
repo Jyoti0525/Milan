@@ -519,3 +519,29 @@ If a decision is not here, it is not settled.
      soft status pills, because the density that matters is information per
      row, not rows per screen. Blade publishes its tokens; there was never a
      need to guess.
+135. **Component classes live in `@layer components`.** Unlayered CSS beats
+     every layered rule regardless of specificity, so `.th { text-align: left }`
+     silently won against the `text-right` utility on the amount column, and
+     would have beaten any utility on any header cell. Inside the layer the
+     utilities come after and win, which is what every Tailwind class in this
+     project already assumed.
+136. **A line that stands on the rows above it says so rather than reprinting
+     them.** The fee is charged on the payments that settled and the GST on
+     that fee, so three consecutive proof lines carried the same thirty ids.
+     Printing them three times said nothing the first printing did not, and at
+     1280px it pushed the drift line - the argument of the panel - below the
+     fold.
+137. **A column whose every row holds the same word is not a column.** The
+     proved tab had `Status`, twenty-one rows of "Proved", under a heading that
+     already said it. Which rung of the cascade resolved the credit varies, and
+     showing that makes the cascade visible in the list.
+138. **The detail pane opens the first case.** It is half the screen, and it
+     held a sentence of instruction where the evidence goes. Derived from the
+     view rather than stored, so it cannot race the three other paths that set
+     a selection.
+139. **Driving the interface finds what reading it cannot.** Eight defects
+     survived a source review and two screenshots, and four of them only exist
+     at a particular width or in a particular state - a header alignment
+     decided by a cascade rule in neither file, chips that stack only when the
+     pane is narrow, a command clipped only when it is long, a pane empty only
+     before the first click.

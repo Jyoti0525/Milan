@@ -42,6 +42,9 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function ExceptionPanel({ item }: { item: QueueItem }) {
   const subject = item.subject;
+  const dateIsEvidence =
+    subject.occurred_on !== null &&
+    Object.values(item.evidence).some((value) => value === subject.occurred_on);
 
   return (
     <div className="flex h-full flex-col">
@@ -70,12 +73,22 @@ export function ExceptionPanel({ item }: { item: QueueItem }) {
       </header>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        {subject.amount !== null && (
+        {/*
+          Only the facts the header did not already state.
+
+          The header carries the amount at 26px and the summary sentence names
+          the date, and the evidence rows below often repeat the date a third
+          time under the engine's own key. Printing all of them made the panel
+          look full while telling a reader nothing they had not read two inches
+          higher, and pushed the evidence - the part that is actually the
+          product - below the fold.
+        */}
+        {subject.amount !== null && subject.amount !== item.amount && (
           <Row label={subject.kind === "credit" ? "Amount credited" : "Amount"}>
             <Amount paise={subject.amount} size="md" />
           </Row>
         )}
-        {subject.occurred_on && (
+        {subject.occurred_on && !dateIsEvidence && (
           <Row label={subject.kind === "credit" ? "Value date" : "Dated"}>
             <span className="tnum">{shortDate(subject.occurred_on)}</span>
           </Row>

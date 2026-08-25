@@ -126,7 +126,15 @@ export function Sidebar({
                 {/* The seed identifies the run, so it shows either way. Stale
                     is an extra fact about it, not a replacement for it. */}
                 {run.stale && <Badge tone="warn">stale</Badge>}
-                <span className="tnum text-[11px] text-[var(--text-subtle)]">{run.seed}</span>
+                {/*
+                  Written `#42`, because the two groups in this sidebar put a
+                  right-aligned grey number in the same place and mean
+                  different things by it: 37 above is how many cases there are,
+                  42 here is which dataset this is. Two tiers can share a name
+                  and differ only by seed, so it has to be shown - and the hash
+                  is what stops it being read as a count.
+                */}
+                <span className="tnum text-[11px] text-[var(--text-subtle)]">#{run.seed}</span>
               </button>
             );
           })}

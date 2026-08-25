@@ -160,60 +160,72 @@ body {
 }
 
 /*
-  Money and identifiers only. Blade sets body text in Inter and code in a
-  mono face; amounts get `tabular-nums` on top of that, because in a column of
-  rupees a proportional 1 is narrower than a 7 and the decimal points stop
-  lining up - which is the moment a misread digit becomes a misread rupee.
+  These live in Tailwind's `components` layer on purpose.
+
+  Unlayered CSS beats every layered rule regardless of specificity, so
+  outside a layer `.th { text-align: left }` silently won against the
+  `text-right` utility on the Amount column - the header sat left of
+  figures that were right-aligned, and nothing in either file looked wrong.
+  Inside `components` the utility layer comes after and wins, which is the
+  behaviour every Tailwind class here already assumes.
 */
-.tnum {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
-}
+@layer components {
+  /*
+    Money and identifiers only. Blade sets body text in Inter and code in a
+    mono face; amounts get `tabular-nums` on top of that, because in a column
+    of rupees a proportional 1 is narrower than a 7 and the decimal points
+    stop lining up - the moment a misread digit becomes a misread rupee.
+  */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
 
-/* An id, set the way Blade sets one in a table: mono, on a quiet chip. */
-.chip {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: var(--r-chip);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
+  /* An id, set the way Blade sets one in a table: mono, on a quiet chip. */
+  .chip {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: var(--r-chip);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-card);
-  box-shadow: var(--shadow-card);
-}
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    box-shadow: var(--shadow-card);
+  }
 
-.th {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  text-align: left;
-  padding: 10px 16px;
-  background: var(--surface-header);
-  white-space: nowrap;
-}
+  .th {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 10px 16px;
+    background: var(--surface-header);
+    white-space: nowrap;
+  }
 
-.td {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-  vertical-align: middle;
-}
+  .td {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    vertical-align: middle;
+  }
 
-.row-link {
-  cursor: pointer;
-}
-.row-link:hover {
-  background: var(--surface-hover);
-}
-.row-link[aria-selected="true"] {
-  background: var(--surface-selected);
+  .row-link {
+    cursor: pointer;
+  }
+  .row-link:hover {
+    background: var(--surface-hover);
+  }
+  .row-link[aria-selected="true"] {
+    background: var(--surface-selected);
+  }
 }
 
 *:focus-visible {

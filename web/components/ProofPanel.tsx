@@ -15,10 +15,57 @@
  * tool they audit by hand anyway.
  */
 
-import type { Proof } from "@/lib/api";
+import type { Proof, ProofLine } from "@/lib/api";
 import { percent, shortDate } from "@/lib/money";
 import { Amount } from "./Amount";
 import { Badge } from "./Badge";
+
+/*
+  Three, not five.
+
+  These are a sample and not the evidence - thirty ids were never all going to
+  fit, so a reader who wants to tie this line back to their own export is
+  going to the API for the full list either way. What the chips are for is
+  showing what the rows behind the line look like, and three does that. Five
+  did not, because in this pane at 1280px the column is narrow enough that
+  each chip takes its own row, and a five-high stack of ids pushed the amount
+  it was meant to support out of sight.
+*/
+const SHOWN = 3;
+
+/** The record ids behind a line, minus the type prefix every one of them shares. */
+function Refs({ refs }: { refs: readonly string[] }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+      {refs.slice(0, SHOWN).map((ref) => (
+        <span key={ref} className="chip font-mono text-[10.5px]">
+          {ref.replace(/^(pay|rfnd|adj)_/, "")}
+        </span>
+      ))}
+      {refs.length > SHOWN && (
+        <span className="text-[11px] text-[var(--text-subtle)]">
+          +{refs.length - SHOWN} more
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Whether a line stands on exactly the rows the line above it stood on.
+ *
+ * It usually does, and that is the shape of the arithmetic rather than a
+ * coincidence: the fee is charged on the same payments that were settled, and
+ * the GST is charged on that fee. Printing the same thirty ids three times
+ * running says nothing the first printing did not, and at a narrow width the
+ * chips stack one per row and bury the amounts they were meant to support.
+ * So they are listed once, and the lines that inherit them say so.
+ */
+function sameRowsAs(line: ProofLine, previous: ProofLine | undefined): boolean {
+  if (!previous || line.refs.length === 0) return false;
+  if (line.refs.length !== previous.refs.length) return false;
+  return line.refs.every((ref, index) => ref === previous.refs[index]);
+}
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -83,20 +130,14 @@ export function ProofPanel({ proof }: { proof: Proof }) {
               <tr key={`${line.label}-${index}`} className="align-top">
                 <td className="td">
                   <div className="text-[13px]">{line.label}</div>
-                  {line.refs.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {line.refs.slice(0, 5).map((ref) => (
-                        <span key={ref} className="chip font-mono text-[10.5px]">
-                          {ref.replace(/^(pay|rfnd|adj)_/, "")}
-                        </span>
-                      ))}
-                      {line.refs.length > 5 && (
-                        <span className="self-center text-[11px] text-[var(--text-subtle)]">
-                          +{line.refs.length - 5} more
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {line.refs.length > 0 &&
+                    (sameRowsAs(line, proof.lines[index - 1]) ? (
+                      <div className="mt-1 text-[11.5px] text-[var(--text-subtle)]">
+                        on the same {line.refs.length} rows
+                      </div>
+                    ) : (
+                      <Refs refs={line.refs} />
+                    ))}
                 </td>
                 <td className="td text-right">
                   <Amount

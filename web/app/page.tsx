@@ -27,7 +27,7 @@ import { ApiError, listRuns, loadRun, type RunRef, type RunView } from "@/lib/ap
 import { ExceptionPanel } from "@/components/ExceptionPanel";
 import { Metrics } from "@/components/Metrics";
 import { ProofPanel } from "@/components/ProofPanel";
-import { ProofList, QueueList, type Selection } from "@/components/Queue";
+import { ProofList, QueueList, sortQueue, type Selection } from "@/components/Queue";
 import { Sidebar, type Tab } from "@/components/Sidebar";
 
 /** A loaded run, tagged with which run it is. */
@@ -45,8 +45,12 @@ function Notice({ title, body, command }: { title: string; body: string; command
       <div className="card max-w-lg px-6 py-5">
         <div className="text-[15px] font-semibold">{title}</div>
         <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-muted)]">{body}</p>
+        {/* Wrapping, not scrolling. The command is here to be copied, and a
+            `milan generate` line with four flags runs past the width of this
+            card - which turned the one piece of text on the screen that has to
+            be complete into the one piece that was cut off mid-flag. */}
         {command && (
-          <pre className="mt-3 overflow-x-auto rounded-[var(--r-control)] bg-[var(--surface-sunken)] p-3 font-mono text-[12px] text-[var(--text-muted)]">
+          <pre className="mt-3 rounded-[var(--r-control)] bg-[var(--surface-sunken)] p-3 font-mono text-[12px] leading-relaxed break-words whitespace-pre-wrap text-[var(--text-muted)]">
             {command}
           </pre>
         )}
@@ -105,24 +109,55 @@ export default function Workspace() {
   const view = fresh?.view ?? null;
   const failure = listFailure ?? fresh?.failure ?? null;
   const loading = current !== null && fresh === null && listFailure === null;
-  const selected = picked?.key === key ? picked.selection : null;
+  /*
+    A selection belongs to a run *and* to a tab.
+
+    Keying on the run alone left the pane showing a queue case after a switch
+    to Proved - the panel and the list disagreeing about what was selected,
+    with nothing highlighted in the list to explain it.
+  */
+  const wanted: Selection["kind"] = tab === "proved" ? "proof" : "exception";
+  const selected =
+    picked?.key === key && picked.selection.kind === wanted ? picked.selection : null;
 
   const pick = useCallback((selection: Selection) => setPicked({ key, selection }), [key]);
 
+  /*
+    Open the first case rather than an empty pane.
+
+    The detail pane is close to half the screen, and on arrival it held one
+    sentence of instruction where the evidence goes - so the first thing the
+    screen showed about a reconciliation run was a blank rectangle. There is
+    always a sensible first case: the queue is sorted worst-first, so the top
+    row is the one somebody would open anyway.
+
+    It is derived, not stored. Writing a selection into state from an effect
+    would fight every other path that sets one - switching run, switching tab,
+    clicking a row - and the first of those to land would win by timing.
+  */
+  const fallback = useMemo((): Selection | null => {
+    if (!view) return null;
+    if (tab === "proved") return view.proofs.length > 0 ? { kind: "proof", index: 0 } : null;
+    const first = sortQueue(view.queue)[0];
+    return first ? { kind: "exception", index: first.index } : null;
+  }, [view, tab]);
+
+  const shown = selected ?? fallback;
+
   const detail = useMemo(() => {
-    if (!view || !selected) return null;
-    if (selected.kind === "proof") {
-      const proof = view.proofs[selected.index];
+    if (!view || !shown) return null;
+    if (shown.kind === "proof") {
+      const proof = view.proofs[shown.index];
       return proof ? <ProofPanel proof={proof} /> : null;
     }
-    const item = view.queue[selected.index];
+    const item = view.queue[shown.index];
     if (!item) return null;
     // A queue item about a credit that was also proved is rare but real — a
     // settlement can be missing while the credit beside it balances — so the
     // proof is offered when one exists rather than assumed not to.
     const proof = view.proofs.find((candidate) => candidate.credit_id === item.subject.id);
     return proof ? <ProofPanel proof={proof} /> : <ExceptionPanel item={item} />;
-  }, [view, selected]);
+  }, [view, shown]);
 
   const counts = { queue: view?.queue.length ?? 0, proved: view?.proofs.length ?? 0 };
 
@@ -198,10 +233,10 @@ export default function Workspace() {
                 </div>
               )}
               {view && tab === "queue" && (
-                <QueueList items={view.queue} selected={selected} onSelect={pick} />
+                <QueueList items={view.queue} selected={shown} onSelect={pick} />
               )}
               {view && tab === "proved" && (
-                <ProofList proofs={view.proofs} selected={selected} onSelect={pick} />
+                <ProofList proofs={view.proofs} selected={shown} onSelect={pick} />
               )}
             </div>
           </section>

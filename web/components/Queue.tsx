@@ -39,9 +39,17 @@ export function sortQueue(items: QueueItem[]): { item: QueueItem; index: number 
     );
 }
 
-function shortId(id: string): string {
-  const body = id.replace(/^(bank|setl|pay|order)_/, "");
-  return body.length > 10 ? `${body.slice(0, 10)}…` : body;
+/**
+ * An identifier, whole.
+ *
+ * This used to clip to ten characters with an ellipsis, which is the same
+ * mistake the truncated summaries were: `xzxbqya4bc…` cannot be pasted into a
+ * ledger search, cannot be read out over a call, and cannot be told apart from
+ * another id sharing its first ten characters. The ids this engine mints are
+ * a fixed nineteen characters and they fit.
+ */
+function Id({ id }: { id: string }) {
+  return <span className="chip font-mono text-[10.5px]">{id}</span>;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
@@ -105,9 +113,7 @@ export function QueueList({
               <td className="td">
                 <div className="text-[13px] leading-snug text-[var(--text)]">{withRupeeSign(item.summary)}</div>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <span className="chip font-mono text-[10.5px]">
-                    {shortId(item.subject.id)}
-                  </span>
+                  <Id id={item.subject.id} />
                   <span className="tnum text-[11px] text-[var(--text-subtle)]">
                     {item.subject.occurred_on ? shortDate(item.subject.occurred_on) : "no date"}
                   </span>
@@ -143,7 +149,14 @@ export function ProofList({
     <table className="w-full border-collapse">
       <thead>
         <tr>
-          <th className="th w-[92px]">Status</th>
+          {/*
+            This column used to be `Status`, and on this tab every row of it
+            read "Proved" - a column of one repeated word, taking the width
+            where the reader's eye lands first. Which rung of the cascade got
+            there varies, and is the thing worth knowing about a proof that
+            the tab heading does not already say.
+          */}
+          <th className="th w-[124px]">Resolved by</th>
           <th className="th">Bank credit</th>
           <th className="th text-right">Amount</th>
         </tr>
@@ -151,32 +164,42 @@ export function ProofList({
       <tbody>
         {proofs.map((proof, index) => {
           const active = selected?.kind === "proof" && selected.index === index;
+          // What is unusual about this proof, and nothing that is not. A row
+          // with an ordinary one-to-one match and no drift carries no note at
+          // all, which is what makes the rows that do carry one stand out.
+          const notes = [
+            proof.settlement_ids.length > 1
+              ? `${proof.settlement_ids.length} settlements merged`
+              : null,
+            proof.drift !== 0 ? "rounding drift" : null,
+          ].filter((note): note is string => note !== null);
           return (
             <tr
               key={proof.credit_id}
               {...rowProps(active, () => onSelect({ kind: "proof", index }))}
             >
               <td className="td align-top">
-                <Badge tone="good">Proved</Badge>
+                <span className="text-[12.5px] text-[var(--text-muted)]">
+                  {proof.strategy.replace(/_/g, " ")}
+                </span>
               </td>
               <td className="td">
                 <div className="flex items-center gap-2">
-                  <span className="chip font-mono text-[10.5px]">
-                    {shortId(proof.credit_id)}
-                  </span>
+                  <Id id={proof.credit_id} />
                   <span className="tnum text-[11px] text-[var(--text-subtle)]">
                     {shortDate(proof.value_date)}
                   </span>
                 </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="text-[12.5px] text-[var(--text-muted)]">
-                    resolved by {proof.strategy.replace(/_/g, " ")}
-                  </span>
-                  {proof.settlement_ids.length > 1 && (
-                    <Tag>· {proof.settlement_ids.length} settlements merged</Tag>
-                  )}
-                  {proof.drift !== 0 && <Tag>· rounding drift</Tag>}
-                </div>
+                {notes.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    {notes.map((note, position) => (
+                      <Tag key={note}>
+                        {position > 0 && <span className="mr-1.5">·</span>}
+                        {note}
+                      </Tag>
+                    ))}
+                  </div>
+                )}
               </td>
               <td className="td align-top text-right whitespace-nowrap">
                 <Amount paise={proof.credit_amount} size="md" />

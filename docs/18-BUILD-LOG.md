@@ -1130,3 +1130,70 @@ screen.
 
 Reasoning from a description of a reference is not the same as reading the
 reference. Blade publishes its tokens; there was never a need to guess.
+
+---
+
+## Day 7, third pass — driving the screen instead of describing it
+
+The Blade rebuild was checked by reading its own source and looking at two
+still screenshots. This pass drove it with Playwright — every tab, both
+detail panes, the stale run, 1440px and 1280px — and eight things were wrong
+that neither the source nor a still had shown.
+
+### The one that could not be seen by reading either file
+
+The `Amount` column header sat left-aligned above right-aligned figures. The
+markup says `<th className="th text-right">`. The stylesheet says
+`.th { text-align: left }`. Both are correct in isolation, and the rule that
+decides between them is not in either file: **unlayered CSS beats every
+layered rule regardless of specificity**, and Tailwind's utilities live in a
+layer. So `.th` won, silently, and would have won against any utility any
+component ever put on a header cell.
+
+`app/globals.css` now declares those classes inside `@layer components`, which
+is where a Tailwind component class belongs and what every class in this
+project already assumed was true.
+
+### Seven more
+
+- **The proof panel printed the same thirty ids three times.** The fee stands
+  on the payments that settled, and the GST stands on that fee, so three
+  consecutive lines carried an identical ref list. At 1280px the chips stacked
+  one per row and a single proof line ran 150px tall — the drift line, which
+  is the whole argument of the panel, was below the fold. Refs are listed
+  once; the lines that inherit them say *on the same 30 rows*. All four lines
+  now fit without scrolling.
+- **Five sample chips became three.** Thirty ids were never all going to fit,
+  so the chips are a sample rather than the evidence, and three shows the
+  shape of a row as well as five did in a third of the height.
+- **`Status` on the proved tab held one repeated word.** Twenty-one rows of
+  "Proved", on a tab titled *Proved credits*, in the column where the eye
+  lands first. It is now `Resolved by` — exact utr, amount date, subset sum —
+  which varies, and which makes the cascade visible in the list.
+- **Ids were clipped to ten characters.** `xzxbqya4bc…` cannot be pasted into
+  a ledger search or read out on a call. Exactly the mistake the truncated
+  summaries were, surviving in a smaller place. Ids are nineteen characters
+  and they fit.
+- **The exception panel restated the header.** Amount at 26px, then `Amount`
+  as a row; the date in the summary sentence, then `Dated`, then `settled on`
+  from the engine's own evidence. Rows that duplicate something already on
+  screen are dropped, which lifts the evidence above the fold.
+- **The stale-run command was cut off mid-flag.** A `<pre>` with
+  `overflow-x-auto` clipped `milan generate --seed 7 --difficulty messy
+  --orders 400 --withholding` at the card edge. It is the one string on the
+  screen whose only purpose is to be copied. It wraps now.
+- **The detail pane opened empty.** Nearly half the screen held a sentence of
+  instruction where the evidence goes. The queue is sorted worst-first, so the
+  top row is the one somebody would open anyway; it opens. Derived from the
+  view rather than written into state, so it cannot race the other three
+  things that set a selection — and while fixing it, a selection turned out to
+  survive a tab switch, leaving the panel showing a queue case with nothing
+  highlighted in the proved list. Selection is now keyed to run *and* tab.
+
+### What this pass was worth
+
+Every one of these is invisible in source review. Four of them (the header
+alignment, the chip stacking, the clipped command, the empty pane) only appear
+at a particular width or in a particular state. The redesign was argued from
+Blade's published tokens, which was the right source — but a token file cannot
+tell you that a cascade rule you did not write will beat the class you did.
