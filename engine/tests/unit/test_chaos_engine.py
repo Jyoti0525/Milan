@@ -8,6 +8,9 @@ tested harder than the code it feeds.
 
 from __future__ import annotations
 
+import time
+from decimal import Decimal
+
 import pytest
 
 from milan.chaos.config import Difficulty, GenerationConfig
@@ -15,7 +18,7 @@ from milan.chaos.generator import ChaosEngine
 from milan.domain.calendar import is_working_day
 from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType
-from milan.domain.money import Paise, apply_rate
+from milan.domain.money import Paise, apply_rate, from_rupees
 from milan.domain.rates import GST_RATE, RateCard
 
 
@@ -232,6 +235,57 @@ class TestTheMoneyAddsUp:
                 assert row.debit == row.amount + row.fee + row.tax, row.entity_id
 
 
+class TestThePriceWindowCannotHangTheGenerator:
+    """The amount draw used to be rejection sampling in an unbounded loop.
+
+    It cost one over the acceptance probability, which is invisible on the
+    default price window and ruinous on a narrow one: a single-price merchant
+    - the benchmark shape built specifically to make batch totals collide -
+    took twenty-two seconds and eleven million discarded samples to produce
+    forty orders, and a window the distribution cannot reach at all would
+    never have finished. None of that raises, logs, or slows down anything a
+    default test would notice.
+    """
+
+    def test_a_single_price_merchant_generates_promptly(self) -> None:
+        """The regression guard. Two seconds is enormously generous - this
+        takes milliseconds - and it is set that way so the test fails on a
+        return to unbounded sampling rather than on a slow machine."""
+        started = time.perf_counter()
+        data = build(
+            Difficulty.MESSY,
+            order_count=400,
+            min_amount_rupees=Decimal("499"),
+            max_amount_rupees=Decimal("499"),
+        )
+        assert time.perf_counter() - started < 2.0
+        assert len(data.orders) == 400
+
+    def test_a_single_price_merchant_really_has_one_price(self) -> None:
+        """Speed is not the point on its own. A draw that was fast because it
+        stopped respecting the window would be worse than a slow one."""
+        data = build(
+            Difficulty.CLEAN,
+            order_count=60,
+            min_amount_rupees=Decimal("499"),
+            max_amount_rupees=Decimal("499"),
+        )
+        assert {order.amount for order in data.orders} == {from_rupees(Decimal("499"))}
+
+    def test_a_narrow_window_is_respected(self) -> None:
+        low, high = Decimal("2000"), Decimal("2100")
+        data = build(
+            Difficulty.CLEAN, order_count=120, min_amount_rupees=low, max_amount_rupees=high
+        )
+        assert all(from_rupees(low) <= order.amount <= from_rupees(high) for order in data.orders)
+
+    def test_a_window_with_its_ends_reversed_is_refused(self) -> None:
+        """Not a slow config - an impossible one, and it should fail where it
+        is written rather than hang where it is used."""
+        with pytest.raises(ValueError, match="min_amount_rupees"):
+            GenerationConfig(min_amount_rupees=Decimal("5000"), max_amount_rupees=Decimal("100"))
+
+
 class TestDefectsAreActuallyInjected:
     """A difficulty knob that quietly does nothing is worse than no knob."""
 
@@ -311,4 +365,18 @@ def _unprovable_settlements(data: Dataset) -> set[str]:
 
 
 def _row_tax_total(data: Dataset, settlement_id: str) -> Paise:
-    return Paise(sum(row.tax for row in data.settlement_rows if row.settlement_id == settlement_id))
+    """GST on the payment rows only.
+
+    A refund row now carries tax of its own when the merchant paid for an
+    instant refund, and that GST is on a processing charge rather than on the
+    platform fee - it is never part of the batch's tax figure. Summing every
+    row here compared two different quantities and passed only for as long as
+    no batch happened to contain an instant refund.
+    """
+    return Paise(
+        sum(
+            row.tax
+            for row in data.settlement_rows
+            if row.settlement_id == settlement_id and row.type is EntityType.PAYMENT
+        )
+    )

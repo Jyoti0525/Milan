@@ -767,3 +767,155 @@ degrade a score, and a degraded score looks like a hard case.
 263 tests, 97% coverage, four tiers reproducible, `milan reproduce` identical
 on adversarial. Day 6's three components now each pass all four clauses of the
 definition of done, which two of them did not when the day started.
+
+---
+
+## Day 6, later — the generator could hang, and one seed was not a measurement
+
+Both of these were found while trying to answer the Splink question, which
+needed the colliding merchant. It would not generate.
+
+### The amount draw was unbounded rejection sampling
+
+`_draw_amount` drew from a lognormal and rejected anything outside the
+merchant's price window. On the default window - Rs 199 to Rs 48,000 - almost
+everything is accepted and the loop costs one draw. On a narrow window it
+costs one over the acceptance probability, and **on a single-price merchant it
+costs everything**: forty orders took twenty-two seconds and eleven million
+discarded samples. A window the distribution cannot reach would never have
+finished at all, with no error, no log line and no progress.
+
+The single-price merchant is not a curiosity. It is the benchmark shape built
+on day 3 specifically to make batch totals collide, and it is the only regime
+in which the amount rungs genuinely fail - so the config that mattered most
+for measuring the matcher was the config the generator could not produce.
+
+Replaced with inverse-CDF sampling over the window: draw uniformly between
+`F(low)` and `F(high)` and invert. Same truncated lognormal, computed instead
+of searched for. **22.65s to 0.00s.** A degenerate window returns the single
+price; a reversed one is now rejected by the config rather than hung on.
+
+The random stream changed, so every seeded figure moved. Match rates and
+precision did not (adversarial is identical to the paisa); the realistic and
+messy baselines fell, which is the truncation being applied properly rather
+than approximated by rejection. The README test caught the change immediately,
+which is the second time in one day that test has done its job.
+
+It also exposed a latent test bug of the same shape as an earlier one:
+`_row_tax_total` summed every row's tax, including the GST on an instant
+refund charge, and compared it against a batch figure that only ever counted
+payment rows. It passed for as long as no batch happened to contain an instant
+refund. The gap was 216 paise - exactly 18% of the Rs 11.99 slab.
+
+### One seed is not a measurement, for one of the figures
+
+Twenty adversarial seeds, 600 orders each:
+
+| Measure | Pooled | Of | Worst seed | Median | Best seed |
+|---|---|---|---|---|---|
+| match rate | 100.0% | 389/389 | 100.0% | 100.0% | 100.0% |
+| precision | 100.0% | 389/389 | 100.0% | 100.0% | 100.0% |
+| refusal rate | 100.0% | 200/200 | 100.0% | 100.0% | 100.0% |
+| shortfalls named | **55.0%** | 66/120 | **16.7%** | 50.0% | **83.3%** |
+| merged credits resolved | 100.0% | 120/120 | 100.0% | 100.0% | 100.0% |
+| missing payouts flagged | 100.0% | 40/40 | 100.0% | 100.0% | 100.0% |
+| unsettled payments flagged | 100.0% | 153/153 | 100.0% | 100.0% | 100.0% |
+
+The headline figures are solid and now have real denominators behind them:
+**389 credits matched with nothing wrongly claimed, and 200 impossible credits
+refused without one forced answer.**
+
+One figure is not solid at all. `shortfalls named` has a denominator of about
+six per run and swings from 17% to 83%. The single-seed README had been
+showing 5/6 before the sampler change and 3/6 after, and **both were noise**.
+The honest number is 55% of 120, and it is the weakest thing this system does.
+
+That is worth stating plainly rather than burying: naming *why* a payout
+disagrees with its report - as opposed to detecting that it does - works
+slightly more than half the time. Detection is 100%; explanation is 55%. Day 8
+and 9 are where that number has to move.
+
+`milan sweep` pools the counts rather than averaging the rates, because a run
+with six shortfalls and a run with two should not count equally toward a
+percentage. It runs the headline configuration only - the ablation ladder is
+the point of a single evaluation and pure cost across twenty seeds - which
+brings twenty seeds to 1.4 seconds and lets the README's pooled table be
+checked in the ordinary test run.
+
+---
+
+## The Splink question, settled by measurement
+
+The call was: work out whether we need it, then use it or do not. So it was
+measured rather than argued, and the measurement had to survive the rule that
+sank the last version of this decision - **"our generator does not produce the
+case" is not evidence the case does not exist.**
+
+Two questions, on the standard tiers and on the colliding merchant (single
+price, one fee rate, so batch totals genuinely collide and the amount rungs
+stop working), eight seeds each.
+
+### Is our own similarity measure what is limiting us?
+
+If a better engine could win, the crude one must be losing. So the floor was
+dropped from 0.78 to 0.45 and the decisive margin from 0.10 to 0.00 - which is
+"answer with whatever ranks top, always", the most permissive string matcher
+there is.
+
+| Tier | Shape | Floor | Margin | Correct | False + |
+|---|---|---|---|---|---|
+| messy | standard | 0.78 | 0.10 | 211/211 | 0 |
+| messy | standard | 0.45 | 0.00 | 211/211 | 0 |
+| messy | colliding | 0.78 | 0.10 | 151/157 | 0 |
+| messy | colliding | 0.45 | 0.00 | 151/157 | 0 |
+| adversarial | standard | 0.78 | 0.10 | 151/151 | 0 |
+| adversarial | standard | 0.45 | 0.00 | 151/151 | 0 |
+| adversarial | colliding | 0.78 | 0.10 | 95/104 | 0 |
+| adversarial | colliding | 0.45 | 0.00 | 95/104 | 0 |
+
+**Removing the threshold entirely gains nothing.** Not one record, on any tier,
+in either shape. Whatever is holding those 9 and 6 credits back, it is not the
+strictness of the comparison - and a more sophisticated comparison cannot beat
+one that has already been allowed to answer unconditionally.
+
+### Is there anything in that column to be sophisticated about?
+
+For every unresolved credit, the best similarity between its narration and its
+true settlement's reference:
+
+| Tier | Shape | Unresolved | Carrying narration evidence |
+|---|---|---|---|
+| messy | standard | 0 | 0 |
+| messy | colliding | 6 | 2 |
+| adversarial | standard | 0 | 0 |
+| adversarial | colliding | 9 | **0** |
+
+The normalised narrations of the adversarial failures are `'RZPY'`, `''`,
+`'RZPY'`, `'CRAZORPAYSOFTWARE'`, `''`. The bank sent no reference. There is no
+string there to match well or badly, and every one of them is a
+`MERGED_CREDIT` - several payouts swept into one transfer with the reference
+dropped.
+
+The two exceptions are the interesting ones, and they argue the same way.
+Both scored **1.00** - a perfect, undamaged reference - and both are still
+unresolved, because they are `MERGED_WITH_REFERENCE`: the reference identifies
+one member of the set, and the answer is the whole set. No linkage library
+addresses that. It is the anchored subset-sum path from decision 84, and it is
+arithmetic, not string comparison.
+
+### The decision
+
+**Splink is not needed, and this is now a measurement rather than a
+preference.** The capability it would provide is already present, already
+running as rung four, and already unconstrained by its own thresholds. The
+records we cannot resolve fail for a reason no string method reaches: either
+there is no reference at all, or there is a perfect one that names a member
+rather than a set.
+
+Recorded with the boundary of the claim, because that is the honest form:
+this says Splink adds nothing **to the defect catalogue we generate**, on both
+the standard shape and the hardest shape built specifically to break the
+amount rungs. If a defect class turns up where many weak signals across
+several columns have to be weighed together - which is the problem Splink is
+actually built for - the answer changes, and the first move would be to
+generate that defect rather than to reach for the library.

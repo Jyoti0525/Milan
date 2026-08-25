@@ -396,3 +396,42 @@ If a decision is not here, it is not settled.
 111. **mypy checks the tests too.** They construct the same models the engine
      does. An annotation that has drifted from a record's real shape is a test
      asserting something about a type that no longer exists.
+112. **Splink is closed: measured, not needed.** Dropping the similarity floor
+     from 0.78 to 0.45 and the margin to zero - "answer with whatever ranks
+     top, always" - gains exactly zero records on any tier in either merchant
+     shape. A more sophisticated comparison cannot beat one already allowed
+     to answer unconditionally. And of the nine unresolved credits on the
+     hardest shape, **none carry any narration evidence at all**: the bank
+     sent no reference. The two that do score a perfect 1.00 and still fail,
+     because their reference names one member of a merged set rather than the
+     set. That is arithmetic, not string comparison. Recorded with its
+     boundary: this says Splink adds nothing to the defects we generate,
+     including the shape built specifically to break the amount rungs.
+113. **A rejection-sampling loop is a hang wearing a distribution.**
+     `_draw_amount` cost one over the acceptance probability, which is
+     invisible on the default price window and total on a single-price
+     merchant - twenty-two seconds and eleven million discarded draws for
+     forty orders, and unbounded for a window the distribution cannot reach.
+     Replaced with inverse-CDF sampling over the window. Same truncated
+     lognormal, computed rather than searched for. When a distribution has to
+     respect a constraint, put the constraint in the draw.
+114. **The config that mattered most was the one the generator could not
+     produce.** The single-price merchant is the only regime where the amount
+     rungs genuinely fail, so it is the regime every claim about matching
+     needs testing in - and it was the exact shape the sampler could not
+     generate. A performance cliff on an unusual config is not a performance
+     problem when the unusual config is the benchmark.
+115. **`shortfalls named` was never a measurement at one seed.** Denominator
+     of six per run, range 17% to 83% across twenty seeds. The README had
+     published 5/6 and then 3/6 and both were noise. The honest figure is 55%
+     of 120, and it is the weakest thing the system does: detection of a
+     payout variance is 100%, explanation of it is 55%.
+116. **Pool the counts, do not average the rates.** A run with six shortfalls
+     and a run with two are not equally informative. Averaging their
+     percentages says they are, and on this project's figures the two answers
+     differ by enough to change what a reader concludes.
+117. **A sweep runs the headline configuration only.** The ablation ladder is
+     the whole point of a single evaluation and pure cost across twenty
+     seeds. Skipping it takes the sweep to 1.4 seconds, which is what lets
+     the README's pooled table be verified in the ordinary test run rather
+     than in a slow lane nobody runs.

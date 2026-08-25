@@ -57,8 +57,18 @@ def to_recon_input(dataset: Dataset) -> ReconInput:
     )
 
 
-def evaluate(dataset: Dataset, rates: RateCard | None = None) -> Evaluation:
-    """Run every configuration over one dataset and score each."""
+def evaluate(
+    dataset: Dataset, rates: RateCard | None = None, *, headline_only: bool = False
+) -> Evaluation:
+    """Run every configuration over one dataset and score each.
+
+    `headline_only` scores the full cascade and skips the ladder beneath it.
+    The ladder is the whole point of a single evaluation - a match rate means
+    nothing without the baseline it beat - but a sweep across twenty seeds is
+    asking a different question, and paying four times over for baselines it
+    never prints is what pushes the check on the published figures out of the
+    default test run.
+    """
     data = to_recon_input(dataset)
     metadata = RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
     rate_card = rates if rates is not None else RateCard()
@@ -66,7 +76,7 @@ def evaluate(dataset: Dataset, rates: RateCard | None = None) -> Evaluation:
     # One rung added per row, so each row's gain over the one above it is
     # what that rung is worth. A single headline number cannot show that, and
     # a headline number whose composition is unknown is not a measurement.
-    configurations = (
+    configurations: tuple[tuple[str, Cascade], ...] = (
         ("reference only (baseline)", Cascade((ExactUtrStrategy(),))),
         ("+ amount and date", Cascade((ExactUtrStrategy(), AmountDateStrategy()))),
         (
@@ -85,6 +95,9 @@ def evaluate(dataset: Dataset, rates: RateCard | None = None) -> Evaluation:
             ),
         ),
     )
+
+    if headline_only:
+        configurations = configurations[-1:]
 
     scorecards = tuple(
         score(

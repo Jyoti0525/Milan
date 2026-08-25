@@ -55,6 +55,27 @@ class TestEveryCommandRuns:
         assert result.exit_code == 0, result.output
         assert "sorted without a model" in result.output
 
+    def test_sweep_runs_and_reports_a_denominator(self) -> None:
+        """The sweep generates its own datasets and stores nothing, so it
+        takes no data root. What it must show is the `of` column: a pooled
+        rate without the count behind it is the single-seed problem again in
+        a longer sentence."""
+        result = runner.invoke(app, ["sweep", "--seeds", "3", "--orders", "150"])
+
+        assert result.exit_code == 0, result.output
+        assert "shortfalls named" in result.output
+        assert "Worst seed" in result.output
+
+    def test_sweep_markdown_is_plain_and_fenced(self) -> None:
+        """It exists to be pasted into the README unchanged, so it must not
+        arrive wrapped or styled."""
+        result = runner.invoke(app, ["sweep", "--seeds", "2", "--orders", "150", "--markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert result.output.strip().startswith("<!-- generated: sweep -->")
+        assert result.output.strip().endswith("<!-- /generated -->")
+        assert "|---|" in result.output
+
     def test_withholding_is_accepted_and_changes_the_data(self, tmp_path: Path) -> None:
         """The flag that shipped broken.
 

@@ -16,6 +16,7 @@ from milan.domain.money import Paise, format_inr
 from milan.domain.results import Proof, ReconReport
 from milan.evaluation.harness import Evaluation
 from milan.evaluation.metrics import Scorecard
+from milan.evaluation.sweep import Sweep
 
 console = Console()
 
@@ -229,6 +230,7 @@ def _short(identifier: str) -> str:
 
 MARKDOWN_OPEN = "<!-- generated: eval -->"
 MARKDOWN_CLOSE = "<!-- /generated -->"
+SWEEP_OPEN = "<!-- generated: sweep -->"
 
 
 def evaluation_markdown(evaluation: Evaluation) -> str:
@@ -252,3 +254,59 @@ def evaluation_markdown(evaluation: Evaluation) -> str:
         for card in evaluation.scorecards
     )
     return "\n".join((MARKDOWN_OPEN, *header, *rows, MARKDOWN_CLOSE))
+
+
+def sweep_table(result: Sweep) -> Table:
+    """Pooled figures, with the range each was pooled from beside it.
+
+    The range column is not decoration. A rate pooled from twenty seeds and a
+    rate that happened to be that value on one seed look identical in a
+    report; the swing is what tells them apart.
+    """
+    table = Table(
+        title=(
+            f"{len(result.seeds)} seeds - {result.difficulty} tier, {result.orders} orders each"
+        ),
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Measure")
+    table.add_column("Pooled", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Of", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Worst seed", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Median", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Best seed", **_NUMERIC)  # type: ignore[arg-type]
+
+    for spread in result.spreads:
+        swung = spread.swing >= 0.2
+        table.add_row(
+            spread.name,
+            f"{spread.pooled:.1%}",
+            f"{spread.numerator}/{spread.denominator}",
+            f"[yellow]{spread.lowest:.1%}[/yellow]" if swung else f"{spread.lowest:.1%}",
+            f"{spread.middle:.1%}",
+            f"[yellow]{spread.highest:.1%}[/yellow]" if swung else f"{spread.highest:.1%}",
+        )
+
+    table.add_section()
+    table.add_row("rounding drift, gross", format_inr(result.drift_gross))
+    table.add_row("  net", format_inr(result.drift_net))
+    table.add_row("  proofs carrying it", str(result.proofs_with_drift))
+    return table
+
+
+def sweep_markdown(result: Sweep) -> str:
+    """The pooled table as markdown, on the same terms as `evaluation_markdown`."""
+    header = (
+        "| Measure | Pooled | Of | Worst seed | Median | Best seed |",
+        "|---|---|---|---|---|---|",
+    )
+    rows = tuple(
+        f"| {spread.name} | {spread.pooled:.1%} "
+        f"| {spread.numerator}/{spread.denominator} "
+        f"| {spread.lowest:.1%} | {spread.middle:.1%} | {spread.highest:.1%} |"
+        for spread in result.spreads
+    )
+    return "\n".join((SWEEP_OPEN, *header, *rows, MARKDOWN_CLOSE))

@@ -11,7 +11,7 @@ from __future__ import annotations
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from milan.domain.rates import RateCard
 
@@ -206,6 +206,9 @@ class GenerationConfig(BaseModel):
 
     min_amount_rupees: Decimal = Decimal("199")
     max_amount_rupees: Decimal = Decimal("48000")
+    """The merchant's price window. Equal values mean a single-price
+    merchant, which is a real shape and the one that makes batch totals
+    collide."""
 
     rates: RateCard = Field(default_factory=RateCard)
     """The fee stack this merchant is contracted to.
@@ -224,3 +227,21 @@ class GenerationConfig(BaseModel):
     @property
     def defects(self) -> DefectRates:
         return defects_for(self.difficulty)
+
+    @model_validator(mode="after")
+    def _price_window_is_a_window(self) -> GenerationConfig:
+        """A window with the ends the wrong way round is not a slow config.
+
+        Before the amount draw was rewritten it was a hang: rejection
+        sampling looking for a value inside an empty range, with no error and
+        no progress. Caught here so an impossible request fails at the point
+        it is made.
+        """
+        if self.min_amount_rupees > self.max_amount_rupees:
+            raise ValueError(
+                f"min_amount_rupees ({self.min_amount_rupees}) is above "
+                f"max_amount_rupees ({self.max_amount_rupees})"
+            )
+        if self.min_amount_rupees <= 0:
+            raise ValueError("min_amount_rupees must be positive")
+        return self

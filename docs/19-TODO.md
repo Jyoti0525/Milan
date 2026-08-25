@@ -353,3 +353,36 @@ Both found by the property "a reference is similar to itself".
       truncated reference (`UTRRKBZWJLK`) is stepped past
 - [x] Regression tests for both, plus one asserting the wider sweep did not
       become more agreeable
+
+### 17. Splink — CLOSED, measured
+
+The remaining open question from item 8, now answered with numbers rather than
+argument. Lowering the similarity floor to 0.45 and the margin to zero gains
+zero records on any tier or shape; of the credits still unresolved on the
+colliding merchant, none carry narration evidence at all. Written up in
+[18-BUILD-LOG.md](18-BUILD-LOG.md).
+
+- [x] Measure whether our own measure is the binding constraint
+- [x] Measure whether the unresolved credits carry string evidence at all
+- [x] Record the boundary of the claim, not just the conclusion
+
+### 18. The generator could hang on a valid config — DONE
+
+`_draw_amount` was unbounded rejection sampling. Twenty-two seconds and eleven
+million discarded draws for forty single-price orders; unbounded for a window
+the distribution cannot reach.
+
+- [x] Inverse-CDF sampling over the price window
+- [x] A reversed window is rejected by the config, not hung on
+- [x] Regression test asserting a single-price merchant generates promptly,
+      still respects its window, and really has one price
+
+### 19. One seed was not a measurement — DONE
+
+`shortfalls named` ranged 17% to 83% across twenty seeds on a denominator of
+six. The README had published two different noise readings of it.
+
+- [x] `milan sweep` pools counts across seeds and reports the spread
+- [x] The README carries the pooled table, checked by a test
+- [x] The weakest figure is stated plainly: detection 100%, explanation 55%
+

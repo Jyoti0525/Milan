@@ -91,10 +91,10 @@ the gain over the row above it is what that rung is worth.
 <!-- generated: eval -->
 | Configuration | Match rate | Precision | Correct refusals | Shortfalls named |
 |---|---|---|---|---|
-| reference only (baseline) | 23.8% | 100.0% | 10/10 | 4/6 |
-| + amount and date | 61.9% | 100.0% | 10/10 | 4/6 |
-| + subset sum | 90.5% | 100.0% | 10/10 | 4/6 |
-| full cascade (+ fuzzy narration) | 100.0% | 100.0% | 10/10 | 5/6 |
+| reference only (baseline) | 23.8% | 100.0% | 10/10 | 2/6 |
+| + amount and date | 61.9% | 100.0% | 10/10 | 2/6 |
+| + subset sum | 90.5% | 100.0% | 10/10 | 2/6 |
+| full cascade (+ fuzzy narration) | 100.0% | 100.0% | 10/10 | 3/6 |
 <!-- /generated -->
 
 Four outcomes, not one. **Match rate** counts credits proved to the paisa.
@@ -102,8 +102,9 @@ Four outcomes, not one. **Match rate** counts credits proved to the paisa.
 alone. **Shortfalls named** counts credits that are identifiable but *cannot*
 be proved, because the payout disagrees with the report — for those the right
 answer is never a match, it is an exception saying exactly what is missing and
-why. The one we cannot name lost its reference as well, so nothing could
+why. The ones we cannot name lost their reference as well, so nothing could
 identify which settlement was short; that is the correct output, not a miss.
+This column is the weak one, and the section below says how weak.
 
 The table above is printed by the command below rather than typed, and a test
 fails if this file and a fresh run disagree. It is here because the numbers in
@@ -115,6 +116,39 @@ Reproduce it:
 uv run milan generate --seed 42 --difficulty adversarial --orders 600
 uv run milan eval --seed 42 --difficulty adversarial --detail
 ```
+
+### One seed is not a measurement
+
+The table above is a single run, which is fine for the rungs — the match rate
+moves by tens of credits and does not depend on which seed drew them. It is
+not fine for the smaller figures. **Shortfalls named** has a denominator of
+about six per run, and across twenty seeds it ranged from 17% to 83% while
+everything else sat at 100%. Either end could have been published with a
+straight face.
+
+So the honest version pools the counts across twenty seeds rather than
+averaging the rates, and reports the spread beside each figure:
+
+<!-- generated: sweep -->
+| Measure | Pooled | Of | Worst seed | Median | Best seed |
+|---|---|---|---|---|---|
+| match rate | 100.0% | 389/389 | 100.0% | 100.0% | 100.0% |
+| precision | 100.0% | 389/389 | 100.0% | 100.0% | 100.0% |
+| refusal rate | 100.0% | 200/200 | 100.0% | 100.0% | 100.0% |
+| shortfalls named | 55.0% | 66/120 | 16.7% | 50.0% | 83.3% |
+| merged credits resolved | 100.0% | 120/120 | 100.0% | 100.0% | 100.0% |
+| missing payouts flagged | 100.0% | 40/40 | 100.0% | 100.0% | 100.0% |
+| unsettled payments flagged | 100.0% | 153/153 | 100.0% | 100.0% | 100.0% |
+<!-- /generated -->
+
+```bash
+uv run milan sweep --seeds 20 --difficulty adversarial
+```
+
+**Naming a shortfall is the weakest thing this system does — 55%, not the 83%
+one seed would have shown.** Everything else holds at 100% across twenty
+seeds: 389 credits matched with nothing wrongly claimed, and 200 impossible
+credits refused without a single forced answer.
 
 Add `--withholding` to the generate command for a merchant subject to Section
 194-O, where 1% of gross is withheld before the payout leaves.

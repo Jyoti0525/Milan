@@ -21,11 +21,13 @@ reproducibility in ways that only show up on someone else's machine.
 
 from __future__ import annotations
 
+import math
 import random
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from statistics import NormalDist
 
 from milan.chaos.config import GenerationConfig
 from milan.domain.calendar import (
@@ -162,6 +164,15 @@ def _reference_defect(corrupted: bool, damaged: bool) -> str | None:
     return "UTR_DAMAGED" if damaged else None
 
 
+_ORDER_VALUE = NormalDist(7.3, 1.05)
+"""The distribution of ln(order value in rupees).
+
+Median around Rs 1,480, with a long right tail - the shape of a real consumer
+basket rather than a uniform draw, which matters because uniform amounts would
+make every batch total distinctive and every match easy.
+"""
+
+
 class ChaosEngine:
     """Produces one reproducible dataset from one config."""
 
@@ -233,13 +244,36 @@ class ChaosEngine:
         return datetime.combine(day, time(hour, self._rng.randrange(60), self._rng.randrange(60)))
 
     def _draw_amount(self) -> Paise:
-        """A long-tailed order value: many small baskets, a few large ones."""
-        low = self._config.min_amount_rupees
-        high = self._config.max_amount_rupees
-        while True:
-            rupees = Decimal(str(round(self._rng.lognormvariate(7.3, 1.05), 2)))
-            if low <= rupees <= high:
-                break
+        """A long-tailed order value: many small baskets, a few large ones.
+
+        Drawn by inverting the CDF over the merchant's price window rather
+        than by drawing from the whole lognormal and rejecting what falls
+        outside it. Rejection sampling was the obvious way to write this and
+        it is unbounded: the cost is one over the acceptance probability, so
+        a merchant with a narrow price range pays for it and a merchant with
+        a single price never finishes at all. A single-price subscription
+        merchant is not a hypothetical - it is the benchmark shape built
+        specifically to make batch totals collide, and generating forty of
+        its orders took twenty-two seconds and eleven million discarded
+        samples.
+
+        The distribution is unchanged in shape. A truncated lognormal is what
+        the rejection loop was already producing; this is the same thing
+        computed instead of searched for.
+        """
+        low = float(self._config.min_amount_rupees)
+        high = float(self._config.max_amount_rupees)
+        floor = _ORDER_VALUE.cdf(math.log(low))
+        ceiling = _ORDER_VALUE.cdf(math.log(high))
+
+        if ceiling <= floor:
+            # One price, or a window too narrow for the distribution to
+            # resolve. Both mean there is nothing to draw.
+            rupees = self._config.min_amount_rupees
+        else:
+            drawn = math.exp(_ORDER_VALUE.inv_cdf(self._rng.uniform(floor, ceiling)))
+            rupees = Decimal(str(round(min(max(drawn, low), high), 2)))
+
         # Real baskets cluster on round numbers more than a lognormal does.
         if self._rng.random() < 0.35:
             rupees = Decimal(int(rupees))

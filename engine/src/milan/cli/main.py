@@ -20,6 +20,7 @@ from milan.cli.render import console
 from milan.domain.dataset import Dataset
 from milan.domain.rates import RateCard
 from milan.evaluation.harness import evaluate, to_recon_input
+from milan.evaluation.sweep import sweep
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
@@ -179,6 +180,31 @@ def _report_no_proof(report: object, credit: str) -> None:
             console.print(f"  [dim]{key}[/dim] {value}")
     else:
         console.print(f"[red]No credit starting {credit} in this run.[/red]")
+
+
+@app.command(name="sweep")
+def sweep_command(
+    seeds: Annotated[int, typer.Option("--seeds", help="How many seeds to score.")] = 20,
+    difficulty: DifficultyOption = Difficulty.ADVERSARIAL,
+    orders: Annotated[int, typer.Option("--orders", help="Orders per seed.")] = 600,
+    withholding: WithholdingOption = False,
+    markdown: Annotated[
+        bool, typer.Option("--markdown", help="Print the table as markdown, for the README.")
+    ] = False,
+) -> None:
+    """Score many seeds and pool the counts.
+
+    One seed is not a measurement for the smaller figures. Match rate and
+    precision do not move between seeds; "shortfalls named" has a denominator
+    of about six per run and swung from 17% to 83% across twenty of them.
+    Nothing is stored - every dataset here is generated, scored and dropped,
+    so this never competes with the single-seed run a reader reproduces.
+    """
+    result = sweep(difficulty, tuple(range(1, seeds + 1)), orders, withholding)
+    if markdown:
+        print(render.sweep_markdown(result))
+        return
+    console.print(render.sweep_table(result))
 
 
 @app.command()
