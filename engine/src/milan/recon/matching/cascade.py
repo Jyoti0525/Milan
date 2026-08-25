@@ -34,6 +34,7 @@ from milan.domain.records import BankCredit
 from milan.recon.batches import BatchGroup, GatewayBatch
 from milan.recon.matching.base import Attempt, Strategy, Verdict, Verifier, always_valid
 from milan.recon.matching.exact import ExactUtrStrategy
+from milan.recon.matching.fuzzy import FuzzyNarrationStrategy
 from milan.recon.matching.subset import SubsetSumStrategy
 from milan.recon.matching.tolerance import AmountDateStrategy
 
@@ -43,10 +44,20 @@ def default_strategies() -> tuple[Strategy, ...]:
 
     Order is a claim about evidence, not about cost. A reference identifies a
     payout; an amount and a date describe one; a sum of amounts merely
-    permits one. Trying them in any other order would let the weakest kind of
-    evidence claim settlements the strongest kind could have proved.
+    permits one; a damaged reference only argues for one. Trying them in any
+    other order would let the weakest kind of evidence claim settlements the
+    strongest kind could have proved.
+
+    Similarity goes last for that reason. Everything reaching it has already
+    failed arithmetic, so it never overrides a number - it only speaks where
+    nothing else could.
     """
-    return (ExactUtrStrategy(), AmountDateStrategy(), SubsetSumStrategy())
+    return (
+        ExactUtrStrategy(),
+        AmountDateStrategy(),
+        SubsetSumStrategy(),
+        FuzzyNarrationStrategy(),
+    )
 
 
 class Cascade:

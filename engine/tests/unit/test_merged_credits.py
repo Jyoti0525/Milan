@@ -20,12 +20,12 @@ import pytest
 
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
-from milan.domain.enums import EntityType, PaymentMethod
+from milan.domain.enums import EntityType, MatchStrategy, PaymentMethod
 from milan.domain.money import Paise, from_rupees
 from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import BankCredit, SettlementRow
 from milan.recon.batches import BatchGroup, rebuild_batches
-from milan.recon.matching.base import Verdict
+from milan.recon.matching.base import Attempt, Verdict
 from milan.recon.matching.cascade import Cascade
 from milan.recon.matching.subset import SubsetSumStrategy
 from milan.recon.waterfall import provable, prove
@@ -218,3 +218,93 @@ class TestTheGeneratorProducesThem:
             day = settlement.settled_at.date()
             per_day[day] = per_day.get(day, 0) + 1
         assert max(per_day.values()) > 1
+
+
+class TestTheAnchoredSearch:
+    """A withdrawn claim narrows the search that follows it.
+
+    When rung one recognises a reference and the proof then comes up short,
+    the settlement it named is not a dead end - it is the one part of the
+    answer the bank stated outright. Carrying it forward turns "find any
+    combination that adds up" into "find the combination containing this
+    one", which is a smaller question and a much less coincidental one.
+
+    Constructed rather than drawn from a tier, because the generator does not
+    currently produce two disjoint groups with equal sums *and* a surviving
+    reference on one of them. That makes this the only place the behaviour is
+    exercised, which is exactly why it is written down.
+    """
+
+    def _four_settlements(self) -> tuple:
+        # A + B == C + D, and the two pairs share no member.
+        return batches_of(
+            row("pay_a", "10000", "setl_a", 7, "UTRAAAAAAAAAA"),
+            row("pay_b", "25000", "setl_b", 8, "UTRBBBBBBBBBB"),
+            row("pay_c", "15000", "setl_c", 8, "UTRCCCCCCCCCC"),
+            row("pay_d", "20000", "setl_d", 8, "UTRDDDDDDDDDD"),
+        )
+
+    def test_without_an_anchor_the_two_pairs_are_indistinguishable(self) -> None:
+        """The refusal this rung is supposed to make."""
+        batches = self._four_settlements()
+        by_id = {b.settlement_id: b for b in batches}
+        total = Paise(by_id["setl_a"].expected_net + by_id["setl_b"].expected_net)
+
+        result = SubsetSumStrategy().attempt(bank_credit(total), batches)
+        assert result.verdict is Verdict.AMBIGUOUS
+
+    def test_a_withdrawn_reference_settles_it(self) -> None:
+        """Same data, same rung. The bank named one member, so only
+        combinations containing that member are answers."""
+        batches = self._four_settlements()
+        by_id = {b.settlement_id: b for b in batches}
+        total = Paise(by_id["setl_a"].expected_net + by_id["setl_b"].expected_net)
+        withdrawn = Attempt(
+            strategy=MatchStrategy.EXACT_UTR,
+            verdict=Verdict.MATCHED,
+            settlement_ids=("setl_a",),
+        ).rejected("did not reconstruct")
+
+        result = SubsetSumStrategy().attempt(bank_credit(total), batches, withdrawn)
+
+        assert result.verdict is Verdict.MATCHED
+        assert set(result.settlement_ids) == {"setl_a", "setl_b"}
+
+    def test_the_anchor_raises_confidence_because_it_is_not_arithmetic(self) -> None:
+        """A named member is a different kind of evidence from a sum."""
+        batches = batches_of(
+            row("pay_a", "10000", "setl_a", 7, "UTRAAAAAAAAAA"),
+            row("pay_b", "25000", "setl_b", 8, "UTRBBBBBBBBBB"),
+        )
+        total = Paise(sum(b.expected_net for b in batches))
+        withdrawn = Attempt(
+            strategy=MatchStrategy.EXACT_UTR,
+            verdict=Verdict.MATCHED,
+            settlement_ids=("setl_a",),
+        ).rejected("did not reconstruct")
+
+        plain = SubsetSumStrategy().attempt(bank_credit(total), batches)
+        anchored = SubsetSumStrategy().attempt(bank_credit(total), batches, withdrawn)
+        assert anchored.confidence > plain.confidence
+
+    def test_an_anchor_naming_a_claimed_settlement_is_ignored(self) -> None:
+        """The anchor is intersected with what is still available.
+
+        A settlement claimed by another credit in an earlier rung is gone
+        from the candidate pool, and insisting the answer contain it would
+        make the search unsatisfiable rather than merely harder.
+        """
+        batches = batches_of(
+            row("pay_a", "10000", "setl_a", 7, "UTRAAAAAAAAAA"),
+            row("pay_b", "25000", "setl_b", 8, "UTRBBBBBBBBBB"),
+        )
+        total = Paise(sum(b.expected_net for b in batches))
+        stale = Attempt(
+            strategy=MatchStrategy.EXACT_UTR,
+            verdict=Verdict.MATCHED,
+            settlement_ids=("setl_gone",),
+        ).rejected("did not reconstruct")
+
+        result = SubsetSumStrategy().attempt(bank_credit(total), batches, stale)
+        assert result.verdict is Verdict.MATCHED
+        assert set(result.settlement_ids) == {"setl_a", "setl_b"}

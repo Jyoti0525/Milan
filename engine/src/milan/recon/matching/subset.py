@@ -62,7 +62,13 @@ class SubsetSumStrategy:
         self._max_members = max_members
         self._budget = budget
 
-    def attempt(self, credit: BankCredit, candidates: tuple[GatewayBatch, ...]) -> Attempt:
+    def attempt(
+        self,
+        credit: BankCredit,
+        candidates: tuple[GatewayBatch, ...],
+        prior: Attempt | None = None,
+    ) -> Attempt:
+        anchors = self._anchors(prior, candidates)
         pool = self._pool(credit, candidates)
         if len(pool) < 2:
             return Attempt(
@@ -71,7 +77,7 @@ class SubsetSumStrategy:
                 note=(f"{len(pool)} settlements near {credit.value_date}; nothing to combine"),
             )
 
-        solutions, truncated = self._search(credit.amount, pool)
+        solutions, truncated = self._search(credit.amount, pool, anchors)
 
         if truncated:
             return Attempt(
@@ -83,7 +89,12 @@ class SubsetSumStrategy:
                 ),
             )
 
-        singles = [b for b in pool if abs(credit.amount - b.expected_net) <= b.rounding_allowance]
+        singles = [
+            b
+            for b in pool
+            if abs(credit.amount - b.expected_net) <= b.rounding_allowance
+            and (not anchors or b.settlement_id in anchors)
+        ]
         competing = [*(BatchGroup.of(b) for b in singles), *solutions]
 
         if not competing:
@@ -114,7 +125,7 @@ class SubsetSumStrategy:
             verdict=Verdict.MATCHED,
             settlement_ids=group.settlement_ids,
             candidates=group.settlement_ids,
-            confidence=self._confidence(gap, group),
+            confidence=self._confidence(gap, group, bool(anchors)),
             note=(
                 f"{len(group.batches)} settlements totalling "
                 f"{format_inr(group.expected_net)}, "
@@ -123,6 +134,27 @@ class SubsetSumStrategy:
         )
 
     # ------------------------------------------------------------- internals
+
+    def _anchors(
+        self, prior: Attempt | None, candidates: tuple[GatewayBatch, ...]
+    ) -> frozenset[str]:
+        """Settlements an earlier rung identified and then had to give up.
+
+        This is the whole reason the cascade passes `prior` down. A merged
+        credit that carries one member's reference gets matched by rung one,
+        fails to prove because the amount covers the rest of the group, and is
+        withdrawn - and that withdrawal is not a dead end. It says the answer
+        *contains* that settlement.
+
+        Constraining the search to combinations containing it does two things
+        at once: it collapses the space, and it removes almost every
+        coincidental sum, because a stray combination now has to include the
+        one settlement the bank actually named.
+        """
+        if prior is None or not prior.withdrawn_ids:
+            return frozenset()
+        available = {batch.settlement_id for batch in candidates}
+        return frozenset(prior.withdrawn_ids) & available
 
     def _pool(
         self, credit: BankCredit, candidates: tuple[GatewayBatch, ...]
@@ -145,7 +177,7 @@ class SubsetSumStrategy:
         return tuple(near)
 
     def _search(
-        self, target: Paise, pool: tuple[GatewayBatch, ...]
+        self, target: Paise, pool: tuple[GatewayBatch, ...], anchors: frozenset[str]
     ) -> tuple[list[BatchGroup], bool]:
         """Depth-first over subsets of two or more, stopping at two answers.
 
@@ -169,7 +201,7 @@ class SubsetSumStrategy:
                 truncated = True
                 return
 
-            if len(chosen) >= 2:
+            if len(chosen) >= 2 and self._satisfies(chosen, anchors):
                 group = BatchGroup.of(*chosen)
                 if abs(outstanding) <= group.rounding_allowance:
                     solutions.append(group)
@@ -193,6 +225,12 @@ class SubsetSumStrategy:
         walk(0, [], target)
         return solutions, truncated
 
+    def _satisfies(self, chosen: list[GatewayBatch], anchors: frozenset[str]) -> bool:
+        """Every anchored settlement must be in the answer, not merely one."""
+        if not anchors:
+            return True
+        return anchors <= {batch.settlement_id for batch in chosen}
+
     def _suffix_sums(self, pool: tuple[GatewayBatch, ...]) -> list[Paise]:
         """How much is still on the table from each position onward."""
         sums: list[Paise] = [Paise(0)] * (len(pool) + 1)
@@ -200,7 +238,7 @@ class SubsetSumStrategy:
             sums[index] = Paise(sums[index + 1] + pool[index].expected_net)
         return sums
 
-    def _confidence(self, gap: Paise, group: BatchGroup) -> float:
+    def _confidence(self, gap: Paise, group: BatchGroup, anchored: bool) -> float:
         """Deliberately capped below the single-batch rungs.
 
         A reference is proof of identity. A sum is proof of arithmetic, and
@@ -209,4 +247,9 @@ class SubsetSumStrategy:
         anyone reading the queue, and they are not.
         """
         base = 0.75 if gap == 0 else 0.65
+        if anchored:
+            # The bank named one of these settlements. That is a different
+            # kind of evidence from arithmetic alone, and a combination
+            # containing a named member is far less likely to be coincidence.
+            base += 0.15
         return base - 0.05 * (len(group.batches) - 2)

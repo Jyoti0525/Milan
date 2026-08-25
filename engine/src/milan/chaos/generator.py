@@ -771,6 +771,9 @@ class ChaosEngine:
         credits, truths = self._merge_credits(credits, truths, defects.merged_credits)
         credits, truths = self._inject_orphans(credits, truths, defects.orphan_credits)
         credits, truths = self._inject_duplicates(credits, truths, defects.ambiguous_pairs)
+        credits, truths = self._inject_reference_duplicates(
+            credits, truths, defects.ambiguous_with_reference
+        )
 
         order = {credit.credit_id: index for index, credit in enumerate(credits)}
         credits.sort(key=lambda credit: (credit.value_date, credit.credit_id))
@@ -1036,6 +1039,70 @@ class ChaosEngine:
                 )
             )
             by_id[twin_id] = self._unmatchable(twin_id, "AMBIGUOUS_DUPLICATE")
+
+        return rebuilt, [by_id[credit.credit_id] for credit in rebuilt]
+
+    def _inject_reference_duplicates(
+        self, credits: list[BankCredit], truths: list[CreditTruth], count: int
+    ) -> tuple[list[BankCredit], list[CreditTruth]]:
+        """Twins that only a damaged reference can separate.
+
+        The same construction as `_inject_duplicates`, with one difference
+        that changes everything: the real credit keeps its reference, mangled
+        but present, while the duplicate carries none.
+
+        That makes the pair genuinely resolvable where the plain duplicates
+        are not. The amounts are identical and the dates are identical, so
+        arithmetic has nothing to say about either credit - but one narration
+        still contains something that resembles a settlement's reference, and
+        that resemblance is the only evidence in the dataset that tells them
+        apart. A system that can only compare strings for equality must
+        refuse this pair; one that can measure similarity should get it
+        right, and this is where that difference is worth something.
+        """
+        if count <= 0:
+            return credits, truths
+
+        by_id = {truth.credit_id: truth for truth in truths}
+        eligible = [
+            credit
+            for credit in credits
+            if credit.utr is not None
+            and by_id[credit.credit_id].defect is None
+            and by_id[credit.credit_id].provable
+        ]
+        if not eligible:
+            return credits, truths
+
+        chosen = {
+            credit.credit_id for credit in self._rng.sample(eligible, k=min(count, len(eligible)))
+        }
+
+        rebuilt: list[BankCredit] = []
+        for credit in credits:
+            if credit.credit_id in chosen:
+                assert credit.utr is not None
+                damaged = self._damage_reference(credit.utr)
+                credit = credit.model_copy(
+                    update={"utr": None, "narration": self._narration(damaged, corrupted=False)}
+                )
+                by_id[credit.credit_id] = by_id[credit.credit_id].model_copy(
+                    update={"defect": "AMBIGUOUS_WITH_REFERENCE"}
+                )
+            rebuilt.append(credit)
+
+        for credit in [c for c in rebuilt if c.credit_id in chosen]:
+            twin_id = self._identifier("bank")
+            rebuilt.append(
+                BankCredit(
+                    credit_id=twin_id,
+                    amount=credit.amount,
+                    value_date=credit.value_date,
+                    narration=self._narration("", corrupted=True),
+                    utr=None,
+                )
+            )
+            by_id[twin_id] = self._unmatchable(twin_id, "AMBIGUOUS_TWIN")
 
         return rebuilt, [by_id[credit.credit_id] for credit in rebuilt]
 

@@ -87,9 +87,7 @@ class TestEveryCategoryIsReachable:
 
 
 class TestEveryRungEarnsItsPlace:
-    @pytest.mark.parametrize(
-        "strategy", [s for s in MatchStrategy if s != MatchStrategy.FUZZY_NARRATION]
-    )
+    @pytest.mark.parametrize("strategy", list(MatchStrategy))
     def test_some_tier_matches_with_it(
         self, strategy: MatchStrategy, every_strategy: set[str]
     ) -> None:

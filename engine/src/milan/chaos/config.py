@@ -73,6 +73,19 @@ class DefectRates(BaseModel):
     """Pairs of settlements with identical amount and date, both with their
     UTR destroyed. Genuinely indistinguishable. Refusing is the right answer."""
 
+    ambiguous_with_reference: int = 0
+    """Twin credits where only a damaged reference tells them apart.
+
+    Two credits, identical amount, same day - so the amount says nothing and
+    the combination search says nothing either. One of them carries a
+    reference that survived into the narration in damaged form, and that is
+    the only evidence in the entire dataset that separates them.
+
+    This is the case a similarity rung exists for, and it is injected
+    deliberately rather than waited for. Left to chance the combination of
+    "reference damaged" and "amount ambiguous" occurs on some seeds and not
+    others, which would make the rung tested only on some runs."""
+
     merged_credits: int = 0
     """Bank credits that pay out two or three settlements at once.
 
@@ -117,6 +130,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
         batch_tax_rounding=True,
         orphan_credits=1,
         missing_credits=1,
+        ambiguous_with_reference=1,
         merged_credits=2,
         payout_variances=3,
         unreported_payments=0.004,
@@ -128,6 +142,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
         rate_mismatch=0.15,
         orphan_credits=3,
         missing_credits=2,
+        ambiguous_with_reference=2,
         merged_credits=4,
         payout_variances=4,
         unreported_payments=0.010,
@@ -140,6 +155,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
         orphan_credits=4,
         missing_credits=2,
         ambiguous_pairs=2,
+        ambiguous_with_reference=2,
         merged_credits=6,
         payout_variances=6,
         unreported_payments=0.015,

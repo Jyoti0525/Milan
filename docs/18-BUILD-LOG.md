@@ -488,3 +488,97 @@ The credits we cannot name lost their reference *as well as* being short —
 nothing identifies which settlement is missing money, so the only truthful
 output is UNEXPLAINED. The breakdown says so by defect rather than leaving a
 reader to assume it was a failure.
+
+---
+
+## Days 4-5 — matching core
+
+Three steps, in plan order, each committed before the next started.
+
+### 1. Instant refund fees
+
+The last unmodelled line in the money rules. An ordinary refund costs the
+merchant nothing to process; an instant one costs a flat Rs 7.99, Rs 11.99 or
+Rs 14.99 by size.
+
+Flat is what makes it worth having. Every other deduction scales with the
+transaction, so a few rupees adrift on a large batch reads as rounding. This
+one does not scale - it is noise on a big refund and a real percentage on a
+small one, which is the shape of charge that gets written off as "some bank
+fee". So it gets its own proof line rather than being folded into the platform
+fee, which meant batch fee and tax had to start meaning the payment side only.
+
+Two tests failed and both were the tests, not the code: the drift formula was
+summing every row's tax when drift is a payment-side concept, and a
+damaged-reference filter used exact string equality that had stopped matching
+anything once defects became combinable.
+
+### 2. The anchored subset-sum, and a hypothesis that was wrong
+
+Decision 84 said a withdrawn claim should constrain the combination search: a
+merged credit carrying member A's reference is a credit whose answer contains
+A. Built it, then A/B'd it on identical datasets.
+
+**No difference.** Not on any tier, not on the colliding merchant.
+
+The remaining failure turned out to be a merged credit with *no reference at
+all*, so there was nothing to anchor on - the improvement was structurally
+inapplicable to the case it was meant to fix. Rather than delete it or claim
+it worked, the case where it decides is now constructed directly in a test:
+four settlements where A+B and C+D total the same, with A's reference
+withdrawn. Without the anchor the rung refuses, correctly. With it, it
+resolves. So it works, it is proven, and it is honestly recorded as not yet
+changing any tier-level number.
+
+### 3. The similarity rung, which should never have been dropped
+
+Cutting Splink was right about the library. Treating that as licence to skip
+Tier 1 item 5 was not, and it was compounded by quietly excluding
+`FUZZY_NARRATION` from the conformance check that asserts every rung matches
+something - exactly the kind of exclusion that hides missing work.
+
+So the rung got built: `difflib` over a normalised narration, bank words
+stripped first because they are long runs of capitals and would otherwise
+compete with the reference, and a sliding window so a split reference rejoins.
+It runs last, needs a decisive margin rather than merely a best candidate, and
+its claim is still subject to the proof veto.
+
+Then the conformance check failed: **it matched nothing.** Every credit
+reaching it had already been resolved by arithmetic. Built, wired, and dead.
+
+The fix was to generate the case it exists for rather than excuse it. Twin
+credits, identical amount, identical date - so arithmetic has nothing to say
+about either - where one narration carries a damaged reference and the other
+carries none. That resemblance is then the only evidence in the dataset that
+separates them, and a system that can only compare strings for equality has to
+refuse the pair.
+
+With that in place, on the same seeds:
+
+| Merchant | Tier | + subset sum | + fuzzy | Gain |
+|---|---|---|---|---|
+| mixed | adversarial | 90.5% | **100.0%** | +9.5 |
+| colliding | messy | 83.3% | **94.4%** | +11.1 |
+| colliding | adversarial | 72.7% | **90.9%** | +18.2 |
+
+Precision stays at 100% throughout, and a test asserts the rung earns its
+place - that removing it costs matches - so it cannot quietly become dead
+weight again.
+
+**What this says about the earlier decision.** The measurement that led to
+cutting the fuzzy capability was not wrong about the data it had; it was wrong
+about what that data covered. The rung was unnecessary *for the defects then
+generated*, and the right response to that was to ask which real defect was
+missing, not to conclude the technique was unnecessary in general. That is the
+same mistake as arguing from the generator's silence, one level up.
+
+### Where it stands
+
+226 tests, 97% coverage, all four tiers reproducible. 600 orders, seed 42:
+
+| Tier | Reference | + amount/date | + subset sum | + fuzzy | Precision | Refusals |
+|---|---|---|---|---|---|---|
+| clean | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 0/0 |
+| realistic | 84.4% | 90.6% | 96.9% | 100.0% | 100.0% | 1/1 |
+| messy | 53.6% | 78.6% | 92.9% | 100.0% | 100.0% | 3/3 |
+| adversarial | 23.8% | 61.9% | 90.5% | 100.0% | 100.0% | 8/8 |

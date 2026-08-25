@@ -323,3 +323,33 @@ If a decision is not here, it is not settled.
     per-row-versus-batch disagreement the allowance exists to cover. Including
     it widened the tolerance for no reason on any batch containing a refund.
     Follows from decision 62.
+100. **Decision 83 is amended: the library stays cut, the rung is built.**
+     Splink remains the wrong tool - EM-learned match weights across many
+     comparison columns, for a problem with one column and a dozen candidates.
+     But dropping Tier 1 item 5 because the *library* was wrong conflated two
+     questions, and excluding FUZZY_NARRATION from the conformance check hid
+     the gap. The rung is `difflib` over a normalised narration, runs last,
+     and is measured.
+101. **The similarity rung runs last and needs a decisive margin.** Everything
+     reaching it has already failed the join key, the amount and the
+     combination search, so it never overrides arithmetic. And a ranked list
+     always has a top entry: without requiring the best to stand clear of the
+     second, the rung would answer every time. The margin is what turns "most
+     similar" into "identifiable".
+102. **A rung that matches nothing is dead weight, and a test says so.** The
+     fuzzy rung fired zero times when first wired in. The fix was to generate
+     the defect it exists for - twin credits separable only by a damaged
+     reference - not to excuse it. A test now asserts that removing it costs
+     matches.
+103. **Decision 84's anchor works but has not yet changed a tier number.**
+     A/B on identical datasets showed no difference, because the remaining
+     failures are merged credits with no reference to anchor on. The case
+     where it decides is constructed directly in a unit test. Kept, proven,
+     and honestly recorded as unmeasured at tier level rather than claimed as
+     an improvement.
+104. **"Unnecessary for the defects we generate" is not "unnecessary".** The
+     measurement behind cutting the fuzzy capability was sound about its data
+     and wrong about what that data covered. When a technique appears
+     unnecessary, the first question is which real defect is missing from the
+     generator. Same error as arguing from silence, one level up. Extends
+     decision 77.

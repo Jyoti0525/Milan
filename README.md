@@ -81,11 +81,12 @@ default Windows install and the project must not depend on it.
 Measured on 600 orders, seed 42, adversarial tier. Each row adds one rung, so
 the gain over the row above it is what that rung is worth.
 
-| Configuration | Match rate | Precision | Correct refusals | Shortfalls named |
-|---|---|---|---|---|
-| reference (UTR) only | 33.3% | 100.0% | 8/8 | 4/6 |
-| + amount and date | 71.4% | 100.0% | 8/8 | 4/6 |
-| + subset sum | 100.0% | 100.0% | 8/8 | 4/6 |
+| Configuration | Match rate | Precision | Correct refusals |
+|---|---|---|---|
+| reference (UTR) only | 23.8% | 100.0% | 8/8 |
+| + amount and date | 61.9% | 100.0% | 8/8 |
+| + subset sum | 90.5% | 100.0% | 8/8 |
+| + fuzzy narration | 100.0% | 100.0% | 8/8 |
 
 Four outcomes, not one. **Match rate** counts credits proved to the paisa.
 **Refusals** counts credits that were impossible by design and correctly left
@@ -105,7 +106,7 @@ uv run milan eval --seed 42 --difficulty adversarial --detail
 Add `--withholding` to the generate command for a merchant subject to Section
 194-O, where 1% of gross is withheld before the payout leaves.
 
-The 100% is worth less than the 33.3%, and the reason is written up in
+The 100% is worth less than the 23.8%, and the reason is written up in
 [docs/18-BUILD-LOG.md](docs/18-BUILD-LOG.md): a settlement total turns out to
 be a near-unique fingerprint once the fee stack is modelled properly, so this
 class of matching is easier than it looks. What is hard is proving a credit to

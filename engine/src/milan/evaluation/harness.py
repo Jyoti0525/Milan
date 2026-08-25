@@ -26,6 +26,7 @@ from milan.evaluation.metrics import Scorecard
 from milan.recon.inputs import ReconInput
 from milan.recon.matching.cascade import Cascade
 from milan.recon.matching.exact import ExactUtrStrategy
+from milan.recon.matching.fuzzy import FuzzyNarrationStrategy
 from milan.recon.matching.subset import SubsetSumStrategy
 from milan.recon.matching.tolerance import AmountDateStrategy
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
@@ -68,8 +69,19 @@ def evaluate(dataset: Dataset, rates: RateCard | None = None) -> Evaluation:
         ("reference only (baseline)", Cascade((ExactUtrStrategy(),))),
         ("+ amount and date", Cascade((ExactUtrStrategy(), AmountDateStrategy()))),
         (
-            "full cascade (+ subset sum)",
+            "+ subset sum",
             Cascade((ExactUtrStrategy(), AmountDateStrategy(), SubsetSumStrategy())),
+        ),
+        (
+            "full cascade (+ fuzzy narration)",
+            Cascade(
+                (
+                    ExactUtrStrategy(),
+                    AmountDateStrategy(),
+                    SubsetSumStrategy(),
+                    FuzzyNarrationStrategy(),
+                )
+            ),
         ),
     )
 
