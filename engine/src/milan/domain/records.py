@@ -98,6 +98,11 @@ class SettlementRow(_Record):
     payment_id: str | None = None
     method: PaymentMethod | None = None
     card_network: str | None = None
+    card_issuer: str | None = None
+    """The issuing bank's code. Not used for matching - carried because
+    the real report carries it, and a merchant checking our output against
+    their Razorpay export should not find a column missing."""
+
     card_type: CardType | None = None
     dispute_id: str | None = None
 

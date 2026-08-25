@@ -54,6 +54,8 @@ _ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 _UTR_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 _CARD_NETWORKS = ("Visa", "MasterCard", "RuPay", "Amex")
+_CARD_ISSUERS = ("HDFC", "ICIC", "SBIN", "UTIB", "KKBK", "IDFB", "YESB")
+"""IFSC bank codes, as the issuer column actually reports them."""
 
 _METHOD_WEIGHTS: dict[PaymentMethod, int] = {
     PaymentMethod.UPI: 46,
@@ -264,6 +266,12 @@ class ChaosEngine:
             )
         return payments
 
+    def _issuer(self, network: str | None) -> str | None:
+        """Only card rails have an issuing bank."""
+        if network is None:
+            return None
+        return self._rng.choice(_CARD_ISSUERS)
+
     def _draw_card_type(self) -> CardType:
         roll = self._rng.random()
         international = self._config.international_probability
@@ -458,6 +466,7 @@ class ChaosEngine:
             payment_id=payment.payment_id,
             method=payment.method,
             card_network=payment.card_network,
+            card_issuer=self._issuer(payment.card_network),
             card_type=payment.card_type,
         )
         return row, leak

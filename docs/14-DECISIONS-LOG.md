@@ -230,3 +230,40 @@ If a decision is not here, it is not settled.
     with no false positives — but only because amounts are reliable here. The
     deciding case is a damaged reference *plus* an ambiguous amount, which is
     not yet constructed. Until then Splink is unjustified, not unnecessary.
+83. **Splink is cut — the library and, for now, the capability.** Two
+    questions, both answered by measurement. The library is wrong for the
+    shape of the problem: probabilistic record linkage with EM-learned match
+    weights, aimed at comparing one damaged twelve-character reference against
+    forty candidates in a date window. The capability is unneeded because in
+    the one regime where amounts genuinely collide — a UPI-only, single-price
+    merchant, where 11 of 29 batches share a total — every residual failure is
+    a merged credit rather than a damaged reference, and one of them carries a
+    perfectly intact reference. Narration similarity is not the missing
+    evidence in any measured case. Supersedes decisions 76 and 82.
+84. **A withdrawn claim keeps its evidence.** When the veto rejects rung one's
+    match, the settlement it identified is currently discarded. It should
+    become a constraint on the subset-sum search: a merged credit carrying
+    member A's reference is a credit whose combination contains A. This is
+    what the colliding-merchant measurement actually points at, and it is the
+    next matching improvement rather than a fuzzy rung.
+85. **The provider seam is built empty, before any model exists.** Interface,
+    content-addressed disk cache, and a `NullProvider` that answers nothing.
+    `none` is the default and a first-class implementation, not a placeholder:
+    running the whole pipeline against it is what proves no graded figure
+    depends on a model. Resolves the build order's own contradiction — its
+    Tier 1 table says Ollama is day 2-3 and its sequence table says day 8 — by
+    doing the part that has no model dependency now.
+86. **The cache is content-addressed on the whole request.** Prompt, system,
+    model, max tokens and temperature all enter the key, so changing any of
+    them asks a new question instead of silently reusing an old answer. A
+    cached run is a reproducible run for a reviewer with no key and no local
+    model. Failures are never cached — caching an outage makes it permanent.
+87. **Temperature defaults to zero and should stay there.** A reconciliation
+    tool that answers differently on a second run is not reproducible, and
+    none of this output is prose.
+88. **Route, Smart Collect, QR pricing and instant settlement are deliberately
+    deferred.** All real Razorpay pricing, all optional products a given
+    merchant may not use, and all of them add more rates to a waterfall that
+    already handles three — no new class of reconciliation problem. Instant
+    refund fees are the exception and are queued, because a refund debit
+    larger than the refund is a class nothing else in the system produces.
