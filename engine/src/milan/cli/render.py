@@ -170,6 +170,8 @@ def scorecard_detail(card: Scorecard) -> Table:
         "Unsettled payments flagged",
         f"{card.unreported_payments_detected}/{card.unreported_payments_expected}",
     )
+    table.add_row("Exceptions per credit", f"{card.exception_rate:.2f}")
+    table.add_row("Sorted without a model", f"{card.rules_share:.1%}")
 
     if card.matches_by_strategy:
         table.add_section()

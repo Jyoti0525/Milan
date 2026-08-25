@@ -197,3 +197,36 @@ If a decision is not here, it is not settled.
     built specifically to break the amount fingerprint. Measured, then cut.
     The evidence is in `18-BUILD-LOG.md`; days 4-5 go to leak detection and
     property tests instead.
+77. **A generator not producing a defect is not evidence the world lacks it.**
+    Every accuracy figure Milan reports is an upper bound conditional on the
+    defect catalogue being complete, and the catalogue is written by the same
+    person as the matcher. Never argue from silence: "the cascade scores 100%
+    without X" is a statement about the generator until X is generated. The
+    defect catalogue ships with the submission so a reader can see the
+    boundary of the claim rather than infer it.
+78. **Section 194-O withholding is a merchant attribute, not a difficulty
+    tier.** It lives on `RateCard`, not `DefectRates`. An e-commerce operator
+    has 1% of gross withheld and a merchant selling their own goods does not;
+    both are ordinary months. The reconciliation side is never told which and
+    infers the withholding from the rows.
+79. **"Reference damaged" and "reference absent" are separate defects.** A
+    deleted reference announces itself. A damaged one still looks like
+    evidence, defeats string equality completely, and is indistinguishable
+    from a wrong reference without measuring similarity. Conflating them for
+    two days is what made decision 76 unsupportable.
+80. **Merging may consume any real payout, not only credits whose reference
+    survived.** The earlier filter made merging pick off exactly the credits
+    the first rung could resolve, so the baseline measured that filter rather
+    than how often a bank keeps a reference. It went unnoticed because it
+    lowered the baseline, and a lower baseline looked like the harder problem
+    we wanted. A defect that flatters the story survives longest.
+81. **There is no `ROUNDING` exception code.** Drift inside the derived
+    allowance is explained as a named line inside the proof; a credit that
+    reconstructs to zero has no exception to report. An exception code that
+    nothing emits reads as a category the system supports.
+82. **Decision 76 is withdrawn; Splink is open again.** The evidence for
+    cutting it was gathered on a generator that could not produce the input it
+    handles. Damaged references now exist and the amount rungs absorb them
+    with no false positives — but only because amounts are reliable here. The
+    deciding case is a damaged reference *plus* an ambiguous amount, which is
+    not yet constructed. Until then Splink is unjustified, not unnecessary.

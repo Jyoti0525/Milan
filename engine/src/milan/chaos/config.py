@@ -38,7 +38,23 @@ class DefectRates(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     utr_corrupted: float = 0.0
-    """Bank narration arrives without a usable UTR. Forces a fallback."""
+    """Bank narration arrives without a usable UTR at all. Forces a fallback."""
+
+    utr_damaged: float = 0.0
+    """The reference survives into the narration and arrives altered.
+
+    A distinct case from `utr_corrupted`, and for a long time this file
+    conflated them: a reference was either perfect or absent, which is not
+    how bank narrations behave. Real ones truncate at a field width,
+    transpose a pair of characters when re-keyed, confuse O for 0 and I for
+    1, pick up a prefix from an adjacent column, or get split by a delimiter.
+
+    Exact matching requires string equality, so every one of these is a total
+    miss for the first rung - and unlike a deleted reference, a damaged one
+    still *looks* like evidence. It is the input probabilistic linkage exists
+    to handle, and until this knob existed we had never generated it, so any
+    conclusion about whether such a technique is needed was a conclusion
+    about the generator."""
 
     batch_tax_rounding: bool = False
     """Fees round per transaction, GST rounds once on the batch. The two
@@ -81,6 +97,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
     Difficulty.CLEAN: DefectRates(),
     Difficulty.REALISTIC: DefectRates(
         utr_corrupted=0.10,
+        utr_damaged=0.08,
         batch_tax_rounding=True,
         orphan_credits=1,
         missing_credits=1,
@@ -89,6 +106,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
     ),
     Difficulty.MESSY: DefectRates(
         utr_corrupted=0.25,
+        utr_damaged=0.15,
         batch_tax_rounding=True,
         rate_mismatch=0.15,
         orphan_credits=3,
@@ -98,6 +116,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
     ),
     Difficulty.ADVERSARIAL: DefectRates(
         utr_corrupted=0.35,
+        utr_damaged=0.20,
         batch_tax_rounding=True,
         rate_mismatch=0.25,
         orphan_credits=4,
@@ -146,6 +165,18 @@ class GenerationConfig(BaseModel):
     max_amount_rupees: Decimal = Decimal("48000")
 
     rates: RateCard = Field(default_factory=RateCard)
+    """The fee stack this merchant is contracted to.
+
+    Also the switch for Section 194-O withholding, via `tds_applies`. It lives
+    here rather than in `DefectRates` on purpose: withholding is not a defect
+    and not a difficulty setting, it is a fact about who the merchant is. An
+    e-commerce operator has 1% of gross withheld and a merchant selling their
+    own goods does not, and both are entirely ordinary months.
+
+    The reconciliation side is never told which. It infers a withholding from
+    the gap between what a row was worth and what it credited, and is only
+    allowed to call that gap TDS when it matches the statutory rate on every
+    affected row."""
 
     @property
     def defects(self) -> DefectRates:

@@ -17,6 +17,8 @@ import pytest
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
 from milan.domain.dataset import Dataset
+from milan.domain.enums import EntityType
+from milan.domain.rates import RateCard
 from milan.evaluation.harness import score, to_recon_input
 from milan.evaluation.oracle import OracleStrategy
 from milan.recon.matching.cascade import Cascade
@@ -25,9 +27,19 @@ from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 ALL_TIERS = pytest.mark.parametrize("difficulty", list(Difficulty))
 
 
-def generate(difficulty: Difficulty, orders: int = 250, seed: int = 42) -> Dataset:
+def generate(
+    difficulty: Difficulty,
+    orders: int = 250,
+    seed: int = 42,
+    withholding: bool = False,
+) -> Dataset:
     return ChaosEngine(
-        GenerationConfig(seed=seed, difficulty=difficulty, order_count=orders)
+        GenerationConfig(
+            seed=seed,
+            difficulty=difficulty,
+            order_count=orders,
+            rates=RateCard(tds_applies=withholding),
+        )
     ).generate()
 
 
@@ -79,3 +91,52 @@ class TestTheAnswerKeyIsSound:
         report, card = run_oracle(dataset)
         assert card.match_rate == 1.0  # type: ignore[attr-defined]
         assert all(proof.balances for proof in report.proofs)  # type: ignore[attr-defined]
+
+
+class TestWithholdingIsSound:
+    """Section 194-O, end to end.
+
+    Until this class existed the withholding path had never run against
+    generated data: `tds_applies` was off everywhere, so no row ever carried a
+    deduction beyond fee and GST, and the solver code that recovers one was
+    dead. It was unit-tested in isolation and untested in integration, which
+    is the state that looks most like being finished.
+    """
+
+    @ALL_TIERS
+    def test_the_answer_key_still_reconstructs_with_tds_on(self, difficulty: Difficulty) -> None:
+        dataset = generate(difficulty, withholding=True)
+        report, card = run_oracle(dataset)
+        assert card.match_rate == 1.0  # type: ignore[attr-defined]
+        unbalanced = [p for p in report.proofs if not p.balances]  # type: ignore[attr-defined]
+        assert not unbalanced, [(p.credit_id, p.residual) for p in unbalanced]
+
+    def test_withholding_actually_reaches_the_rows(self) -> None:
+        """A flag that changes nothing would make the test above vacuous."""
+        withheld = generate(Difficulty.REALISTIC, withholding=True)
+        plain = generate(Difficulty.REALISTIC, withholding=False)
+
+        def deducted(dataset: Dataset) -> int:
+            return sum(
+                row.amount - row.fee - row.tax - row.credit
+                for row in dataset.settlement_rows
+                if row.type is EntityType.PAYMENT
+            )
+
+        assert deducted(plain) == 0
+        assert deducted(withheld) > 0
+
+    def test_the_deduction_is_named_only_when_it_is_statutory(self) -> None:
+        """Labelling an unknown deduction "TDS" would be a guess with a
+        citation attached to it.
+
+        The solver may only use the Section 194-O label when every affected
+        row matches the statutory 1% of gross. This checks the label appears
+        when it is earned - the negative case is covered by the solver's own
+        fallback branch.
+        """
+        dataset = generate(Difficulty.CLEAN, withholding=True)
+        report, _ = run_oracle(dataset)
+        labels = {line.label for proof in report.proofs for line in proof.lines}  # type: ignore[attr-defined]
+        assert any("194-O" in label for label in labels), sorted(labels)
+        assert not any("Unattributed" in label for label in labels), sorted(labels)

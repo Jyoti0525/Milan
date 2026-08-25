@@ -83,7 +83,7 @@ the gain over the row above it is what that rung is worth.
 
 | Configuration | Match rate | Precision | Correct refusals |
 |---|---|---|---|
-| reference (UTR) only | 46.4% | 100.0% | 8/8 |
+| reference (UTR) only | 32.1% | 100.0% | 8/8 |
 | + amount and date | 78.6% | 100.0% | 8/8 |
 | + subset sum | 100.0% | 100.0% | 8/8 |
 
@@ -94,7 +94,10 @@ uv run milan generate --seed 42 --difficulty adversarial --orders 600
 uv run milan eval --seed 42 --difficulty adversarial --detail
 ```
 
-The 100% is worth less than the 46.4%, and the reason is written up in
+Add `--withholding` to the generate command for a merchant subject to Section
+194-O, where 1% of gross is withheld before the payout leaves.
+
+The 100% is worth less than the 32.1%, and the reason is written up in
 [docs/18-BUILD-LOG.md](docs/18-BUILD-LOG.md): a settlement total turns out to
 be a near-unique fingerprint once the fee stack is modelled properly, so this
 class of matching is easier than it looks. What is hard is proving a credit to

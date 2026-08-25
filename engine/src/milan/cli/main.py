@@ -17,6 +17,7 @@ from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
 from milan.cli import render
 from milan.cli.render import console
+from milan.domain.rates import RateCard
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
@@ -32,6 +33,13 @@ DifficultyOption = Annotated[
     Difficulty, typer.Option("--difficulty", help="Which tier of defects to inject.")
 ]
 SpanOption = Annotated[int, typer.Option("--span", help="Days the activity covers.")]
+WithholdingOption = Annotated[
+    bool,
+    typer.Option(
+        "--withholding/--no-withholding",
+        help="Section 194-O: withhold 1% of gross, as an e-commerce operator must.",
+    ),
+]
 RootOption = Annotated[
     Path | None, typer.Option("--data-root", help="Where runs are stored.", show_default=False)
 ]
@@ -47,10 +55,17 @@ def generate(
     difficulty: DifficultyOption = Difficulty.REALISTIC,
     orders: Annotated[int, typer.Option("--orders", help="How many orders to generate.")] = 100,
     span: SpanOption = 21,
+    withholding: WithholdingOption = False,
     root: RootOption = None,
 ) -> None:
     """Generate a merchant's month, with the answer key."""
-    config = GenerationConfig(seed=seed, difficulty=difficulty, order_count=orders, span_days=span)
+    config = GenerationConfig(
+        seed=seed,
+        difficulty=difficulty,
+        order_count=orders,
+        span_days=span,
+        rates=RateCard(tds_applies=withholding),
+    )
     dataset = ChaosEngine(config).generate()
     path = store.save_dataset(dataset, _root(root))
 
@@ -147,6 +162,7 @@ def reproduce(
     difficulty: DifficultyOption = Difficulty.REALISTIC,
     orders: Annotated[int, typer.Option("--orders")] = 100,
     span: SpanOption = 21,
+    withholding: WithholdingOption = False,
 ) -> None:
     """Generate the same dataset twice and compare digests.
 

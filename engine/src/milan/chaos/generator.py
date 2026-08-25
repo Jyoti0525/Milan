@@ -66,6 +66,27 @@ _METHOD_WEIGHTS: dict[PaymentMethod, int] = {
 
 _SETTLEMENT_HOUR = time(11, 0)
 
+_LOOKALIKES = {
+    "O": "0",
+    "0": "O",
+    "I": "1",
+    "1": "I",
+    "S": "5",
+    "5": "S",
+    "B": "8",
+    "8": "B",
+    "Z": "2",
+    "2": "Z",
+}
+"""Characters that get confused when a reference is read and re-typed. Not
+invented: these are the pairs that collide in most sans-serif faces."""
+
+_MERGEABLE_DEFECTS = frozenset({None, "UTR_CORRUPTED", "UTR_DAMAGED"})
+"""What a credit may already be carrying and still be merged. Reference
+defects, yes - a bank sweeping two transfers together does not care whether
+it kept the reference. Orphans and duplicates, no: those are separate cases
+and overlapping them would make each one impossible to attribute."""
+
 _MERGE_SPAN_DAYS = 3
 """How far apart two payouts can be and still leave in the same transfer.
 Three days covers a weekend. It is deliberately the same number the
@@ -105,6 +126,12 @@ class _Batch:
     tds_total: Paise = ZERO
     net_total: Paise = ZERO
     debits: list[_Debit] = field(default_factory=list)
+
+
+def _reference_defect(corrupted: bool, damaged: bool) -> str | None:
+    if corrupted:
+        return "UTR_CORRUPTED"
+    return "UTR_DAMAGED" if damaged else None
 
 
 class ChaosEngine:
@@ -580,14 +607,22 @@ class ChaosEngine:
                 continue
             batch = by_id[settlement.settlement_id]
             corrupted = self._rng.random() < defects.utr_corrupted
+            damaged = not corrupted and self._rng.random() < defects.utr_damaged
+            reference = settlement.settlement_utr
+            if damaged:
+                reference = self._damage_reference(reference)
             credit_id = self._identifier("bank")
             credits.append(
                 BankCredit(
                     credit_id=credit_id,
                     amount=settlement.amount,
                     value_date=settlement.settled_at.date(),
-                    narration=self._narration(settlement.settlement_utr, corrupted),
-                    utr=None if corrupted else settlement.settlement_utr,
+                    narration=self._narration(reference, corrupted),
+                    # A damaged reference reaches us only as narration text.
+                    # The structured column is what a bank fills in when it
+                    # kept the reference cleanly; if it had, there would be
+                    # nothing to damage.
+                    utr=None if (corrupted or damaged) else reference,
                 )
             )
             truths.append(
@@ -602,7 +637,7 @@ class ChaosEngine:
                     adjustments=Paise(sum(debit.amount for debit in batch.debits)),
                     rounding_drift=Paise(batch.tax_row_total - settlement.tax),
                     matchable=True,
-                    defect="UTR_CORRUPTED" if corrupted else None,
+                    defect=_reference_defect(corrupted, damaged),
                 )
             )
 
@@ -671,13 +706,17 @@ class ChaosEngine:
             return credits, truths
 
         by_id = {truth.credit_id: truth for truth in truths}
+        # Any real payout can be swept into a transfer. Restricting this to
+        # credits whose reference survived would make merging pick off
+        # exactly the credits the first rung can resolve, and the reference
+        # rung's score would then be measuring this function's taste rather
+        # than how often a bank keeps a reference. It did, for two days.
         eligible = sorted(
             (
                 credit
                 for credit in credits
                 if by_id[credit.credit_id].settlement_ids
-                and by_id[credit.credit_id].defect is None
-                and credit.utr is not None
+                and by_id[credit.credit_id].defect in _MERGEABLE_DEFECTS
             ),
             key=lambda credit: (credit.value_date, credit.credit_id),
         )
@@ -719,8 +758,8 @@ class ChaosEngine:
         """Build the single bank line that stands for several payouts."""
         parts = [by_id[member.credit_id] for member in members]
         credit_id = self._identifier("bank")
-        carries_reference = self._rng.random() < 0.5
-        reference = members[0].utr
+        reference = next((member.utr for member in members if member.utr), None)
+        carries_reference = reference is not None and self._rng.random() < 0.5
 
         if carries_reference and reference is not None:
             narration = self._narration(reference, corrupted=False)
@@ -752,6 +791,40 @@ class ChaosEngine:
             defect=defect,
         )
         return credit, truth
+
+    def _damage_reference(self, utr: str) -> str:
+        """Alter a reference the way a bank statement actually alters one.
+
+        Every kind below is something that happens to a real narration, and
+        every one of them defeats string equality completely. That is the
+        point: a damaged reference is not weaker evidence than a clean one to
+        an exact matcher, it is *no* evidence, and it is indistinguishable
+        from a wrong reference without a technique that can measure
+        similarity.
+        """
+        kind = self._rng.choice(("truncate", "transpose", "substitute", "pad", "split"))
+        if kind == "truncate":
+            # Narration fields have widths, and the reference is at the end.
+            return utr[: self._rng.randint(8, len(utr) - 1)]
+        if kind == "transpose":
+            # Re-keyed by hand somewhere between the two systems.
+            index = self._rng.randrange(len(utr) - 1)
+            return utr[:index] + utr[index + 1] + utr[index] + utr[index + 2 :]
+        if kind == "substitute":
+            positions = [i for i, char in enumerate(utr) if char in _LOOKALIKES]
+            if not positions:
+                # No character in this reference has a look-alike, so
+                # substitution would silently return it unchanged and record
+                # a defect that was never injected.
+                return self._damage_reference(utr[:-1] + "O")
+            index = self._rng.choice(positions)
+            return utr[:index] + _LOOKALIKES[utr[index]] + utr[index + 1 :]
+        if kind == "pad":
+            # An adjacent column bleeds into this one.
+            digits = "".join(self._rng.choice("0123456789") for _ in range(self._rng.randint(1, 3)))
+            return digits + utr if self._rng.random() < 0.5 else utr + digits
+        index = self._rng.randrange(3, len(utr) - 2)
+        return utr[:index] + self._rng.choice((" ", "/", "-")) + utr[index:]
 
     def _inject_orphans(
         self, credits: list[BankCredit], truths: list[CreditTruth], count: int

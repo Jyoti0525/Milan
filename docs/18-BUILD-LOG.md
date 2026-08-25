@@ -268,3 +268,129 @@ explanation rather than a weaker one, and it declines when its search runs out
 of budget rather than reporting its best find. Both exist because a truncated
 or contested search has not established uniqueness, and uniqueness is the only
 basis on which that rung is entitled to claim anything.
+
+---
+
+## Day 3, later — the audit
+
+Prompted by a fair question: the recommendation to cut Splink rested on the
+Chaos Engine not producing damaged references, and *a generator not producing
+something is not evidence that reality does not contain it*. That principle is
+now written at the top of [19-TODO.md](19-TODO.md), because it bounds every
+accuracy number in this project and it is easy to forget while looking at a
+green test suite.
+
+Auditing days 1-3 against the build order's own definition of done found seven
+gaps. Four are fixed below; the rest are in the TODO with priorities.
+
+### 1. Section 194-O had never run
+
+`RateCard.tds_applies` defaults to `False` and no tier turned it on, so **zero
+withholding rows had ever been generated** across all four tiers. Everything
+downstream had therefore never executed: `_withholding()` in the waterfall, the
+statutory-rate check that decides whether a deduction may be *called* TDS, and
+the fallback label that exists to stop us attaching a citation to an
+unattributed deduction.
+
+It was unit-tested in `test_rates.py` and dead in integration - the state that
+looks most like being finished. It is now a `--withholding` flag, and the
+oracle test runs across all four tiers with it on. It passed first time, which
+is the good outcome and also exactly why nobody noticed: correct dead code
+raises no alarms.
+
+```
+Settled payments (45) across 3 settlements    Rs 1,72,844.16   45
+Platform fee                                    -Rs 3,462.85   45
+GST on platform fee @18%                          -Rs 623.30   45
+TDS under Section 194-O @1%                     -Rs 1,728.43   45
+Rounding drift (per-transaction fee vs batch-level GST) -Rs 0.02
+Unexplained                                          Rs 0.00
+```
+
+### 2. "UTR corrupted" meant "UTR deleted"
+
+`_narration()` was binary - a perfect reference or none. Real narrations
+truncate at a field width, transpose characters when re-keyed, confuse O for 0,
+pick up digits from an adjacent column, and get split by a delimiter. All five
+are now generated, and none of them survives exact matching:
+
+```
+3O9K4443HH6S -> 'NEFT-3O9K4443-RAZORPAY SOFTWARE PVT LTD'
+6SIG9HTI1O40 -> 'UTR6SIG9HTI-1O40 RAZORPAY PAYOUT'
+1CDXCALQRL72 -> 'IMPS/1CDXCALQRL72340/RAZORPAY/SETTLEMENT'
+```
+
+### 3. A generator bug the new defect exposed
+
+Adding damaged references sent the adversarial baseline to **3.4%** - far too
+large a fall for a defect affecting 20% of credits, so it was worth not
+believing.
+
+The cause was mine, from day 2. `_merge_credits` only considered credits with
+`defect is None`, so **merging systematically consumed exactly the credits the
+first rung could resolve.** With six merges of up to three members each, it ate
+nearly every clean credit; after damaged references shrank that pool further,
+it ate all of them. Zero of 35 credits carried an intact reference.
+
+The reference rung's score was therefore measuring that filter's taste rather
+than how often a bank keeps a reference. A bank sweeping two transfers together
+does not check the reference first, so merging now draws from any real payout.
+
+This one is worth dwelling on. The bug was invisible for two days because it
+*lowered* the baseline, and a lower baseline looks like a harder problem, which
+is what we wanted to see. **A defect that flatters the story is the one that
+survives longest.** The oracle test could not catch it either: the answer key
+was entirely self-consistent, and the data was merely unrepresentative.
+
+### 4. Numbers computed and never shown
+
+`rules_share` - the share of exceptions sorted with no model at all, which is
+the number behind every claim about where AI is and is not used - was computed
+and rendered nowhere. So were `merged_rate`, `unreported_detection_rate` and
+`exception_rate`. All now appear in `eval --detail`.
+
+### Corrected numbers
+
+600 orders, seed 42. The adversarial baseline is now 32.1%, not the 46.4%
+reported earlier today - that figure was measured before damaged references
+existed and before the merge bias was fixed, and it is superseded rather than
+merely updated.
+
+| Tier | Reference only | + amount and date | + subset sum | Precision | Refusals | Merged |
+|---|---|---|---|---|---|---|
+| clean | 100.0% | 100.0% | 100.0% | 100.0% | 0/0 | 0/0 |
+| realistic | 77.1% | 94.3% | 100.0% | 100.0% | 1/1 | 2/2 |
+| messy | 58.1% | 87.1% | 100.0% | 100.0% | 3/3 | 4/4 |
+| adversarial | **32.1%** | 78.6% | 100.0% | 100.0% | 8/8 | 6/6 |
+
+Identical with `--withholding` on, which is the point of the flag: the
+reconciliation side is never told whether the merchant is subject to 194-O and
+infers the withholding from the rows.
+
+### Where Splink stands now
+
+Better evidenced, and still not decided. Damaged references are generated, they
+defeat exact matching completely, and the amount rungs absorb all of them with
+no false positives. That is a real measurement rather than an argument from
+silence.
+
+What it still does not settle: the amount rungs absorb them *because amounts
+are reliable in this generator*. Fuzzy matching would earn its place in the
+case where the reference is damaged **and** the amount is ambiguous, and that
+combination has not been constructed yet. Until it is, the honest position is
+that Splink is unjustified rather than unnecessary.
+
+### Two process notes
+
+**A redirected command hid a failure.** `milan generate --withholding` was run
+with `>/dev/null 2>&1` and reported success; typer had never registered the
+flag, and a usage error looks exactly like success when the output is thrown
+away. There is now a CLI smoke test asserting exit codes, and a persistence
+round-trip test - `recon` reconciles what `generate` wrote, and a field lost in
+serialisation would have made every downstream number wrong with nothing
+failing.
+
+**Dead code removed:** `ExceptionCode.ROUNDING` (never emitted - drift inside
+the allowance is a proof line, not an exception), `total_pending()`,
+`LedgerDirection`. A code nothing emits reads as a category the system
+supports.

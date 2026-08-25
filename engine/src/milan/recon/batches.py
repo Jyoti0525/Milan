@@ -26,7 +26,7 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict
 
 from milan.domain.enums import EntityType
-from milan.domain.money import ZERO, Paise
+from milan.domain.money import Paise
 from milan.domain.records import SettlementRow
 
 
@@ -216,7 +216,3 @@ def rebuild_batches(rows: tuple[SettlementRow, ...]) -> tuple[GatewayBatch, ...]
 def pending_rows(rows: tuple[SettlementRow, ...]) -> tuple[SettlementRow, ...]:
     """Rows the gateway has not recovered from any batch yet."""
     return tuple(row for row in rows if row.settlement_id is None)
-
-
-def total_pending(rows: tuple[SettlementRow, ...]) -> Paise:
-    return Paise(sum(row.debit for row in pending_rows(rows))) or ZERO

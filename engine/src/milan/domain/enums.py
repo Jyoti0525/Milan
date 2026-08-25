@@ -36,11 +36,6 @@ class EntityType(StrEnum):
     ADJUSTMENT = "adjustment"
 
 
-class LedgerDirection(StrEnum):
-    CREDIT = "credit"
-    DEBIT = "debit"
-
-
 class ExceptionCode(StrEnum):
     """Industry-standard exception categories.
 
@@ -49,9 +44,12 @@ class ExceptionCode(StrEnum):
     failure is a confident wrong answer in any of the other buckets.
     """
 
+    # There is deliberately no ROUNDING code. Drift inside the derived
+    # allowance is explained as a named line inside the proof, not raised -
+    # a credit that reconstructs to zero has no exception to report. A code
+    # that nothing ever emits reads as a category the system supports.
     FEE_DEDUCTION = "FEE_DEDUCTION"
     TAX_DEDUCTION = "TAX_DEDUCTION"
-    ROUNDING = "ROUNDING"
     PARTIAL_PAYMENT = "PARTIAL_PAYMENT"
     MISSING_SETTLEMENT = "MISSING_SETTLEMENT"
     """A payout the gateway reported that never reached the bank."""
