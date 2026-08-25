@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * The workspace: a run at the top, a list on the left, the detail on the right.
+ * The workspace: navigation on the left, the work in the middle, the evidence
+ * on the right.
  *
- * Two lists behind one pair of tabs, because they are the two halves of one
- * honest answer. **Queue** is what could not be resolved and why. **Proved**
- * is what could, each one openable and checkable line by line. A tool that
- * showed only the second would be a demo.
+ * The shape follows Modern Treasury's reconciliation dashboard — a side
+ * navigation organised around what you are doing, a summary that links to the
+ * next task, and a side-by-side view for working a case one at a time. The
+ * surfaces and type are Blade's.
  *
- * The failure states get real handling rather than a spinner that never ends.
- * "The engine is not running" and "this dataset came from a different
- * generator" are both things a person can fix in one command, and the screen
- * says which command.
+ * Two lists behind one navigation, because there are two halves to an honest
+ * answer. **Queue** is what could not be resolved and why. **Proved** is what
+ * could, each one openable and checkable line by line. A tool that showed only
+ * the second would be a demo.
  *
  * One state object holds the loaded run *and the run it belongs to*. Whether
  * the screen is loading is then derived by comparing that key against the
@@ -24,11 +25,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError, listRuns, loadRun, type RunRef, type RunView } from "@/lib/api";
 import { ExceptionPanel } from "@/components/ExceptionPanel";
+import { Metrics } from "@/components/Metrics";
 import { ProofPanel } from "@/components/ProofPanel";
 import { ProofList, QueueList, type Selection } from "@/components/Queue";
-import { RunBar } from "@/components/RunBar";
-
-type Tab = "queue" | "proved";
+import { Sidebar, type Tab } from "@/components/Sidebar";
 
 /** A loaded run, tagged with which run it is. */
 interface Loaded {
@@ -41,12 +41,16 @@ const keyOf = (run: RunRef | null) => (run ? `${run.difficulty}:${run.seed}` : "
 
 function Notice({ title, body, command }: { title: string; body: string; command?: string }) {
   return (
-    <div className="mx-auto mt-16 max-w-lg px-6">
-      <div className="label mb-1.5">{title}</div>
-      <p className="text-[13px] leading-relaxed text-[var(--ink-soft)]">{body}</p>
-      {command && (
-        <pre className="ident rule-t mt-3 overflow-x-auto pt-3 text-[11.5px]">{command}</pre>
-      )}
+    <div className="grid h-full place-items-center p-6">
+      <div className="card max-w-lg px-6 py-5">
+        <div className="text-[15px] font-semibold">{title}</div>
+        <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-muted)]">{body}</p>
+        {command && (
+          <pre className="mt-3 overflow-x-auto rounded-[var(--r-control)] bg-[var(--surface-sunken)] p-3 font-mono text-[12px] text-[var(--text-muted)]">
+            {command}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }
@@ -67,9 +71,8 @@ export default function Workspace() {
       .then((found) => {
         if (cancelled) return;
         setRuns(found);
-        // Prefer a run that will actually open, and the adversarial tier
-        // among those — it is the one with something in the queue worth
-        // looking at.
+        // Prefer a run that will actually open, and the adversarial tier among
+        // those — it is the one with something in the queue worth looking at.
         const usable = found.filter((run) => !run.stale);
         setCurrent(
           usable.find((run) => run.difficulty === "adversarial") ?? usable[0] ?? found[0] ?? null,
@@ -98,8 +101,6 @@ export default function Workspace() {
     };
   }, [current]);
 
-  // Everything below is derived from those two, so none of it can disagree
-  // with which run is selected.
   const fresh = loaded?.key === key ? loaded : null;
   const view = fresh?.view ?? null;
   const failure = listFailure ?? fresh?.failure ?? null;
@@ -123,99 +124,115 @@ export default function Workspace() {
     return proof ? <ProofPanel proof={proof} /> : <ExceptionPanel item={item} />;
   }, [view, selected]);
 
-  if (failure && !view) {
-    return (
-      <div className="flex h-full flex-col">
-        <RunBar runs={runs ?? []} current={current} summary={null} onPick={setCurrent} />
-        {failure.status === 0 ? (
+  const counts = { queue: view?.queue.length ?? 0, proved: view?.proofs.length ?? 0 };
+
+  const body = (() => {
+    if (failure && !view) {
+      if (failure.status === 0) {
+        return (
           <Notice
             title="The engine is not running"
             body={failure.detail}
             command={"cd engine\nuv run milan serve"}
           />
-        ) : failure.isStale ? (
+        );
+      }
+      if (failure.isStale) {
+        return (
           <Notice
             title="This run is stale"
             body="The dataset on disk was produced by a different version of the chaos engine, so anything scored against it would describe data this code no longer generates. It is refused rather than shown."
             command={failure.detail.split(": ").slice(-1)[0]}
           />
-        ) : (
-          <Notice
-            title="No such run"
-            body={failure.detail}
-            command={"uv run milan generate --seed 42 --difficulty adversarial --orders 600"}
-          />
-        )}
-      </div>
-    );
-  }
+        );
+      }
+      return (
+        <Notice
+          title="No such run"
+          body={failure.detail}
+          command={"uv run milan generate --seed 42 --difficulty adversarial --orders 600"}
+        />
+      );
+    }
 
-  if (runs !== null && runs.length === 0) {
-    return (
-      <div className="flex h-full flex-col">
-        <RunBar runs={[]} current={null} summary={null} onPick={setCurrent} />
+    if (runs !== null && runs.length === 0) {
+      return (
         <Notice
           title="Nothing generated yet"
           body="A dataset is a pure function of its seed, so nothing is stored in the repository. Generate one and it will appear here."
           command={"cd engine\nuv run milan generate --seed 42 --difficulty adversarial --orders 600"}
         />
+      );
+    }
+
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 px-5 pt-4">
+          {view && <Metrics summary={view.summary} />}
+        </div>
+
+        <div className="flex min-h-0 flex-1 gap-4 p-5">
+          <section className="card flex min-w-0 flex-1 flex-col overflow-hidden 2xl:max-w-[58%]">
+            <div className="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
+              <div>
+                <h1 className="text-[14px] font-semibold">
+                  {tab === "queue" ? "Exception queue" : "Proved credits"}
+                </h1>
+                <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+                  {tab === "queue"
+                    ? "Everything the engine would not claim, worst first."
+                    : "Every credit rebuilt from its settlement rows, to the paisa."}
+                </p>
+              </div>
+              {current && (
+                <span className="chip shrink-0 capitalize">
+                  {current.difficulty} · seed {current.seed}
+                </span>
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto">
+              {loading && (
+                <div className="px-5 py-10 text-center text-[13px] text-[var(--text-subtle)]">
+                  Reconciling…
+                </div>
+              )}
+              {view && tab === "queue" && (
+                <QueueList items={view.queue} selected={selected} onSelect={pick} />
+              )}
+              {view && tab === "proved" && (
+                <ProofList proofs={view.proofs} selected={selected} onSelect={pick} />
+              )}
+            </div>
+          </section>
+
+          <section className="card hidden min-w-0 flex-1 overflow-hidden xl:block">
+            {detail ?? (
+              <div className="grid h-full place-items-center px-6 text-center">
+                <p className="max-w-xs text-[13px] leading-relaxed text-[var(--text-subtle)]">
+                  {tab === "queue"
+                    ? "Select a case to see what the engine looked at before it gave up."
+                    : "Select a credit to see it rebuilt from its settlement rows, line by line."}
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     );
-  }
-
-  const counts = { queue: view?.queue.length ?? 0, proved: view?.proofs.length ?? 0 };
+  })();
 
   return (
-    <div className="flex h-full flex-col">
-      <RunBar
+    <div className="flex h-full">
+      <Sidebar
         runs={runs ?? []}
         current={current}
-        summary={view?.summary ?? null}
         onPick={setCurrent}
+        tab={tab}
+        onTab={(next) => setTab(next)}
+        counts={counts}
       />
-
-      <div className="flex min-h-0 flex-1">
-        <section className="rule-r flex min-w-0 flex-1 flex-col bg-[var(--surface)] lg:max-w-[52%]">
-          <div className="rule-b flex h-[34px] shrink-0 items-stretch">
-            {(["queue", "proved"] as Tab[]).map((name) => (
-              <button
-                key={name}
-                onClick={() => setTab(name)}
-                className="label rule-r px-4"
-                style={{
-                  color: tab === name ? "var(--ink)" : undefined,
-                  boxShadow: tab === name ? "inset 0 -2px 0 var(--select-edge)" : undefined,
-                }}
-              >
-                {name === "queue" ? "Queue" : "Proved"}
-                <span className="ml-1.5 font-normal text-[var(--ink-faint)]">{counts[name]}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto">
-            {loading && (
-              <div className="px-4 py-6 text-[12.5px] text-[var(--ink-faint)]">Reconciling…</div>
-            )}
-            {view && tab === "queue" && (
-              <QueueList items={view.queue} selected={selected} onSelect={pick} />
-            )}
-            {view && tab === "proved" && (
-              <ProofList proofs={view.proofs} selected={selected} onSelect={pick} />
-            )}
-          </div>
-        </section>
-
-        <section className="hidden min-w-0 flex-1 bg-[var(--surface)] lg:block">
-          {detail ?? (
-            <div className="px-4 py-6 text-[12.5px] text-[var(--ink-faint)]">
-              {tab === "queue"
-                ? "Select a case to see what the engine looked at before it gave up."
-                : "Select a credit to see it rebuilt from its settlement rows."}
-            </div>
-          )}
-        </section>
-      </div>
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{body}</main>
     </div>
   );
 }

@@ -3,14 +3,23 @@
  *
  * The engine's codes are short and precise, which is right for a payload and
  * useless on a screen: `MISSING_SETTLEMENT` and `UNSETTLED_PAYMENT` sound
- * interchangeable and are two different people's problem - one is money the
- * gateway says it sent and the bank never received, the other is money a
+ * interchangeable and are two different people's problem — one is money the
+ * gateway says it sent that the bank never received, the other is money a
  * customer paid that the gateway has not accounted for at all.
- *
- * Colour is spent only where it separates urgency, never to decorate a row.
  */
 
 import type { ExceptionCode } from "@/lib/api";
+import type { Tone } from "./Badge";
+
+/** Short enough for a table cell. The code itself is jargon. */
+const LABELS: Record<ExceptionCode, string> = {
+  FEE_DEDUCTION: "Fee shortfall",
+  TAX_DEDUCTION: "Tax shortfall",
+  PARTIAL_PAYMENT: "Part paid",
+  MISSING_SETTLEMENT: "Payout missing",
+  UNSETTLED_PAYMENT: "Never settled",
+  UNEXPLAINED: "Unexplained",
+};
 
 const TITLES: Record<ExceptionCode, string> = {
   FEE_DEDUCTION:
@@ -18,21 +27,11 @@ const TITLES: Record<ExceptionCode, string> = {
   TAX_DEDUCTION:
     "The shortfall matches a GST slab applied to the fee — tax the report did not declare.",
   PARTIAL_PAYMENT: "Part of this settlement arrived. The rest has not.",
-  MISSING_SETTLEMENT:
-    "The gateway reported this payout. Nothing matching it reached the bank.",
+  MISSING_SETTLEMENT: "The gateway reported this payout. Nothing matching it reached the bank.",
   UNSETTLED_PAYMENT:
     "The customer paid and the settlement report never mentions it. No bank credit can find this — only the payments file can.",
   UNEXPLAINED:
     "The amounts differ and no known cause fits. Named as unknown rather than guessed at.",
-};
-
-const TONES: Record<ExceptionCode, string> = {
-  FEE_DEDUCTION: "var(--warn)",
-  TAX_DEDUCTION: "var(--warn)",
-  PARTIAL_PAYMENT: "var(--warn)",
-  MISSING_SETTLEMENT: "var(--bad)",
-  UNSETTLED_PAYMENT: "var(--bad)",
-  UNEXPLAINED: "var(--quiet)",
 };
 
 /**
@@ -50,13 +49,21 @@ const REASONS: Record<string, string> = {
     "No settlement in the report accounts for this credit at all. It may not be a gateway payout.",
 };
 
+const TONES: Record<ExceptionCode, Tone> = {
+  FEE_DEDUCTION: "warn",
+  TAX_DEDUCTION: "warn",
+  PARTIAL_PAYMENT: "warn",
+  MISSING_SETTLEMENT: "bad",
+  UNSETTLED_PAYMENT: "bad",
+  UNEXPLAINED: "neutral",
+};
+
+export const codeLabel = (code: ExceptionCode): string => LABELS[code] ?? code;
+export const codeTone = (code: ExceptionCode): Tone => TONES[code] ?? "neutral";
+
 export function codeTitle(code: ExceptionCode, reason?: string): string {
   if (reason && REASONS[reason]) return REASONS[reason];
   return TITLES[code] ?? "";
-}
-
-export function codeTone(code: ExceptionCode): string {
-  return TONES[code] ?? "var(--quiet)";
 }
 
 /** Worst first. A queue sorted by id is a list; sorted by severity it is a queue. */

@@ -3,19 +3,26 @@
 /**
  * The queue, and the proved list beside it.
  *
- * Both are the same shape of thing - one row per credit, thirty pixels high,
- * id on the left, money on the right - because they are two answers to the
- * same question and a reader switching between them should not have to
- * relearn the layout.
+ * Both are Blade tables: a light header row, generous cells, hairline rules
+ * between rows, identifiers on mono chips and money right-aligned in the
+ * `Amount` face. They share a shape because they are two answers to the same
+ * question, and a reader switching between them should not have to relearn
+ * the layout.
  *
- * The queue is sorted worst-first rather than by id. A settlement that never
- * arrived and a two-rupee rounding note are not equally urgent, and a list
- * that treats them as equal makes somebody scroll to find out which is which.
+ * The summary is not truncated. An earlier version clipped it at one line
+ * with an ellipsis, which turned every row into half a sentence — and the
+ * whole claim of this project is that the exception text is the deliverable.
+ * A case you cannot read is a case you cannot pick up.
+ *
+ * Sorted worst-first rather than by id. A settlement that never arrived and a
+ * two-rupee rounding note are not equally urgent.
  */
 
 import type { Proof, QueueItem } from "@/lib/api";
-import { rupees, shortDate } from "@/lib/money";
-import { codeTone, severity } from "./codes";
+import { shortDate, withRupeeSign } from "@/lib/money";
+import { Amount } from "./Amount";
+import { Badge, Tag } from "./Badge";
+import { codeLabel, codeTone, severity } from "./codes";
 
 export type Selection =
   | { kind: "exception"; index: number }
@@ -34,7 +41,27 @@ export function sortQueue(items: QueueItem[]): { item: QueueItem; index: number 
 
 function shortId(id: string): string {
   const body = id.replace(/^(bank|setl|pay|order)_/, "");
-  return body.length > 12 ? `${body.slice(0, 12)}…` : body;
+  return body.length > 10 ? `${body.slice(0, 10)}…` : body;
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="px-6 py-10 text-center text-[13px] text-[var(--text-subtle)]">{children}</div>;
+}
+
+/** Not a hook — plain props. Named without `use` so it is not treated as one. */
+function rowProps(active: boolean, choose: () => void) {
+  return {
+    "aria-selected": active,
+    tabIndex: 0,
+    onClick: choose,
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        choose();
+      }
+    },
+    className: "row-link",
+  };
 }
 
 export function QueueList({
@@ -47,56 +74,51 @@ export function QueueList({
   onSelect: (selection: Selection) => void;
 }) {
   const ordered = sortQueue(items);
-
-  if (ordered.length === 0) {
-    return (
-      <div className="px-4 py-6 text-[12.5px] text-[var(--ink-faint)]">
-        Nothing unresolved in this run.
-      </div>
-    );
-  }
+  if (ordered.length === 0) return <Empty>Nothing unresolved in this run.</Empty>;
 
   return (
     <table className="w-full border-collapse">
+      <thead>
+        <tr>
+          {/*
+            Three columns, not five. The subject and the date used to have
+            their own, and between them they squeezed the summary into four
+            wrapped lines and pushed the amount off the edge of the pane.
+            They belong under the sentence they qualify.
+          */}
+          <th className="th w-[132px]">Type</th>
+          <th className="th">What happened</th>
+          <th className="th text-right">Amount</th>
+        </tr>
+      </thead>
       <tbody>
         {ordered.map(({ item, index }) => {
           const active = selected?.kind === "exception" && selected.index === index;
-          const tone = codeTone(item.code);
           return (
             <tr
               key={`${item.subject.id}-${index}`}
-              tabIndex={0}
-              onClick={() => onSelect({ kind: "exception", index })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect({ kind: "exception", index });
-                }
-              }}
-              className={`row rule-b cursor-pointer ${active ? "selected" : "hoverable"}`}
+              {...rowProps(active, () => onSelect({ kind: "exception", index }))}
             >
-              <td className="w-0 pl-3 pr-2">
-                <span
-                  aria-hidden
-                  className="block h-3.5 w-[2px]"
-                  style={{ background: tone }}
-                />
+              <td className="td align-top">
+                <Badge tone={codeTone(item.code)}>{codeLabel(item.code)}</Badge>
               </td>
-              <td className="max-w-0 py-0 pr-2">
-                <div className="truncate text-[12px]">{item.summary}</div>
+              <td className="td">
+                <div className="text-[13px] leading-snug text-[var(--text)]">{withRupeeSign(item.summary)}</div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="chip font-mono text-[10.5px]">
+                    {shortId(item.subject.id)}
+                  </span>
+                  <span className="tnum text-[11px] text-[var(--text-subtle)]">
+                    {item.subject.occurred_on ? shortDate(item.subject.occurred_on) : "no date"}
+                  </span>
+                </div>
               </td>
-              <td className="w-[86px] py-0 pr-2">
-                <span className="ident text-[10.5px]">{shortId(item.subject.id)}</span>
-              </td>
-              <td className="w-[62px] py-0 pr-2 text-right">
-                <span className="figure text-[11px] text-[var(--ink-faint)]">
-                  {item.subject.occurred_on ? shortDate(item.subject.occurred_on) : "—"}
-                </span>
-              </td>
-              <td className="w-[104px] py-0 pr-3 text-right">
-                <span className="figure text-[12px]" style={{ color: tone }}>
-                  {item.amount === 0 ? "—" : rupees(item.amount)}
-                </span>
+              <td className="td align-top text-right whitespace-nowrap">
+                {item.amount === 0 ? (
+                  <span className="text-[12px] text-[var(--text-disabled)]">—</span>
+                ) : (
+                  <Amount paise={item.amount} size="md" />
+                )}
               </td>
             </tr>
           );
@@ -115,62 +137,49 @@ export function ProofList({
   selected: Selection | null;
   onSelect: (selection: Selection) => void;
 }) {
-  if (proofs.length === 0) {
-    return (
-      <div className="px-4 py-6 text-[12.5px] text-[var(--ink-faint)]">
-        Nothing proved in this run.
-      </div>
-    );
-  }
+  if (proofs.length === 0) return <Empty>Nothing proved in this run.</Empty>;
 
   return (
     <table className="w-full border-collapse">
+      <thead>
+        <tr>
+          <th className="th w-[92px]">Status</th>
+          <th className="th">Bank credit</th>
+          <th className="th text-right">Amount</th>
+        </tr>
+      </thead>
       <tbody>
         {proofs.map((proof, index) => {
           const active = selected?.kind === "proof" && selected.index === index;
           return (
             <tr
               key={proof.credit_id}
-              tabIndex={0}
-              onClick={() => onSelect({ kind: "proof", index })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect({ kind: "proof", index });
-                }
-              }}
-              className={`row rule-b cursor-pointer ${active ? "selected" : "hoverable"}`}
+              {...rowProps(active, () => onSelect({ kind: "proof", index }))}
             >
-              <td className="w-0 pl-3 pr-2">
-                <span
-                  aria-hidden
-                  className="block h-3.5 w-[2px]"
-                  style={{ background: "var(--good)" }}
-                />
+              <td className="td align-top">
+                <Badge tone="good">Proved</Badge>
               </td>
-              <td className="max-w-0 py-0 pr-2">
-                <span className="ident text-[11px]">{shortId(proof.credit_id)}</span>
-                {proof.settlement_ids.length > 1 && (
-                  <span className="ml-2 text-[11px] text-[var(--ink-faint)]">
-                    {proof.settlement_ids.length} merged
+              <td className="td">
+                <div className="flex items-center gap-2">
+                  <span className="chip font-mono text-[10.5px]">
+                    {shortId(proof.credit_id)}
                   </span>
-                )}
-                {proof.drift !== 0 && (
-                  <span className="ml-2 text-[11px] text-[var(--ink-faint)]">drift</span>
-                )}
+                  <span className="tnum text-[11px] text-[var(--text-subtle)]">
+                    {shortDate(proof.value_date)}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-[12.5px] text-[var(--text-muted)]">
+                    resolved by {proof.strategy.replace(/_/g, " ")}
+                  </span>
+                  {proof.settlement_ids.length > 1 && (
+                    <Tag>· {proof.settlement_ids.length} settlements merged</Tag>
+                  )}
+                  {proof.drift !== 0 && <Tag>· rounding drift</Tag>}
+                </div>
               </td>
-              <td className="w-[110px] py-0 pr-2">
-                <span className="text-[11px] text-[var(--ink-faint)]">
-                  {proof.strategy.replace(/_/g, " ")}
-                </span>
-              </td>
-              <td className="w-[62px] py-0 pr-2 text-right">
-                <span className="figure text-[11px] text-[var(--ink-faint)]">
-                  {shortDate(proof.value_date)}
-                </span>
-              </td>
-              <td className="w-[104px] py-0 pr-3 text-right">
-                <span className="figure text-[12px]">{rupees(proof.credit_amount)}</span>
+              <td className="td align-top text-right whitespace-nowrap">
+                <Amount paise={proof.credit_amount} size="md" />
               </td>
             </tr>
           );

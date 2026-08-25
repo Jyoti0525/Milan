@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { inr, percent, rupees, shortDate, signed } from "./money";
+import { inr, percent, rupees, shortDate, signed, withRupeeSign } from "./money";
 
 describe("Indian digit grouping", () => {
   it("groups the last three digits, then pairs", () => {
@@ -88,5 +88,30 @@ describe("the smaller formatters", () => {
     expect(shortDate("2026-07-03")).toBe("3 Jul");
     expect(shortDate("2026-12-31")).toBe("31 Dec");
     expect(shortDate("2026-01-01")).toBe("1 Jan");
+  });
+});
+
+describe("the engine's prose, rendered for a browser", () => {
+  it("swaps Rs for the rupee sign where an amount follows", () => {
+    expect(withRupeeSign("Short by Rs 1,619.24, which is exactly refund rfnd_x.")).toBe(
+      "Short by ₹1,619.24, which is exactly refund rfnd_x.",
+    );
+  });
+
+  it("swaps every amount in a sentence, not just the first", () => {
+    expect(withRupeeSign("GST at 28% of the Rs 61.78 fee. The Rs 6.18 is the shortfall.")).toBe(
+      "GST at 28% of the ₹61.78 fee. The ₹6.18 is the shortfall.",
+    );
+  });
+
+  it("leaves negatives intact", () => {
+    expect(withRupeeSign("Rs -65.38")).toBe("₹-65.38");
+  });
+
+  it("does not touch words that merely start with those letters", () => {
+    // The guard that stops this becoming a search-and-replace on real text.
+    for (const text of ["Rsomething", "Rs. 40", "settled in Rs", "RSA key"]) {
+      expect(withRupeeSign(text)).toBe(text);
+    }
   });
 });

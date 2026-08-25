@@ -479,3 +479,43 @@ If a decision is not here, it is not settled.
      scanning a few hundred rows for the one that is wrong, and padding is
      rows they cannot see. The tech-stack doc's "must not look
      AI-generated" is a usability constraint, not a style note.
+127. **Vulcan is a model, not a design system.** Razorpay's Vulcan is their AI
+     payments foundation model, launched this month with NVIDIA and AWS. There
+     is no Vulcan frontend. The thing that governs how Razorpay's product
+     looks is **Blade**, their open design system - and Blade is the better
+     reference anyway, because its tokens are published rather than guessed.
+128. **Blade's tokens are transcribed, not approximated.** The greys are its
+     `ashGray` scales, the blue is `azure`, state is `emerald` / `cider` /
+     `crimson`, and they are written as `hsl()` because that is how Blade
+     stores them. Approximating a design system by eye produces something that
+     looks nearly right beside it, which is worse than looking different.
+129. **The package is not a dependency.** One screen does not justify a
+     component library and its styled-components runtime. What is borrowed is
+     the language - scale, greys, and the way money is set - which is what
+     makes the result belong beside a Razorpay dashboard.
+130. **Money is set the way Blade sets it: ₹ small, rupees large, paise small
+     and muted.** In a column of settlement values the rupees are what you
+     scan and the paise are what you check. Equal weight makes the eye do the
+     separating instead of the type.
+131. **Nothing in the queue is truncated.** Modern Treasury's rule for their
+     reconciliation dashboard is to show data "as explicitly and granularly as
+     possible", and the first version clipped every exception summary to one
+     line with an ellipsis - a direct contradiction of this project's own
+     claim that the exception text is the deliverable. A case you cannot read
+     is a case you cannot pick up.
+132. **Three columns, not five.** Subject and date had columns of their own,
+     and between them squeezed the summary to four wrapped lines and pushed
+     the amount off the edge of the pane. They belong under the sentence they
+     qualify.
+133. **`format_inr` keeps saying "Rs", and the browser normalises it.** Making
+     the engine emit ₹ raises `UnicodeEncodeError` on a default Windows
+     console, and the CLI is a deliverable. The browser has no such limit, so
+     the display layer swaps the one token - fenced by tests, including the
+     strings it must not touch.
+134. **Reasoning from a description of a reference is not reading the
+     reference.** The first interface followed the written brief - "dense and
+     precise, like a finance tool" - and produced thirty-pixel rows and
+     uppercase micro-labels. Blade reads that same brief as generous rows and
+     soft status pills, because the density that matters is information per
+     row, not rows per screen. Blade publishes its tokens; there was never a
+     need to guess.

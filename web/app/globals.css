@@ -1,73 +1,149 @@
 @import "tailwindcss";
 
 /*
-  A finance tool, not a landing page.
+  Tokens taken from Blade, the design system that powers Razorpay.
 
-  The reference points are the Stripe dashboard, Linear and Mercury: dense
-  tabular data, small rows, hairline rules, numbers in a tabular face so
-  columns of rupees line up on the decimal. Colour signals state and nothing
-  else - there is no brand gradient here, and no card with forty pixels of
-  padding around three words.
+  Source: github.com/razorpay/blade, packages/blade/src/tokens/global/.
+  The values are Blade's own, transcribed rather than eyeballed - its greys
+  are the `ashGray` scales, its blue is `azure`, and success / warning /
+  error are `emerald` / `cider` / `crimson`. They are written as hsl() here
+  because that is how Blade stores them, so nothing is lost converting to hex
+  and back.
 
-  This is a deliberate constraint rather than taste. Someone reconciling a
-  month of settlements is scanning a few hundred rows for the one that is
-  wrong, and every pixel of padding is a row they cannot see.
+  Not @razorpay/blade the package. This project has one screen; pulling in a
+  component library and its styled-components runtime to render two tables
+  would be a heavier dependency than the thing it renders. What is borrowed is
+  the language - the scale, the greys, the way money is set - so the result
+  belongs next to a Razorpay dashboard rather than looking like a generic
+  admin template.
 */
 
 :root {
-  --paper: #fbfbfa;
-  --surface: #ffffff;
-  --raised: #f4f4f2;
-  --ink: #16181d;
-  --ink-soft: #5c626d;
-  --ink-faint: #8b909b;
-  --rule: #e4e4e0;
-  --rule-strong: #d2d2cd;
-  --select: #eef2f7;
-  --select-edge: #1f5fa9;
+  /* ashGrayLight — surfaces and text */
+  --gray-0: hsl(0, 0%, 100%);
+  --gray-50: hsl(240, 9%, 98%);
+  --gray-100: hsl(210, 9%, 96%);
+  --gray-200: hsl(210, 6%, 94%);
+  --gray-300: hsl(210, 4%, 89%);
+  --gray-400: hsl(214, 7%, 81%);
+  --gray-500: hsl(216, 6%, 69%);
+  --gray-700: hsl(214, 6%, 55%);
+  --gray-800: hsl(216, 7%, 45%);
+  --gray-900: hsl(218, 9%, 36%);
+  --gray-1100: hsl(214, 15%, 18%);
 
-  /* State. Used on text and on a 2px marker, never as a filled pill. */
-  --good: #16704a;
-  --warn: #91600c;
-  --bad: #a52216;
-  --quiet: #6b7280;
+  /* azure — the one accent */
+  --azure-50: hsl(217, 100%, 98%);
+  --azure-100: hsl(218, 100%, 92%);
+  --azure-500: hsl(218, 89%, 51%);
+  --azure-600: hsl(218, 87%, 43%);
+  --azure-700: hsl(218, 89%, 35%);
 
-  --row: 30px;
+  /* emerald / cider / crimson — state, and only state */
+  --emerald-50: hsl(150, 39%, 93%);
+  --emerald-600: hsl(150, 100%, 28%);
+  --emerald-700: hsl(150, 100%, 23%);
+  --cider-50: hsl(23, 100%, 97%);
+  --cider-100: hsl(24, 100%, 92%);
+  --cider-700: hsl(25, 100%, 39%);
+  --crimson-50: hsl(5, 75%, 97%);
+  --crimson-100: hsl(5, 75%, 94%);
+  --crimson-700: hsl(4, 85%, 36%);
+
+  /* Semantic names. Components use these, never the scales above. */
+  --page: var(--gray-100);
+  --surface: var(--gray-0);
+  --surface-sunken: var(--gray-50);
+  --surface-header: var(--gray-100);
+  --surface-hover: var(--gray-50);
+  --surface-selected: var(--azure-50);
+
+  --border: var(--gray-300);
+  --border-strong: var(--gray-400);
+
+  --text: var(--gray-1100);
+  --text-muted: var(--gray-800);
+  --text-subtle: var(--gray-700);
+  --text-disabled: var(--gray-500);
+
+  --accent: var(--azure-600);
+  --accent-strong: var(--azure-700);
+  --accent-wash: var(--azure-50);
+  --accent-line: var(--azure-500);
+
+  --good: var(--emerald-700);
+  --good-wash: var(--emerald-50);
+  --warn: var(--cider-700);
+  --warn-wash: var(--cider-50);
+  --bad: var(--crimson-700);
+  --bad-wash: var(--crimson-50);
+
+  /* Blade's radius scale: 2, 4, 8, 12, 16 */
+  --r-chip: 4px;
+  --r-control: 8px;
+  --r-card: 12px;
+
+  --shadow-card: 0 1px 2px hsl(214 15% 18% / 0.04), 0 1px 3px hsl(214 15% 18% / 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #0e0f12;
-    --surface: #131519;
-    --raised: #1a1d22;
-    --ink: #e8e9ec;
-    --ink-soft: #9aa0ab;
-    --ink-faint: #6b717c;
-    --rule: #24272d;
-    --rule-strong: #31353d;
-    --select: #172230;
-    --select-edge: #5b9dd9;
+    /* ashGrayDark */
+    --gray-0: hsl(230, 8%, 15%);
+    --gray-50: hsl(230, 7%, 17%);
+    --gray-100: hsl(231, 12%, 12%);
+    --gray-200: hsl(230, 6%, 19%);
+    --gray-300: hsl(230, 6%, 22%);
+    --gray-400: hsl(233, 5%, 32%);
+    --gray-500: hsl(233, 4%, 40%);
+    --gray-700: hsl(227, 4%, 60%);
+    --gray-800: hsl(228, 4%, 76%);
+    --gray-900: hsl(240, 1%, 84%);
+    --gray-1100: hsl(240, 2%, 92%);
 
-    --good: #4bb98a;
-    --warn: #d9a441;
-    --bad: #e2685c;
-    --quiet: #8b909b;
+    --azure-50: hsl(218, 60%, 16%);
+    --azure-100: hsl(218, 55%, 24%);
+    --azure-500: hsl(218, 89%, 63%);
+    --azure-600: hsl(218, 95%, 70%);
+    --azure-700: hsl(218, 100%, 78%);
+
+    --emerald-50: hsl(150, 40%, 14%);
+    --emerald-600: hsl(150, 48%, 52%);
+    --emerald-700: hsl(150, 50%, 60%);
+    --cider-50: hsl(25, 55%, 14%);
+    --cider-100: hsl(25, 50%, 22%);
+    --cider-700: hsl(25, 90%, 62%);
+    --crimson-50: hsl(4, 45%, 15%);
+    --crimson-100: hsl(4, 45%, 24%);
+    --crimson-700: hsl(4, 80%, 68%);
+
+    --page: hsl(231, 17%, 8%);
+    --surface: var(--gray-0);
+    --surface-sunken: hsl(231, 14%, 11%);
+    --surface-header: var(--gray-50);
+    --surface-hover: var(--gray-50);
+
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.3);
   }
 }
 
 @theme inline {
-  --color-paper: var(--paper);
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+  --color-page: var(--page);
   --color-surface: var(--surface);
-  --color-raised: var(--raised);
-  --color-ink: var(--ink);
-  --color-ink-soft: var(--ink-soft);
-  --color-ink-faint: var(--ink-faint);
-  --color-rule: var(--rule);
-  --color-rule-strong: var(--rule-strong);
-  --color-select: var(--select);
+  --color-sunken: var(--surface-sunken);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-accent: var(--accent);
   --color-good: var(--good);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
+  --radius-card: var(--r-card);
+  --radius-control: var(--r-control);
+  --radius-chip: var(--r-chip);
 }
 
 html,
@@ -76,83 +152,81 @@ body {
 }
 
 body {
-  background: var(--paper);
-  color: var(--ink);
-  font-family:
-    ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 13px;
-  line-height: 1.45;
+  background: var(--page);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 /*
-  Every figure in this application uses this class. Tabular numerals are not
-  a nicety in a column of money: without them a 1 is narrower than a 7 and the
-  decimal points stop lining up, which is exactly when a misread digit becomes
-  a misread rupee.
+  Money and identifiers only. Blade sets body text in Inter and code in a
+  mono face; amounts get `tabular-nums` on top of that, because in a column of
+  rupees a proportional 1 is narrower than a 7 and the decimal points stop
+  lining up - which is the moment a misread digit becomes a misread rupee.
 */
-.figure {
-  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+.tnum {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
-  letter-spacing: -0.01em;
 }
 
-.ident {
-  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
-  font-size: 11.5px;
-  color: var(--ink-soft);
+/* An id, set the way Blade sets one in a table: mono, on a quiet chip. */
+.chip {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: var(--r-chip);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
-/* Small-caps column headings, the way a ledger prints them. */
-.label {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
 }
 
-.rule-t {
-  border-top: 1px solid var(--rule);
-}
-.rule-b {
-  border-bottom: 1px solid var(--rule);
-}
-.rule-r {
-  border-right: 1px solid var(--rule);
-}
-
-/* A 2px edge instead of a coloured background: it reads at a glance in a
-   dense list without turning the table into a set of highlighter stripes. */
-.marker {
-  box-shadow: inset 2px 0 0 currentColor;
+.th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 10px 16px;
+  background: var(--surface-header);
+  white-space: nowrap;
 }
 
-.row {
-  height: var(--row);
+.td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
 }
 
-.hoverable:hover {
-  background: var(--raised);
+.row-link {
+  cursor: pointer;
 }
-
-.selected {
-  background: var(--select);
-  box-shadow: inset 2px 0 0 var(--select-edge);
+.row-link:hover {
+  background: var(--surface-hover);
 }
-
-::selection {
-  background: var(--select);
+.row-link[aria-selected="true"] {
+  background: var(--surface-selected);
 }
 
 *:focus-visible {
-  outline: 2px solid var(--select-edge);
+  outline: 2px solid var(--accent-line);
   outline-offset: -2px;
+  border-radius: 2px;
 }
 
-/* Scrollbars that do not shout. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--rule-strong) transparent;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::selection {
+  background: var(--accent-wash);
 }

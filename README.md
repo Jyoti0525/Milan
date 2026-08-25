@@ -192,6 +192,11 @@ string; the browser does its own Indian-grouping arithmetic, tested against
 the same table as the engine's. The API also refuses to serve the answer key —
 a queue that can see the answers is a demo, and a test asserts it cannot.
 
+The visual language is [Blade](https://github.com/razorpay/blade), the design
+system behind the Razorpay dashboard. Its tokens are transcribed rather than
+approximated, and money is set the way Blade sets it: the ₹ small, the rupees
+large, the paise small and muted.
+
 ## Design stance
 
 **Precision beats recall.** A wrong silent match corrupts a merchant's books.

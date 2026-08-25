@@ -72,3 +72,19 @@ export function shortDate(iso: string): string {
   ];
   return `${Number(day)} ${months[Number(month) - 1] ?? month}`;
 }
+
+/**
+ * Render the engine's prose with a rupee sign.
+ *
+ * The engine writes amounts into exception summaries as "Rs 2,06,784.14", and
+ * that is not a style choice it can revisit: on a default Windows console the
+ * ₹ glyph is not in cp1252 and printing it raises `UnicodeEncodeError` mid-run.
+ * The CLI is a deliverable, so `format_inr` says "Rs" and is right to.
+ *
+ * A browser has no such limitation, and a screen showing ₹2,06,784.14 in the
+ * amount column beside "Rs 2,06,784.14" in the sentence next to it looks like
+ * two people built it. This swaps the one token, only where a number follows.
+ */
+export function withRupeeSign(text: string): string {
+  return text.replace(/\bRs (?=[\d-])/g, "₹");
+}

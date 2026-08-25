@@ -1034,3 +1034,99 @@ grouping cannot drift apart in the middle of a large number.
 
 Tier 1 is complete. Every item on the list is built, tested, and its numbers
 appear in the eval harness output.
+
+---
+
+## Day 7, second pass — the interface was wrong, and it was wrong on purpose
+
+The first version was dense: thirty-pixel rows, eleven-point type, uppercase
+micro-labels, two-pixel colour markers instead of status pills, seven figures
+crammed into a fifty-four-pixel strip, and every exception summary clipped to
+one line with an ellipsis. Held against the brief in the tech-stack doc — *must
+not look AI-generated, finance tools are dense and precise* — it looked
+compliant. Held against a screen, it looked like noise.
+
+It was rejected, correctly. So this pass went and looked at the reference
+instead of reasoning from a description of it.
+
+### What Vulcan actually is
+
+Worth recording because the redesign started from a wrong premise. **Vulcan is
+not a design system.** It is Razorpay's AI payments foundation model, launched
+this month with NVIDIA and AWS — a transformer trained on roughly three
+trillion data points that scores payment routes in real time. There is no
+Vulcan frontend to take inspiration from.
+
+The thing that governs how Razorpay's product *looks* is **Blade**, their open
+design system. That is the right reference and it is a much better one,
+because its tokens are published.
+
+### What Blade actually says
+
+Read from `github.com/razorpay/blade` rather than inferred:
+
+| | Blade | What the first version did |
+|---|---|---|
+| Row height | ~48px, generous cell padding | 30px |
+| Table header | light grey fill, sentence case, 12px | uppercase micro-caps, 10.5px |
+| Status | soft-tinted rounded pills | a 2px coloured edge |
+| Identifiers | mono, on a bordered chip | bare mono text |
+| Radius scale | 2 / 4 / 8 / 12 / 16 | a flat 3px everywhere |
+| Spacing scale | 2 / 4 / 8 / 12 / 16 / 20 / 24 / 32 | ad hoc |
+| Type | Inter, 14px base | system stack, 13px base |
+| Money | ₹ small, rupees large, paise small and muted | one flat size |
+
+That last row is the one that changes the screen most. Blade's `Amount`
+component renders **₹1,000**.00 — the currency mark and the paise stepped down
+from the rupees. In a column of settlement values the rupees are what you scan
+and the paise are what you check, and giving them equal weight makes the eye do
+the separating instead of the type.
+
+The tokens are transcribed into `app/globals.css` as `hsl()`, which is how
+Blade stores them, so nothing is lost round-tripping through hex. The package
+itself is deliberately not a dependency: one screen does not justify a
+component library and its styled-components runtime.
+
+### What Modern Treasury says
+
+They publish a write-up on designing their reconciliation dashboard, and three
+things in it applied directly:
+
+- **Side navigation organised around the job**, not the object. The first
+  version had no navigation at all — a header strip and two tabs floating over
+  a table, with no sense of where you were.
+- **A summary that leads to the next task**, rather than a wall of figures.
+  Seven metrics became four cards; the rest live in the detail pane, where
+  somebody who wants them is already looking.
+- **Never round or truncate.** Show the data "as explicitly and granularly as
+  possible". The clipped one-line summaries were the single worst thing about
+  the first version, and they were a direct violation of the project's own
+  claim that the exception text is the deliverable. A case you cannot read is
+  a case you cannot pick up.
+
+### Two things found while rebuilding
+
+**Three columns, not five.** The first attempt at the new table kept a column
+each for subject and date, and between them they squeezed the summary into
+four wrapped lines and pushed the amount off the right edge of the pane. They
+belong under the sentence they qualify, not beside it.
+
+**The rupee sign crashes the CLI.** The obvious tidy-up was to make
+`format_inr` emit `₹` so the engine's prose matched the browser's amount
+column. It raises `UnicodeEncodeError` on a default Windows console — cp1252
+has no `₹` — and the CLI is a deliverable. So `format_inr` keeps saying
+"Rs" and is right to, and the browser, which has no such limitation,
+normalises the one token for display. Four tests fence that transform in,
+including the cases it must not touch.
+
+### What the lesson actually was
+
+The first version was not careless. It followed a written brief, and the brief
+said dense. What it did not do was look at the thing the brief was pointing
+at — and "dense and precise like a finance tool" turns out to describe Blade's
+generous rows and soft status pills just as well as it describes thirty-pixel
+rows, because the density that matters is information per row, not rows per
+screen.
+
+Reasoning from a description of a reference is not the same as reading the
+reference. Blade publishes its tokens; there was never a need to guess.

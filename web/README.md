@@ -49,11 +49,25 @@ shorter and takes a `Number`, which is exactly the imprecision the engine
 spends its whole design avoiding. The formatter is tested against the same
 table as `format_inr` in the engine, so the two cannot drift apart.
 
-**It looks like a ledger, not a landing page.** Thirty-pixel rows, hairline
-rules, tabular numerals so columns of rupees line up on the decimal, and
-colour spent only on state. Someone reconciling a month of settlements is
-scanning a few hundred rows for the one that is wrong, and padding is rows
-they cannot see.
+**The visual language is Blade's.** Blade is the design system that powers
+Razorpay, and its tokens are transcribed into `app/globals.css` from
+`github.com/razorpay/blade` rather than eyeballed: the greys are its `ashGray`
+scales, the blue is `azure`, and success / warning / error are `emerald` /
+`cider` / `crimson`. Spacing, radii and the type scale follow Blade's, and
+money is set the way Blade's `Amount` component sets it — the ₹ small, the
+rupees large, the paise small and muted.
+
+The package itself is not a dependency. This is one screen, and pulling in a
+component library plus its styled-components runtime to render two tables
+would weigh more than the thing it renders. What is borrowed is the language,
+so the result belongs beside a Razorpay dashboard instead of looking like a
+generic admin template.
+
+The layout follows Modern Treasury's reconciliation dashboard: side navigation
+organised around the job, a summary that leads to the next task, and a
+side-by-side view for working one case at a time. Their rule about showing
+data "as explicitly and granularly as possible" is why nothing here is
+truncated — the exception text *is* the product.
 
 ## Testing
 

@@ -5,24 +5,26 @@
  *
  * A match says "this credit is that settlement", which is a claim. This is the
  * evidence: the sale, then every deduction that happened to it, then the total
- * those lines build - and that total is the amount the bank actually paid, to
- * the paisa. The last row is the one that matters. If it is not zero, this is
- * not a proof and the credit belongs in the queue instead.
+ * those lines build — and that total is the amount the bank actually paid, to
+ * the paisa. The footer is the row that matters. If `Unexplained` is not zero
+ * this is not a proof, and the credit belongs in the queue instead.
  *
  * Every line carries the source record ids behind it. A line with no refs is
- * an assertion; a line with refs is something a finance team can go and check
- * against their own export, which is the difference between a tool they trust
- * and a tool they audit by hand anyway.
+ * an assertion; a line with refs is something a finance team can check against
+ * their own export, which is the difference between a tool they trust and a
+ * tool they audit by hand anyway.
  */
 
 import type { Proof } from "@/lib/api";
-import { inr, percent, rupees, shortDate, signed } from "@/lib/money";
+import { percent, shortDate } from "@/lib/money";
+import { Amount } from "./Amount";
+import { Badge } from "./Badge";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="label mb-0.5">{label}</div>
-      <div className="truncate">{children}</div>
+      <div className="text-[11px] font-medium text-[var(--text-subtle)]">{label}</div>
+      <div className="mt-0.5 truncate text-[13px]">{children}</div>
     </div>
   );
 }
@@ -32,117 +34,118 @@ export function ProofPanel({ proof }: { proof: Proof }) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="rule-b shrink-0 px-4 py-3">
-        <div className="flex items-baseline justify-between gap-4">
+      <header className="shrink-0 border-b border-[var(--border)] px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="label">Bank credit</div>
-            <div className="ident truncate text-[12.5px]">{proof.credit_id}</div>
+            <div className="flex items-center gap-2">
+              <Badge tone="good">Proved</Badge>
+              {proof.settlement_ids.length > 1 && (
+                <Badge tone="accent">{proof.settlement_ids.length} settlements merged</Badge>
+              )}
+            </div>
+            <div className="mt-2 text-[12px] text-[var(--text-muted)]">Bank credit</div>
+            <div className="chip mt-1 font-mono">{proof.credit_id}</div>
           </div>
-          <div className="figure shrink-0 text-[17px] font-medium">
-            {inr(proof.credit_amount)}
-          </div>
+          <Amount paise={proof.credit_amount} size="xl" />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-4">
-          <Field label="Value date">
-            <span className="figure text-[12px]">{shortDate(proof.value_date)}</span>
-          </Field>
-          <Field label="Matched by">
-            <span className="text-[12px]">{proof.strategy.replace(/_/g, " ")}</span>
-          </Field>
-          <Field label="Confidence">
-            <span className="figure text-[12px]">{percent(proof.confidence, 0)}</span>
-          </Field>
-          <Field label={proof.settlement_ids.length > 1 ? "Settlements" : "Settlement"}>
-            <span className="ident text-[11px]">
-              {proof.settlement_ids.length > 1
-                ? `${proof.settlement_ids.length} merged`
-                : proof.settlement_ids[0]}
-            </span>
-          </Field>
+        <div className="mt-4 grid grid-cols-3 gap-4">
+          <Meta label="Value date">
+            <span className="tnum">{shortDate(proof.value_date)}</span>
+          </Meta>
+          <Meta label="Resolved by">{proof.strategy.replace(/_/g, " ")}</Meta>
+          <Meta label="Confidence">
+            <span className="tnum">{percent(proof.confidence, 0)}</span>
+          </Meta>
         </div>
 
         <div className="mt-3">
-          <div className="label mb-0.5">Narration, as the bank sent it</div>
-          <div className="ident break-all text-[11px]">{proof.narration}</div>
+          <div className="text-[11px] font-medium text-[var(--text-subtle)]">
+            Narration, as the bank sent it
+          </div>
+          <div className="mt-1 font-mono text-[11.5px] break-all text-[var(--text-muted)]">
+            {proof.narration}
+          </div>
         </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse">
-          <thead className="rule-b sticky top-0 bg-[var(--surface)]">
+          <thead className="sticky top-0 z-10">
             <tr>
-              <th className="label px-4 py-1.5 text-left font-semibold">Line</th>
-              <th className="label px-3 py-1.5 text-right font-semibold">Amount</th>
-              <th className="label px-4 py-1.5 text-right font-semibold">Running</th>
+              <th className="th">Line</th>
+              <th className="th w-[132px] text-right">Amount</th>
+              <th className="th w-[132px] text-right">Running</th>
             </tr>
           </thead>
           <tbody>
-            {proof.lines.map((line, index) => {
-              const { sign, body } = signed(line.amount);
-              const deduction = line.amount < 0;
-              return (
-                <tr key={`${line.label}-${index}`} className="rule-b align-top">
-                  <td className="px-4 py-1.5">
-                    <div className="text-[12.5px]">{line.label}</div>
-                    {line.refs.length > 0 && (
-                      <div className="ident mt-0.5 text-[10.5px] leading-relaxed">
-                        {line.refs.slice(0, 6).join("  ")}
-                        {line.refs.length > 6 && `  +${line.refs.length - 6} more`}
-                      </div>
-                    )}
-                  </td>
-                  <td
-                    className="figure px-3 py-1.5 text-right text-[12.5px] whitespace-nowrap"
-                    style={{ color: deduction ? "var(--ink-soft)" : undefined }}
-                  >
-                    {sign}
-                    {body}
-                  </td>
-                  <td className="figure px-4 py-1.5 text-right text-[12.5px] whitespace-nowrap text-[var(--ink-faint)]">
-                    {rupees(proof.running[index] ?? 0)}
-                  </td>
-                </tr>
-              );
-            })}
+            {proof.lines.map((line, index) => (
+              <tr key={`${line.label}-${index}`} className="align-top">
+                <td className="td">
+                  <div className="text-[13px]">{line.label}</div>
+                  {line.refs.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {line.refs.slice(0, 5).map((ref) => (
+                        <span key={ref} className="chip font-mono text-[10.5px]">
+                          {ref.replace(/^(pay|rfnd|adj)_/, "")}
+                        </span>
+                      ))}
+                      {line.refs.length > 5 && (
+                        <span className="self-center text-[11px] text-[var(--text-subtle)]">
+                          +{line.refs.length - 5} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </td>
+                <td className="td text-right">
+                  <Amount
+                    paise={line.amount}
+                    size="md"
+                    showSign
+                    tone={line.amount < 0 ? "var(--text-muted)" : undefined}
+                  />
+                </td>
+                <td className="td tnum text-right text-[12px] text-[var(--text-subtle)]">
+                  <Amount paise={proof.running[index] ?? 0} size="sm" tone="var(--text-subtle)" />
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
       {/*
-        The claim, stated so it can be checked rather than believed. Green is
+        The claim, stated so it can be checked rather than believed. This is
         the only place colour is spent on this panel, and it is spent on the
         one row a reader should look at first.
       */}
-      <footer className="rule-t shrink-0 px-4 py-2.5">
+      <footer className="shrink-0 border-t border-[var(--border)] bg-[var(--surface-sunken)] px-5 py-3">
         <div className="flex items-baseline justify-between gap-4">
-          <span className="text-[12.5px] text-[var(--ink-soft)]">
+          <span className="text-[12.5px] text-[var(--text-muted)]">
             Reconstructed from {proof.lines.length} lines
           </span>
-          <span className="figure text-[13px]">
-            {rupees(proof.running[proof.running.length - 1] ?? 0)}
-          </span>
+          <Amount paise={proof.running[proof.running.length - 1] ?? 0} size="md" />
         </div>
-        <div className="mt-1 flex items-baseline justify-between gap-4">
+        <div className="mt-2 flex items-baseline justify-between gap-4">
           <span
-            className="text-[12.5px] font-medium"
+            className="text-[13px] font-semibold"
             style={{ color: balanced ? "var(--good)" : "var(--bad)" }}
           >
             {balanced ? "Unexplained" : "Unexplained — this is not a proof"}
           </span>
-          <span
-            className="figure text-[13px] font-medium"
-            style={{ color: balanced ? "var(--good)" : "var(--bad)" }}
-          >
-            {rupees(proof.residual)}
-          </span>
+          <Amount
+            paise={proof.residual}
+            size="lg"
+            tone={balanced ? "var(--good)" : "var(--bad)"}
+          />
         </div>
         {proof.drift !== 0 && (
-          <div className="mt-1.5 text-[11.5px] text-[var(--ink-faint)]">
-            Includes {inr(proof.drift)} of rounding drift — per-transaction fees rounding
-            against a batch-level GST figure. Inside the allowance these rows carry, and
-            named rather than quietly absorbed.
-          </div>
+          <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--text-subtle)]">
+            Includes <Amount paise={proof.drift} size="sm" tone="var(--text-subtle)" /> of
+            rounding drift — per-transaction fees rounding against a batch-level GST figure.
+            Inside the allowance these rows carry, and named rather than quietly absorbed.
+          </p>
         )}
       </footer>
     </div>
