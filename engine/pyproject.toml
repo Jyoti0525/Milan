@@ -41,10 +41,14 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
-packages = ["milan"]
 mypy_path = "src"
+
+# The tests are checked too. They construct the same models the engine does,
+# so an annotation that has drifted from a record's real shape is a test
+# asserting something about a type that no longer exists.
+files = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

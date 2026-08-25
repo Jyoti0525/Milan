@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from milan.domain.money import ZERO, Paise
+
 
 class Scorecard(BaseModel):
     """One configuration, measured against ground truth."""
@@ -40,6 +42,28 @@ class Scorecard(BaseModel):
 
     proofs_balanced: int
     proofs_claimed: int
+
+    proofs_with_drift: int = 0
+    """Proofs that closed on the rounding allowance rather than on the rows."""
+
+    drift_net: Paise = ZERO
+    """Signed total of that drift across the run - what the merchant actually
+    kept or lost to it.
+
+    Reported because this is the one figure a merchant is routinely told to
+    ignore, and "ignore it" is only sound advice if somebody has added it up.
+    Per credit it is a few paise and there is no exception worth raising; a
+    month of it is a number, and a number nobody computes is a number nobody
+    can notice moving."""
+
+    drift_gross: Paise = ZERO
+    """Sum of the absolute drift.
+
+    Kept separate from the net because drift largely cancels, and a net near
+    zero would otherwise read as "this does not happen" when what it means is
+    "this happens in both directions". Gross is the exposure; net is the
+    outcome. Reporting only one of them is how the other stops being looked
+    at."""
 
     exceptions_total: int
     exceptions_by_code: dict[str, int] = Field(default_factory=dict)

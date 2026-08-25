@@ -84,6 +84,7 @@ def prove(
         lines=lines,
         strategy=strategy,
         confidence=confidence,
+        drift=gap,
     )
 
 

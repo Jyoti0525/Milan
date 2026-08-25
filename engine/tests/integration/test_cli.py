@@ -104,12 +104,56 @@ class TestThePipesBetweenCommands:
     def test_a_saved_dataset_reloads_byte_for_byte(
         self, tmp_path: Path, difficulty: Difficulty
     ) -> None:
-        dataset = ChaosEngine(
-            GenerationConfig(seed=42, difficulty=difficulty, order_count=200)
-        ).generate()
-        store.save_dataset(dataset, tmp_path)
+        config = GenerationConfig(seed=42, difficulty=difficulty, order_count=200)
+        dataset = ChaosEngine(config).generate()
+        store.save_dataset(dataset, tmp_path, config)
         reloaded = store.load_dataset(tmp_path, 42, difficulty)
 
         assert store.content_hash(dataset) == store.content_hash(reloaded)
         assert reloaded.record_count == dataset.record_count
         assert reloaded.answer_key == dataset.answer_key
+
+
+class TestAStoredRunHasToStillBeCurrent:
+    """A dataset is only trustworthy because it is a pure function of its
+    config. Once the generator moves, the file still loads and still looks
+    well formed, and every number scored against it is about a merchant this
+    code no longer produces."""
+
+    def test_a_run_whose_config_no_longer_produces_it_is_refused(self, tmp_path: Path) -> None:
+        config = GenerationConfig(seed=42, difficulty=Difficulty.MESSY, order_count=120)
+        store.save_dataset(ChaosEngine(config).generate(), tmp_path, config)
+
+        # Stand in for a generator change by moving the config out from under
+        # the data. The engine cannot rebuild this dataset from that config,
+        # which is exactly the state a real change leaves behind.
+        store.write(
+            config.model_copy(update={"order_count": 121}),
+            store.run_directory(tmp_path, 42, Difficulty.MESSY) / store.CONFIG_FILE,
+        )
+
+        with pytest.raises(store.StaleDatasetError, match="different version"):
+            store.load_dataset(tmp_path, 42, Difficulty.MESSY)
+
+    def test_a_run_with_no_config_beside_it_is_refused(self, tmp_path: Path) -> None:
+        config = GenerationConfig(seed=42, difficulty=Difficulty.CLEAN, order_count=80)
+        store.save_dataset(ChaosEngine(config).generate(), tmp_path, config)
+        (store.run_directory(tmp_path, 42, Difficulty.CLEAN) / store.CONFIG_FILE).unlink()
+
+        with pytest.raises(store.StaleDatasetError, match="no config beside it"):
+            store.load_dataset(tmp_path, 42, Difficulty.CLEAN)
+
+    def test_verify_can_be_switched_off_for_inspecting_a_file(self, tmp_path: Path) -> None:
+        """The library keeps an escape hatch; the CLI deliberately does not."""
+        config = GenerationConfig(seed=42, difficulty=Difficulty.CLEAN, order_count=80)
+        store.save_dataset(ChaosEngine(config).generate(), tmp_path, config)
+        (store.run_directory(tmp_path, 42, Difficulty.CLEAN) / store.CONFIG_FILE).unlink()
+
+        assert store.load_dataset(tmp_path, 42, Difficulty.CLEAN, verify=False).seed == 42
+
+    def test_the_command_line_says_what_to_do_rather_than_traceback(self, tmp_path: Path) -> None:
+        result = CliRunner().invoke(
+            app, ["eval", "--difficulty", "messy", "--data-root", str(tmp_path)]
+        )
+        assert result.exit_code == 1
+        assert "milan generate" in result.output

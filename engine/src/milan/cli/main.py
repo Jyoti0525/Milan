@@ -17,6 +17,7 @@ from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
 from milan.cli import render
 from milan.cli.render import console
+from milan.domain.dataset import Dataset
 from milan.domain.rates import RateCard
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.persistence import store
@@ -49,6 +50,20 @@ def _root(root: Path | None) -> Path:
     return root if root is not None else store.default_root()
 
 
+def _load(root: Path | None, seed: int, difficulty: Difficulty) -> Dataset:
+    """Load a stored run, or fail with something a person can act on.
+
+    Both failures here are the user's next command, not a bug: there is no
+    run, or the run is older than the generator. A traceback would say
+    neither.
+    """
+    try:
+        return store.load_dataset(_root(root), seed, difficulty)
+    except (FileNotFoundError, store.StaleDatasetError) as failure:
+        console.print(f"[red]{failure}[/red]")
+        raise typer.Exit(code=1) from failure
+
+
 @app.command()
 def generate(
     seed: SeedOption = 42,
@@ -67,7 +82,7 @@ def generate(
         rates=RateCard(tds_applies=withholding),
     )
     dataset = ChaosEngine(config).generate()
-    path = store.save_dataset(dataset, _root(root))
+    path = store.save_dataset(dataset, _root(root), config)
 
     console.print(
         f"Generated [bold]{dataset.record_count:,}[/bold] records "
@@ -86,7 +101,7 @@ def recon(
 ) -> None:
     """Reconcile a generated dataset and report what could not be resolved."""
     data_root = _root(root)
-    dataset = store.load_dataset(data_root, seed, difficulty)
+    dataset = _load(root, seed, difficulty)
     report = ReconciliationPipeline().run(
         to_recon_input(dataset), RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
     )
@@ -99,15 +114,25 @@ def evaluate_command(
     seed: SeedOption = 42,
     difficulty: DifficultyOption = Difficulty.REALISTIC,
     detail: Annotated[bool, typer.Option("--detail", help="Break the headline down.")] = False,
+    markdown: Annotated[
+        bool,
+        typer.Option("--markdown", help="Print the table as markdown, for the README."),
+    ] = False,
     root: RootOption = None,
 ) -> None:
     """Score every configuration against ground truth."""
     data_root = _root(root)
-    dataset = store.load_dataset(data_root, seed, difficulty)
+    dataset = _load(root, seed, difficulty)
     evaluation = evaluate(dataset)
     store.write(
         evaluation, store.run_directory(data_root, seed, difficulty) / store.EVALUATION_FILE
     )
+
+    if markdown:
+        # print, not console.print - rich would wrap and style a block whose
+        # whole purpose is to be pasted somewhere else unchanged.
+        print(render.evaluation_markdown(evaluation))
+        return
 
     console.print(render.evaluation_table(evaluation))
     if detail:
@@ -123,7 +148,7 @@ def prove(
     root: RootOption = None,
 ) -> None:
     """Show one bank credit broken down to nothing."""
-    dataset = store.load_dataset(_root(root), seed, difficulty)
+    dataset = _load(root, seed, difficulty)
     report = ReconciliationPipeline().run(
         to_recon_input(dataset), RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
     )

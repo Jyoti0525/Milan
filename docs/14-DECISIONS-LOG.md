@@ -353,3 +353,46 @@ If a decision is not here, it is not settled.
      unnecessary, the first question is which real defect is missing from the
      generator. Same error as arguing from silence, one level up. Extends
      decision 77.
+105. **A stored dataset must prove it is current before anything is scored
+     against it.** `eval` loaded whatever was in `data/` and scored it. A run
+     generated before the reference-twin defect existed was still there, and
+     reported a baseline eight points from the published one with nothing on
+     screen to suggest a problem. `save_dataset` now writes the config beside
+     the data and `load_dataset` regenerates and compares digests. Refused,
+     not warned about: a warning in a CLI that prints a table is a warning
+     nobody reads.
+106. **The command line gets no `--no-verify`.** The library keeps
+     `verify=False` for inspecting a file by hand. A flag that lets you score
+     a stale dataset from the terminal is a flag that gets used the first time
+     regenerating is inconvenient, which is exactly the moment it matters.
+107. **Published numbers are generated, never typed.** The README's refusal
+     column had gone stale while its match rates stayed current - the kind of
+     error no reader can catch. `milan eval --markdown` prints the table, the
+     README holds it between fences, and a test fails when the two disagree.
+     In a project whose claim is measurement, a wrong number in the README is
+     the claim being wrong, not a documentation slip.
+108. **The scorer is tested against hand-built reports.** Everything published
+     comes out of `score()`, and until now nothing checked it - a scorer that
+     counted a wrong match as correct would raise every figure at once with
+     the whole suite still green. The stance the project argues for in prose
+     is now enforced by tests: a lucky guess is a false positive, half a
+     merged credit is not half a success, an unbalanced proof is not a claim.
+     Found no bug. That is the expected result and not the reason to have it.
+109. **A property test that has never failed is of unknown strength, so
+     mutate the code and check it fails.** Three mutations, two caught. The
+     third - widening the subset-sum tolerance by Rs 50 - passed, because the
+     test built its targets as exact subset sums, and on an exact target a
+     correct solver and a sloppy one return the same set. Rebuilt to perturb
+     the target off the combination. A test that cannot fail is a comment.
+110. **Noise stripping needs word boundaries, and similarity needs the full
+     sweep.** Two live defects in the fuzzy rung, both found by asking whether
+     a reference is similar to itself. `CR` was being stripped from inside
+     `JMSS5NDW4CR`; and after boundaries were added, a bank label glued
+     straight onto a truncated reference (`UTRRKBZWJLK`) left the narration
+     shorter than the reference it contained, which a sweep sized from the
+     reference length steps past. Both are real bank behaviour and neither
+     produces a wrong answer - they lower a score, and a lower score looks
+     like a hard case.
+111. **mypy checks the tests too.** They construct the same models the engine
+     does. An annotation that has drifted from a record's real shape is a test
+     asserting something about a type that no longer exists.

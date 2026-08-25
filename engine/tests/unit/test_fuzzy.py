@@ -19,6 +19,7 @@ from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
 from milan.domain.money import Paise
 from milan.evaluation.harness import evaluate
+from milan.recon.batches import GatewayBatch
 from milan.recon.matching.base import Verdict
 from milan.recon.matching.fuzzy import (
     FuzzyNarrationStrategy,
@@ -30,7 +31,7 @@ from tests.unit.test_merged_credits import bank_credit, batches_of, row
 REFERENCE = "CJ3GZ79N4G1F"
 
 
-def one_settlement(reference: str = REFERENCE) -> tuple:
+def one_settlement(reference: str = REFERENCE) -> tuple[GatewayBatch, ...]:
     return batches_of(row("pay_1", "10000", "setl_a", 8, reference))
 
 
@@ -43,6 +44,35 @@ class TestNormalisation:
 
     def test_delimiters_are_removed_so_a_split_reference_rejoins(self) -> None:
         assert "DJRJMSS5NDW4" in normalise("NEFT-DJR/JMSS5NDW4-RAZORPAY SOFTWARE")
+
+
+class TestTheThingsNormalisingMustNotDo:
+    """Both of these were live defects, found by a property test asking
+    whether a reference is similar to itself. Neither would have been found
+    by a hand-written narration, because a person writing one picks a
+    reference that reads like a reference."""
+
+    def test_a_reference_containing_a_bank_word_keeps_it(self) -> None:
+        """`CR` inside `JMSS5NDW4CR` is two characters of the reference, not
+        the bank's abbreviation for credit. Stripping it shortened the only
+        evidence this rung has, on every reference that happened to contain
+        CR, ACH, LTD, PVT or UTR."""
+        assert normalise("NEFT-JMSS5NDW4CR-RAZORPAY") == "JMSS5NDW4CR"
+        assert similarity("JMSS5NDW4CR", "NEFT-JMSS5NDW4CR-RAZORPAY") == 1.0
+
+    def test_a_reference_is_always_perfectly_similar_to_itself(self) -> None:
+        assert similarity("2222222222CR", "2222222222CR") == 1.0
+
+    def test_a_label_glued_onto_a_truncated_reference_is_still_found(self) -> None:
+        """`UTRRKBZWJLK` is the bank's own label with no separator, wrapped
+        around a reference that has itself been cut short - so the narration
+        is *shorter* than the reference it contains. A window sweep sized
+        from the reference stops before the alignment that matches."""
+        assert similarity("RKBZWJLKOM0N", "UTRRKBZWJLK RAZORPAY PAYOUT") >= 0.78
+
+    def test_an_unrelated_reference_still_scores_nothing(self) -> None:
+        """The sweep got wider; it must not have got more agreeable."""
+        assert similarity("ABCDEFGH1234", "NEFT-ZZZZZZZZ9999-RAZORPAY") < 0.5
 
 
 class TestSimilarity:

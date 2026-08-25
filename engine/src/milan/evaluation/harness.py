@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from milan.domain.dataset import Dataset
 from milan.domain.enums import ExceptionCode
+from milan.domain.money import Paise
 from milan.domain.rates import RateCard
 from milan.domain.results import ReconReport
 from milan.domain.truth import AnswerKey, CreditTruth
@@ -146,6 +147,9 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
         correct_refusals=sum(1 for t in impossible if t.credit_id not in claimed),
         proofs_balanced=len(balanced),
         proofs_claimed=len(report.proofs),
+        proofs_with_drift=sum(1 for proof in balanced if proof.drift),
+        drift_net=Paise(sum(proof.drift for proof in balanced)),
+        drift_gross=Paise(sum(abs(proof.drift) for proof in balanced)),
         exceptions_total=len(report.exceptions),
         exceptions_by_code=dict(Counter(e.code.value for e in report.exceptions)),
         unprovable_expected=len(unprovable),

@@ -41,6 +41,10 @@ The mitigations are partial and worth naming as partial:
 
 ## Status
 
+**Every box on this list is now ticked.** Items 10 and 11 remain
+deliberately deferred with the reasoning recorded, and the day-6 findings
+below were added and closed in the same pass.
+
 Items 1-5 and the P2 block are **done**. Item 6 (property tests) and item 7
 (the provider seam) are **done**. Item 8 (Splink) is **decided: cut** — see
 below. Items 9-11 are new, from a second and deeper audit against
@@ -277,7 +281,9 @@ That behaviour is right and stays. What is genuinely missing is the reporting
 side — the monthly total of rounding drift, which is the figure a merchant
 would actually want and which no per-credit exception would give them.
 
-- [ ] Total drift across a run, reported in `eval --detail`
+- [x] Total drift across a run, reported in `eval --detail`. Gross and net,
+      in that order, because drift cancels and a net near zero would read
+      as "this does not happen" rather than "this happens both ways".
 
 ---
 
@@ -288,3 +294,62 @@ For the record, so the list above is not read as a project in trouble:
 - The N:1 subset solver was a day 4-5 item and shipped on day 3.
 - The exception queue UI (day 7) and Ollama (day 8) are not due.
 - The oracle test, the eval baselines and the reproducible run all hold.
+
+---
+
+## Found by the day-6 verification pass — all closed
+
+Day 6's three components (waterfall, eval harness, property tests) already
+existed, so the work was holding each against the definition of done. Two of
+the three failed it.
+
+### 12. `eval` scored whatever dataset was on disk — DONE
+
+No check that a stored run was one the current generator produces. A dataset
+predating the reference-twin defect was still in `data/` and scored without
+complaint, reporting a 33.3% baseline against a published 23.8%.
+
+- [x] `save_dataset` writes the `GenerationConfig` beside the data
+- [x] `load_dataset` regenerates from it and compares digests
+- [x] `StaleDatasetError` refuses rather than warns, with the fix command in it
+- [x] The CLI exits 1 instead of raising, and a test asserts that
+
+### 13. The README's numbers had gone stale — DONE
+
+Match rates current, refusal column carried over from an earlier run.
+
+- [x] `milan eval --markdown` prints the table
+- [x] The README holds it between generated-block fences
+- [x] A test fails when a fresh run and the README disagree
+- [x] Two cases guard the specific superseded figures
+
+### 14. Nothing tested the scorer — DONE
+
+`score()` produces every published number. The oracle proves the matcher; the
+grader was unverified, and a scorer that counted a wrong match as correct
+would raise every figure at once with the suite still green.
+
+- [x] Hand-built reports with the answer known: 15 cases
+- [x] The design stance is enforced, not just described — a lucky guess is a
+      false positive, half a merged credit is not half a success
+
+### 15. Property tests never reached the waterfall — DONE
+
+Thirteen invariants, all covering layers *below* the interesting one.
+
+- [x] Ten invariants over `prove`, the veto, the combination search and
+      similarity
+- [x] Each verified by mutation. One mutation passed first — the combination
+      test used exact subset sums, where a correct and a sloppy solver agree —
+      and the test was rebuilt to perturb the target off the combination
+
+### 16. Two live defects in the similarity rung — DONE
+
+Both found by the property "a reference is similar to itself".
+
+- [x] Word boundaries on the noise pattern, so `CR` is not stripped from
+      inside `JMSS5NDW4CR`
+- [x] A sweep over every start position, so a bank label glued onto a
+      truncated reference (`UTRRKBZWJLK`) is stepped past
+- [x] Regression tests for both, plus one asserting the wider sweep did not
+      become more agreeable

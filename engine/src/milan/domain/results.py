@@ -13,7 +13,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from milan.domain.enums import ExceptionCode, MatchStrategy
-from milan.domain.money import Paise
+from milan.domain.money import ZERO, Paise
 
 
 class ProofLine(BaseModel):
@@ -47,6 +47,15 @@ class Proof(BaseModel):
     lines: tuple[ProofLine, ...]
     strategy: MatchStrategy
     confidence: float = Field(ge=0.0, le=1.0)
+
+    drift: Paise = ZERO
+    """The paise this proof closed on the allowance rather than on the rows.
+
+    Signed, from the merchant's point of view. Zero for almost every credit.
+    It is a field rather than a search for the drift line because it is a
+    figure a merchant is owed a total of, and a total assembled by matching
+    on a label is a total that silently goes to zero the day the label is
+    reworded."""
 
     @property
     def explained(self) -> Paise:

@@ -21,6 +21,7 @@ import pytest
 from milan.chaos.config import Difficulty, GenerationConfig, defects_for
 from milan.chaos.generator import ChaosEngine
 from milan.domain.dataset import Dataset
+from milan.domain.records import BankCredit
 from milan.recon.matching.exact import extract_utr
 
 DAMAGED = "UTR_DAMAGED"
@@ -35,7 +36,7 @@ def build(difficulty: Difficulty, orders: int = 900, seed: int = 42) -> Dataset:
     ).generate()
 
 
-def damaged_credits(data: Dataset) -> list:
+def damaged_credits(data: Dataset) -> list[BankCredit]:
     """Credits whose reference was damaged, whatever else they also carry.
 
     Exact equality used to work and stopped when defects became combinable -

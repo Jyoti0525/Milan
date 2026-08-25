@@ -76,25 +76,38 @@ prefers `make generate` / `make recon` / `make eval`. The CLI is the real
 interface — the Makefile is a convenience, because `make` is not present on a
 default Windows install and the project must not depend on it.
 
+`recon` and `eval` refuse to run against a dataset this version of the
+generator would not produce. A stored run is only meaningful because it is a
+pure function of its seed and config; once the generator moves on, the file
+still loads, still looks well formed, and describes a merchant the engine no
+longer generates. So the config is written beside the data and checked on
+load, and a mismatch tells you which command to re-run.
+
 ## Where it stands
 
 Measured on 600 orders, seed 42, adversarial tier. Each row adds one rung, so
 the gain over the row above it is what that rung is worth.
 
-| Configuration | Match rate | Precision | Correct refusals |
-|---|---|---|---|
-| reference (UTR) only | 23.8% | 100.0% | 8/8 |
-| + amount and date | 61.9% | 100.0% | 8/8 |
-| + subset sum | 90.5% | 100.0% | 8/8 |
-| + fuzzy narration | 100.0% | 100.0% | 8/8 |
+<!-- generated: eval -->
+| Configuration | Match rate | Precision | Correct refusals | Shortfalls named |
+|---|---|---|---|---|
+| reference only (baseline) | 23.8% | 100.0% | 10/10 | 4/6 |
+| + amount and date | 61.9% | 100.0% | 10/10 | 4/6 |
+| + subset sum | 90.5% | 100.0% | 10/10 | 4/6 |
+| full cascade (+ fuzzy narration) | 100.0% | 100.0% | 10/10 | 5/6 |
+<!-- /generated -->
 
 Four outcomes, not one. **Match rate** counts credits proved to the paisa.
 **Refusals** counts credits that were impossible by design and correctly left
 alone. **Shortfalls named** counts credits that are identifiable but *cannot*
 be proved, because the payout disagrees with the report — for those the right
 answer is never a match, it is an exception saying exactly what is missing and
-why. The two we cannot name lost their reference as well, so nothing could
+why. The one we cannot name lost its reference as well, so nothing could
 identify which settlement was short; that is the correct output, not a miss.
+
+The table above is printed by the command below rather than typed, and a test
+fails if this file and a fresh run disagree. It is here because the numbers in
+it were once retyped and quietly went stale.
 
 Reproduce it:
 

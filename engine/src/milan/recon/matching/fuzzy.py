@@ -53,7 +53,18 @@ DECISIVE_MARGIN = 0.10
 Without this the rung would answer every time, because a ranked list always
 has a top entry. The margin is what turns "most similar" into "identifiable"."""
 
-_NOISE = re.compile(r"RAZORPAY|SOFTWARE|SETTLEMENT|PAYOUT|INWARD|NEFT|IMPS|UTR|ACH|PVT|LTD|CR")
+_NOISE = re.compile(
+    r"\b(?:RAZORPAY|SOFTWARE|SETTLEMENT|PAYOUT|INWARD|NEFT|IMPS|UTR|ACH|PVT|LTD|CR)\b"
+)
+"""Bank boilerplate, stripped only where it stands as a word of its own.
+
+The word boundaries are not decoration. Without them this pattern removes
+`CR` from inside `JMSS5NDW4CR`, which is a perfectly ordinary Razorpay
+reference - so the one piece of evidence the rung exists to weigh gets
+quietly shortened before it is weighed, and the same happens to any
+reference containing ACH, LTD, PVT or UTR. A property test found this by
+asking whether a reference is similar to itself; it is not the kind of thing
+a hand-written narration would have contained."""
 
 
 def normalise(narration: str) -> str:
@@ -66,6 +77,17 @@ def normalise(narration: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", _NOISE.sub(" ", narration.upper()))
 
 
+def _as_reference(reference: str) -> str:
+    """The reference reduced the same way the narration is, minus the noise.
+
+    Both sides have to be comparable or the measure is scoring a formatting
+    difference. Bank words are deliberately *not* removed here: on this side
+    of the comparison they are the thing being looked for, not the wrapping
+    around it.
+    """
+    return re.sub(r"[^A-Z0-9]", "", reference.upper())
+
+
 def similarity(reference: str, narration: str) -> float:
     """How well a reference matches anywhere inside a narration.
 
@@ -76,15 +98,21 @@ def similarity(reference: str, narration: str) -> float:
     contiguous once the delimiter is stripped.
     """
     text = normalise(narration)
+    reference = _as_reference(reference)
     if not text or not reference:
         return 0.0
 
     width = len(reference)
     matcher = SequenceMatcher(a=reference, autojunk=False)
     best = 0.0
-    # A truncated or padded reference is a window a few characters off, so
-    # the sweep is a little wider than the reference itself.
-    for start in range(max(1, len(text) - width + 4)):
+    # Every start position, not just the ones where a full-width window still
+    # fits. Banks glue their own label straight onto the number - "UTR" plus a
+    # reference that has itself been truncated - and the text is then shorter
+    # than the reference it contains. A sweep sized from the reference stops
+    # three characters early on exactly that case and misses the alignment
+    # that would have matched, which is a defect the messy tier carries and
+    # the arithmetic rungs cannot cover for.
+    for start in range(len(text)):
         window = text[start : start + width + 3]
         if not window:
             break

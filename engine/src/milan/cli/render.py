@@ -169,6 +169,11 @@ def scorecard_detail(card: Scorecard) -> Table:
     table.add_section()
     table.add_row("Proofs claimed", f"{card.proofs_claimed}")
     table.add_row("  that balanced to the paisa", f"{card.proofs_balanced}")
+    table.add_row("  that needed the rounding allowance", f"{card.proofs_with_drift}")
+    # Gross before net, because the net is the smaller number and reading it
+    # first is what turns "it cancels out" into "it does not happen".
+    table.add_row("Rounding drift, gross", format_inr(card.drift_gross))
+    table.add_row("  net across the run", format_inr(card.drift_net))
     table.add_row(
         "Merged credits resolved",
         f"{card.merged_resolved}/{card.merged_expected} ({card.merged_rate:.0%})",
@@ -220,3 +225,30 @@ def money(paise: Paise) -> str:
 def _short(identifier: str) -> str:
     """Identifiers are long and the prefix is the part that carries meaning."""
     return identifier if len(identifier) <= 18 else f"{identifier[:15]}..."
+
+
+MARKDOWN_OPEN = "<!-- generated: eval -->"
+MARKDOWN_CLOSE = "<!-- /generated -->"
+
+
+def evaluation_markdown(evaluation: Evaluation) -> str:
+    """The same table, as markdown, for pasting into the README.
+
+    This exists because the README's numbers were retyped once and went
+    stale: the match rates were current and the refusal column had been
+    carried over from an earlier run, which is not a kind of error a reader
+    can catch. A table that is printed by the command it describes cannot
+    disagree with it, and the fences let a test assert that the README
+    contains exactly what a fresh run produces.
+    """
+    header = (
+        "| Configuration | Match rate | Precision | Correct refusals | Shortfalls named |",
+        "|---|---|---|---|---|",
+    )
+    rows = tuple(
+        f"| {card.label} | {card.match_rate:.1%} | {card.precision:.1%} "
+        f"| {card.correct_refusals}/{card.impossible} "
+        f"| {card.unprovable_explained}/{card.unprovable_expected} |"
+        for card in evaluation.scorecards
+    )
+    return "\n".join((MARKDOWN_OPEN, *header, *rows, MARKDOWN_CLOSE))

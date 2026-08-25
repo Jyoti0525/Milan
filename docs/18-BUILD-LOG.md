@@ -579,6 +579,191 @@ same mistake as arguing from the generator's silence, one level up.
 | Tier | Reference | + amount/date | + subset sum | + fuzzy | Precision | Refusals |
 |---|---|---|---|---|---|---|
 | clean | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 0/0 |
-| realistic | 84.4% | 90.6% | 96.9% | 100.0% | 100.0% | 1/1 |
-| messy | 53.6% | 78.6% | 92.9% | 100.0% | 100.0% | 3/3 |
-| adversarial | 23.8% | 61.9% | 90.5% | 100.0% | 100.0% | 8/8 |
+| realistic | 84.4% | 90.6% | 96.9% | 100.0% | 100.0% | 2/2 |
+| messy | 53.6% | 78.6% | 92.9% | 100.0% | 100.0% | 5/5 |
+| adversarial | 23.8% | 61.9% | 90.5% | 100.0% | 100.0% | 10/10 |
+
+*(The refusal column above is corrected. As first written it said 8/8 on every
+row, carried over from an earlier run. Day 6 found it and made it impossible
+to happen again - see below.)*
+
+---
+
+## Day 6 — the verification pass, and what it found
+
+Day 6 in the build order is "waterfall solver + eval harness with baselines +
+property tests". All three already existed, so the work was to hold each one
+against the definition of done rather than to build anything:
+
+> It has a test / it runs from the seeded command / its numbers appear in the
+> eval harness output / it works with the LLM turned off.
+
+That is a boring exercise when it passes. It did not pass.
+
+### 1. The drift total, which was the one box still open
+
+Rounding drift is explained inside a proof and never raised as an exception,
+which is right - a credit that reconstructs to zero has nothing to raise. But
+the merchant-facing figure is the *total*, and no code computed it.
+
+`Proof.drift` now carries the paise a proof closed on the allowance rather
+than on the rows, and the scorecard totals it two ways. Gross and net are both
+reported, in that order, because drift largely cancels: net alone would read
+as "this does not happen" when what it means is "this happens in both
+directions".
+
+| Tier | Proofs needing the allowance | Gross | Net |
+|---|---|---|---|
+| realistic | 14 | Rs 0.19 | -Rs 0.01 |
+| messy | 13 | Rs 0.18 | -Rs 0.02 |
+| adversarial | 8 | Rs 0.14 | -Rs 0.02 |
+
+The number is small, and it is the honest number. What matters is that it is
+now computed rather than assumed to be small.
+
+It is a field on the proof rather than a search for the drift line, because a
+total assembled by matching on a label silently becomes zero the day somebody
+rewords the label.
+
+### 2. `eval` was scoring whatever happened to be on disk
+
+Found by accident, and the worst thing here.
+
+`milan eval` loads a stored dataset and scores it. It never checked that the
+stored dataset was one *this* generator produces. A run generated before the
+reference-twin defect was added was still sitting in `data/`, and `eval`
+scored it happily: baseline 33.3% against a published 23.8%, eight impossible
+credits against ten, and nothing on screen suggesting anything was wrong.
+
+Numbers from a stale dataset are not slightly off. They are about a different
+merchant.
+
+`save_dataset` now writes the `GenerationConfig` beside the data, and
+`load_dataset` regenerates from it and compares digests before returning.
+Twenty milliseconds at six hundred orders. A mismatch, or a missing config, is
+`StaleDatasetError` - refused, not warned about, with the exact regenerate
+command in the message. The CLI turns it into an exit code rather than a
+traceback, and a test asserts that.
+
+The library keeps a `verify=False` escape hatch for inspecting a file. The
+command line deliberately does not have one, because a flag that lets you
+score stale data is a flag that gets used.
+
+### 3. The README's numbers had already gone stale
+
+Same class of defect, one layer out. The published table's match rates were
+current; its refusal column had been carried over from an earlier run and said
+8/8 where every tier now says something else. A reader cannot catch that, and
+in a project whose entire claim is measurement, a wrong number in the README
+is not a documentation problem. It is the claim being wrong.
+
+So the table is no longer typed. `milan eval --markdown` prints it, the README
+holds it between generated-block fences, and `tests/integration/
+test_published_numbers.py` fails if a fresh run disagrees with what is
+published. Two of its cases guard the specific superseded figures, so the old
+numbers cannot come back by a copy-paste.
+
+Corrected, and it is the refusal column that was wrong, not the match rates:
+
+| Tier | Reference | + amount/date | + subset sum | + fuzzy | Precision | Refusals |
+|---|---|---|---|---|---|---|
+| clean | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 0/0 |
+| realistic | 84.4% | 90.6% | 96.9% | 100.0% | 100.0% | 2/2 |
+| messy | 53.6% | 78.6% | 92.9% | 100.0% | 100.0% | 5/5 |
+| adversarial | 23.8% | 61.9% | 90.5% | 100.0% | 100.0% | 10/10 |
+
+### 4. Nothing tested the scorer
+
+Every number in the submission comes out of `score()`. The oracle test proves
+the matcher is right; nothing proved that the thing *grading* the matcher was
+right. A scorer that counted a wrong match as correct would raise every
+published figure at once, and every other test in the suite would stay green.
+
+`tests/unit/test_scoring.py` builds reports by hand with the answer known and
+asks the scorer what it makes of them. Several cases are the design stance
+itself, which until now existed only as prose:
+
+- a forced answer on an impossible credit is a false positive **even when it
+  is right**
+- a merged credit matched to one of its two settlements is not half a success
+- a proof that does not balance is not a claim at all - neither credited nor
+  counted against precision
+- a guesser and an honest system tie on match rate and separate on precision
+
+Fifteen cases, all green first time. The scorer was correct. It is worth being
+plain that this found no bug: the value is that the stance is now enforced
+rather than described, and the next person to "improve" the match rate has to
+argue with a test.
+
+### 5. The property tests never reached the waterfall
+
+Thirteen invariants existed, covering money arithmetic, batch arithmetic and
+reference extraction - every layer *below* the interesting one. Day 6 pairs
+the waterfall with property tests for a reason, and the waterfall had none.
+
+Ten new invariants, over `prove`, over the veto, and over the combination
+search. Then, because a test that has never failed is a test of unknown
+strength, each was checked by mutation:
+
+| Mutation | Caught by |
+|---|---|
+| allowance one paisa too wide | the veto/proof agreement |
+| veto looser than the proof | the veto/proof agreement |
+| subset-sum tolerance widened by Rs 50 | nothing, at first |
+
+The third is the useful entry. The combination test built its targets as exact
+subset sums, and on an exact target a correct solver and a sloppy one return
+the same set - so the invariant held under a mutation that would have let the
+rung claim a combination Rs 50 short. Rebuilt to perturb the target off the
+combination, it fails on the mutation and passes on the real code. A property
+test that cannot fail is a comment.
+
+### 6. Two live defects in the similarity rung, found by asking whether a
+reference is similar to itself
+
+The first property to run, `similarity(x, x) == 1.0`, failed immediately on
+`2222222222CR`.
+
+The noise-word pattern had no word boundaries, so `CR` was stripped from
+anywhere - including from inside a reference. `JMSS5NDW4CR` normalised to
+`JMSS5NDW4`, and the same applied to any reference containing ACH, LTD, PVT or
+UTR. The rung's only evidence was being quietly shortened before it was
+weighed.
+
+Adding boundaries fixed that and broke the messy tier: 100% to 96.4%. The
+missed credit's narration was `UTRRKBZWJLK RAZORPAY PAYOUT` - the bank's own
+label glued straight onto a reference that had itself been truncated, so the
+narration was *shorter* than the reference it contained. The window sweep was
+sized from the reference length and stopped three characters before the
+alignment that matches.
+
+Both are real bank behaviour and the fix had to cover both: boundaries so a
+reference keeps its own characters, and a sweep over every start position so a
+glued label is stepped past rather than surgically removed. The docstring
+already claimed the function found a reference "anywhere inside a narration";
+the sweep was a premature optimisation that made the claim false.
+
+All four tiers back to 100% at 100% precision, and the rung is more robust
+than it was before the property test ran. Throughput on the adversarial tier
+fell from about 71k to 49k records per second, which is the honest cost and
+still far above anything this has to clear.
+
+**The general lesson, again.** Both defects are invisible to example-based
+tests, because a person writing a test narration picks a reference that reads
+like a reference. Neither would have shown up as a wrong answer either - they
+degrade a score, and a degraded score looks like a hard case.
+
+### Also
+
+- mypy now checks `tests/` as well as `src/`. The tests construct the same
+  models the engine does, so an annotation that has drifted from a record's
+  real shape is a test asserting something about a type that no longer exists.
+  Six errors, all annotation gaps, all fixed. One was real in a small way: a
+  verifier written with a parameter named `candidate` did not satisfy the
+  `Verifier` protocol, which names it `credit`.
+
+### Where it stands
+
+263 tests, 97% coverage, four tiers reproducible, `milan reproduce` identical
+on adversarial. Day 6's three components now each pass all four clauses of the
+definition of done, which two of them did not when the day started.

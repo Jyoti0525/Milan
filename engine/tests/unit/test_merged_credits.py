@@ -24,7 +24,8 @@ from milan.domain.enums import EntityType, MatchStrategy, PaymentMethod
 from milan.domain.money import Paise, from_rupees
 from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import BankCredit, SettlementRow
-from milan.recon.batches import BatchGroup, rebuild_batches
+from milan.domain.results import Proof
+from milan.recon.batches import BatchGroup, GatewayBatch, rebuild_batches
 from milan.recon.matching.base import Attempt, Verdict
 from milan.recon.matching.cascade import Cascade
 from milan.recon.matching.subset import SubsetSumStrategy
@@ -63,7 +64,7 @@ def bank_credit(amount: Paise, day: int = 8, utr: str | None = None) -> BankCred
     )
 
 
-def batches_of(*rows: SettlementRow) -> tuple:
+def batches_of(*rows: SettlementRow) -> tuple[GatewayBatch, ...]:
     return rebuild_batches(rows)
 
 
@@ -142,9 +143,9 @@ class TestSubsetSum:
         credit = bank_credit(group.expected_net)
         result = prove(credit, group, SubsetSumStrategy().name, 0.75, RateCard())
 
-        assert not isinstance(result, type(None))
-        assert result.balances  # type: ignore[union-attr]
-        assert len(result.settlement_ids) == 2  # type: ignore[union-attr]
+        assert isinstance(result, Proof)
+        assert result.balances
+        assert len(result.settlement_ids) == 2
 
 
 class TestProvingOverrulesMatching:
@@ -163,8 +164,10 @@ class TestProvingOverrulesMatching:
         total = Paise(sum(batch.expected_net for batch in batches))
         credit = bank_credit(total, utr="UTRAAAAAAAAAA")
 
-        def verify(candidate: BankCredit, group: BatchGroup) -> bool:
-            return provable(candidate, group, RateCard())
+        def verify(credit: BankCredit, group: BatchGroup) -> bool:
+            # Parameter names are part of the `Verifier` protocol, because the
+            # cascade is free to call it by keyword.
+            return provable(credit, group, RateCard())
 
         without_veto = Cascade().run((credit,), batches)[credit.credit_id]
         with_veto = Cascade().with_verifier(verify).run((credit,), batches)[credit.credit_id]
@@ -235,7 +238,7 @@ class TestTheAnchoredSearch:
     exercised, which is exactly why it is written down.
     """
 
-    def _four_settlements(self) -> tuple:
+    def _four_settlements(self) -> tuple[GatewayBatch, ...]:
         # A + B == C + D, and the two pairs share no member.
         return batches_of(
             row("pay_a", "10000", "setl_a", 7, "UTRAAAAAAAAAA"),
