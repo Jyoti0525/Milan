@@ -53,7 +53,7 @@ class TestEveryCommandRuns:
             app, ["eval", "--seed", "42", "--data-root", str(tmp_path), "--detail"]
         )
         assert result.exit_code == 0, result.output
-        assert "Sorted without a model" in result.output
+        assert "sorted without a model" in result.output
 
     def test_withholding_is_accepted_and_changes_the_data(self, tmp_path: Path) -> None:
         """The flag that shipped broken.
@@ -76,7 +76,7 @@ class TestEveryCommandRuns:
         target = next(
             truth.credit_id
             for truth in dataset.answer_key.credits
-            if truth.matchable and truth.settlement_ids
+            if truth.matchable and truth.provable and truth.settlement_ids
         )
         result = runner.invoke(
             app, ["prove", target[:14], "--seed", "42", "--data-root", str(tmp_path)]

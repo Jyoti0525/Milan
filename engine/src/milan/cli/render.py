@@ -151,6 +151,9 @@ def scorecard_detail(card: Scorecard) -> Table:
     table.add_column("", style="dim")
     table.add_column("", **_NUMERIC)  # type: ignore[arg-type]
 
+    table.add_row("Records processed", f"{card.records_processed:,}")
+    table.add_row("Elapsed", f"{card.duration_seconds:.3f}s")
+    table.add_section()
     table.add_row("Credits", f"{card.credits_total}")
     table.add_row("  resolvable", f"{card.matchable}")
     table.add_row("  impossible by design", f"{card.impossible}")
@@ -159,19 +162,33 @@ def scorecard_detail(card: Scorecard) -> Table:
     table.add_row("Resolvable but missed", f"{card.false_negatives}")
     table.add_row("Correctly refused", f"{card.correct_refusals}")
     table.add_row(
+        "Shortfalls named, not claimed",
+        f"{card.unprovable_explained}/{card.unprovable_expected} ({card.explained_rate:.0%})",
+    )
+    table.add_row("  of those that could not be resolved", f"{card.refusal_rate:.1%}")
+    table.add_section()
+    table.add_row("Proofs claimed", f"{card.proofs_claimed}")
+    table.add_row("  that balanced to the paisa", f"{card.proofs_balanced}")
+    table.add_row(
         "Merged credits resolved",
-        f"{card.merged_resolved}/{card.merged_expected}",
+        f"{card.merged_resolved}/{card.merged_expected} ({card.merged_rate:.0%})",
     )
     table.add_row(
         "Missing payouts flagged",
-        f"{card.missing_settlements_detected}/{card.missing_settlements_expected}",
+        f"{card.missing_settlements_detected}/{card.missing_settlements_expected}"
+        f" ({card.missing_detection_rate:.0%})",
     )
     table.add_row(
         "Unsettled payments flagged",
-        f"{card.unreported_payments_detected}/{card.unreported_payments_expected}",
+        f"{card.unreported_payments_detected}/{card.unreported_payments_expected}"
+        f" ({card.unreported_detection_rate:.0%})",
     )
-    table.add_row("Exceptions per credit", f"{card.exception_rate:.2f}")
-    table.add_row("Sorted without a model", f"{card.rules_share:.1%}")
+    table.add_section()
+    table.add_row("Exceptions raised", f"{card.exceptions_total}")
+    table.add_row("  per credit", f"{card.exception_rate:.2f}")
+    table.add_row("  sorted without a model", f"{card.rules_share:.1%}")
+    for source, count in sorted(card.categorised_by.items()):
+        table.add_row(f"  sorted by {source}", str(count))
 
     if card.matches_by_strategy:
         table.add_section()
@@ -187,6 +204,11 @@ def scorecard_detail(card: Scorecard) -> Table:
         table.add_section()
         for defect, count in sorted(card.unresolved_by_defect.items()):
             table.add_row(f"missed, carrying {defect}", str(count))
+
+    if card.unexplained_by_defect:
+        table.add_section()
+        for defect, count in sorted(card.unexplained_by_defect.items()):
+            table.add_row(f"shortfall unnamed, carrying {defect}", str(count))
 
     return table
 

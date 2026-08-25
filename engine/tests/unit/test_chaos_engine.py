@@ -119,10 +119,50 @@ class TestTheMoneyAddsUp:
             rows_by_settlement.setdefault(row.settlement_id, []).append(row.signed_net)
             row_tax[row.settlement_id] = Paise(row_tax.get(row.settlement_id, 0) + row.tax)
 
+        varied = _unprovable_settlements(data)
         for settlement in data.settlements:
             rows_total = sum(rows_by_settlement.get(settlement.settlement_id, []))
             drift = row_tax.get(settlement.settlement_id, Paise(0)) - settlement.tax
+            if settlement.settlement_id in varied:
+                # A payout variance is exactly this identity being broken on
+                # purpose. It is checked at the credit level below, because a
+                # merged credit marks every member unprovable while only one
+                # of them actually carries the variance.
+                continue
             assert settlement.amount == rows_total + drift
+
+    @ALL_TIERS
+    def test_an_unprovable_credit_really_does_not_reconstruct(self, difficulty: Difficulty) -> None:
+        """The other half of the identity above.
+
+        If a credit marked unprovable still added up, the defect would be a
+        label rather than an injection, and the categoriser would be scored
+        on explaining shortfalls that are not there.
+        """
+        data = build(difficulty)
+        credits = {credit.credit_id: credit for credit in data.bank_credits}
+
+        # What the report can reconstruct: the rows, and nothing else. The
+        # gateway's own settlement summary already carries the variance, so
+        # comparing against that would compare the defect with itself.
+        rows_total: dict[str, int] = {}
+        taxed_rows: dict[str, int] = {}
+        for row in data.settlement_rows:
+            if row.settlement_id is None:
+                continue
+            rows_total[row.settlement_id] = rows_total.get(row.settlement_id, 0) + row.signed_net
+            taxed_rows[row.settlement_id] = taxed_rows.get(row.settlement_id, 0) + bool(row.tax)
+
+        for truth in data.answer_key.credits:
+            if truth.provable or not truth.settlement_ids:
+                continue
+            reconstructable = sum(rows_total.get(sid, 0) for sid in truth.settlement_ids)
+            allowance = sum((taxed_rows.get(sid, 0) + 1) // 2 + 1 for sid in truth.settlement_ids)
+            gap = abs(credits[truth.credit_id].amount - reconstructable)
+            assert gap > allowance, (
+                f"{truth.credit_id} is marked unprovable but its rows reconstruct it "
+                f"to within {gap} paise - the defect is a label, not an injection"
+            )
 
     @ALL_TIERS
     def test_batch_gst_is_charged_on_the_batch_fee(self, difficulty: Difficulty) -> None:
@@ -141,7 +181,7 @@ class TestTheMoneyAddsUp:
         data = build(difficulty)
         credits = {credit.credit_id: credit for credit in data.bank_credits}
         for truth in data.answer_key.credits:
-            if not truth.settlement_ids:
+            if not truth.settlement_ids or not truth.provable:
                 continue
             expected = (
                 truth.gross
@@ -229,6 +269,16 @@ class TestAnswerKeyIsolation:
                 offenders.append(str(path))
         assert not offenders, f"recon must not read ground truth: {offenders}"
         assert pkgutil is not None
+
+
+def _unprovable_settlements(data: Dataset) -> set[str]:
+    """Settlements behind a credit the report cannot reconstruct."""
+    return {
+        settlement_id
+        for truth in data.answer_key.credits
+        if not truth.provable
+        for settlement_id in truth.settlement_ids
+    }
 
 
 def _row_tax_total(data: Dataset, settlement_id: str) -> Paise:

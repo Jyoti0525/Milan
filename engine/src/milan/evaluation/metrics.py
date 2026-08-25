@@ -53,6 +53,13 @@ class Scorecard(BaseModel):
     reading the payments file, not by matching credits - no bank-side
     technique can see this money, because it never arrived."""
 
+    unprovable_expected: int = 0
+    unprovable_explained: int = 0
+    """Credits that are identifiable but cannot be reconstructed, because the
+    payout disagrees with the report. The right output is a named exception,
+    never a match - so these are scored on whether the shortfall was
+    explained, not on whether it was claimed."""
+
     merged_expected: int = 0
     merged_resolved: int = 0
     """Credits covering more than one settlement. Broken out because they
@@ -61,6 +68,7 @@ class Scorecard(BaseModel):
 
     matches_by_strategy: dict[str, int] = Field(default_factory=dict)
     unresolved_by_defect: dict[str, int] = Field(default_factory=dict)
+    unexplained_by_defect: dict[str, int] = Field(default_factory=dict)
 
     categorised_by: dict[str, int] = Field(default_factory=dict)
 
@@ -103,6 +111,11 @@ class Scorecard(BaseModel):
     @property
     def unreported_detection_rate(self) -> float:
         return _ratio(self.unreported_payments_detected, self.unreported_payments_expected)
+
+    @property
+    def explained_rate(self) -> float:
+        """Of the credits no proof can close, the share we could still name."""
+        return _ratio(self.unprovable_explained, self.unprovable_expected)
 
     @property
     def merged_rate(self) -> float:

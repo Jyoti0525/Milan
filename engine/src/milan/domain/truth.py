@@ -60,6 +60,20 @@ class CreditTruth(BaseModel):
     knowable. Scoring uses this one.
     """
 
+    provable: bool = True
+    """Whether the report's rows reconstruct this credit exactly.
+
+    A third state, and it took a payout variance to notice it was missing.
+    `matchable` says the evidence can single the credit out; this says the
+    arithmetic then closes. A credit can be perfectly identifiable and still
+    unprovable - the gateway deducted a fee the report does not show, or took
+    a refund out of a different batch - and for those the correct output is
+    not a match at all. It is an exception that names the shortfall.
+
+    Counting them against the match rate would penalise exactly the refusal
+    this system is built to make, so they are scored separately: not as
+    matches missed, but as shortfalls explained or not explained."""
+
     defect: str | None = None
     """Which defect was injected, if any. Used to report accuracy per defect."""
 
@@ -118,6 +132,16 @@ class AnswerKey(BaseModel):
 
     def by_credit(self) -> dict[str, CreditTruth]:
         return {truth.credit_id: truth for truth in self.credits}
+
+    @property
+    def resolvable_count(self) -> int:
+        """Credits a correct system should match AND prove."""
+        return sum(1 for truth in self.credits if truth.matchable and truth.provable)
+
+    @property
+    def unprovable_count(self) -> int:
+        """Identifiable credits that no honest proof can close."""
+        return sum(1 for truth in self.credits if truth.matchable and not truth.provable)
 
     @property
     def matchable_count(self) -> int:

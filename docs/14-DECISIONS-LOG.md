@@ -267,3 +267,40 @@ If a decision is not here, it is not settled.
     already handles three — no new class of reconciliation problem. Instant
     refund fees are the exception and are queued, because a refund debit
     larger than the refund is a class nothing else in the system produces.
+89. **Coverage is measured, and conformance is a test rather than a habit.**
+    Two failure shapes produced every gap in the days 1-3 audit: implemented
+    but never exercised, and computed but never surfaced. Both are mechanical,
+    so `tests/conformance/` now asserts that every exception code is emitted by
+    some tier, every rung produces a match somewhere, and every scorecard
+    figure is rendered. A promise to be more careful does not scale; a failing
+    test does.
+90. **A credit can be identifiable and unprovable, and that is a third
+    outcome.** `matchable` says the evidence singles the credit out;
+    `provable` says the rows then reconstruct it. When a payout disagrees with
+    the report, the correct answer is never a match - it is an exception naming
+    the shortfall. Scoring counts those separately, because putting them in the
+    match-rate denominator would penalise exactly the refusal this system
+    exists to make.
+91. **The veto starved the categoriser, and coverage found it.** Withdrawing
+    unprovable claims inside the cascade meant the pipeline stopped seeing
+    them, so every explained shortfall became a generic UNEXPLAINED. A
+    withdrawn claim now keeps the settlement it identified, and the pipeline
+    reconstructs it to explain the credit it could not prove. Extends decision
+    69; supersedes the discarding behaviour it introduced.
+92. **Triage checks run most-specific first, and the order is load-bearing.**
+    A refund matches a shortfall to the paisa, a GST slab matches it to a
+    published rate, a fee surcharge merely has to divide into gross at some
+    small percentage - which almost any number does. Running the loosest check
+    first had it answering for tax variances it had no business explaining.
+93. **A deduction is only called GST when it implies a real slab.** 5, 12, 18
+    or 28 percent of the fee charged. An arbitrary percentage that happens to
+    fit is a coincidence, and naming it a tax variance attaches a statute to a
+    number that has nothing to do with tax. Same principle as decision 61's
+    rule for the TDS label.
+94. **Variance kinds are cycled, not drawn at random.** A tier asking for three
+    variances gets one of each rather than whichever the seed picked. A defect
+    class that appears only on some seeds is tested only on some runs.
+95. **Which payouts never arrive is decided before variances are placed.** A
+    variance on a settlement nobody receives is unobservable, so the defect
+    would be spent producing nothing and the tier would silently inject fewer
+    than it claims.

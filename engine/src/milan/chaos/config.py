@@ -84,6 +84,22 @@ class DefectRates(BaseModel):
     a settlement, the proof comes up short by the rest, and a system that does
     not let proving overrule matching will report a confident wrong answer."""
 
+    payout_variances: int = 0
+    """Batches where the money that left does not match the report that
+    describes it.
+
+    Distinct from `rate_mismatch`, and the distinction is the whole point.
+    A rate mismatch balances perfectly: the report and the bank agree, and
+    only the *contract* disagrees, so nothing is ever unmatched and the loss
+    is invisible. A payout variance does not balance - the credit is short by
+    an amount the report cannot account for, and the correct output is not a
+    match at all but an exception that names the shortfall.
+
+    Three forms, all real: the gateway deducted a fee at a rate the report
+    does not show, GST came off at something other than the statutory rate,
+    or a refund was taken out of a different batch than the one the report
+    files it under."""
+
     unreported_payments: float = 0.0
     """Captured payments the settlement report never mentions.
 
@@ -102,6 +118,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
         orphan_credits=1,
         missing_credits=1,
         merged_credits=2,
+        payout_variances=3,
         unreported_payments=0.004,
     ),
     Difficulty.MESSY: DefectRates(
@@ -112,6 +129,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
         orphan_credits=3,
         missing_credits=2,
         merged_credits=4,
+        payout_variances=4,
         unreported_payments=0.010,
     ),
     Difficulty.ADVERSARIAL: DefectRates(
@@ -123,6 +141,7 @@ _TIERS: dict[Difficulty, DefectRates] = {
         missing_credits=2,
         ambiguous_pairs=2,
         merged_credits=6,
+        payout_variances=6,
         unreported_payments=0.015,
     ),
 }

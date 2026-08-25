@@ -394,3 +394,97 @@ failing.
 the allowance is a proof line, not an exception), `total_pending()`,
 `LedgerDirection`. A code nothing emits reads as a category the system
 supports.
+
+---
+
+## Day 3, later still — measuring instead of promising
+
+The pattern behind every gap found so far was pointed out plainly: things kept
+being declared done and turning out not to be. A promise to be more careful
+does not fix that. The two failure shapes are both mechanical, so the response
+was to make them fail a test.
+
+**Implemented but never exercised.** Section 194-O was written, unit-tested and
+switched off everywhere.
+
+**Computed but never surfaced.** `rules_share` was calculated on every run and
+rendered nowhere.
+
+### Coverage, added first
+
+`pytest-cov` went in before any more code. It immediately found something worse
+than either of the above: **`triage.py` at 46%.**
+
+The uncovered lines were `_as_recovery_gap`, `_as_fee_variance` and
+`_as_tax_variance` — the three specific-explanation branches of the
+deterministic categoriser, which is Tier 1 item 10 and explicitly *not* a
+fallback. Its three most valuable branches had never executed once.
+
+Worse, the cause was a regression I introduced on day 2. The cascade veto
+withdraws a claim that will not prove, so the pipeline stopped ever seeing an
+unprovable match — and every credit that would have been explained as
+"short by exactly refund R, which was recovered from batch B" became a generic
+UNEXPLAINED. **The veto starved the categoriser, and the match rate went up
+while the output quality went down.** That is the second time in three days a
+defect survived because it flattered a headline number.
+
+### Three conformance checks
+
+`tests/conformance/` now asserts what no amount of care would reliably catch:
+
+1. **Every exception code is emitted by some tier.** A code nothing emits reads
+   as a category the system supports.
+2. **Every matching rung produces a match somewhere.**
+3. **Every scorecard figure reaches the screen** — read statically out of
+   `render.py`, so a metric added and never displayed fails the build.
+
+All four failed on first run: three exception codes unreachable, ten figures
+computed and never rendered.
+
+### What it took to make them pass
+
+The ten unrendered figures were a rendering fix. The three unreachable codes
+were not — they needed a defect class the generator could not produce.
+
+**Payout variances.** Every existing defect either left the arithmetic intact
+or removed a reference. None of them made the money that left disagree with the
+report describing it. Three forms, all real: a fee deducted at a rate the
+export does not show, GST taken at a non-statutory slab, and a refund whose
+cash came out of a different batch than the one it is filed under.
+
+That exposed a gap in the answer key. Such a credit is perfectly
+*identifiable* and cannot be *proved*, and `matchable` could not express the
+difference. Marking it matchable counted correct behaviour as a false
+negative; marking it unmatchable claimed we could not identify a credit whose
+reference is sitting right there. So `provable` is now a separate field, and
+scoring has three outcomes rather than two:
+
+- **matchable and provable** — match it and prove it. The match rate.
+- **matchable, not provable** — name the shortfall. Never claim it.
+- **not matchable** — refuse.
+
+**Two bugs the new defect surfaced.** The fee check was reading the report
+against *itself*, so it could not see a bank-versus-report gap at all, and once
+rewritten to read the shortfall it was loose enough to answer for tax variances
+too — a rate range fits almost any number. Reordering the checks by how
+specific they are (a refund matches to the paisa, a GST slab to a published
+rate, a fee surcharge merely divides into gross) fixed it. And a credit
+carrying both a damaged reference and a variance recorded only the first, which
+made the per-defect breakdown quietly wrong about what was costing us.
+
+### Where it stands
+
+600 orders, seed 42. `triage.py` is at 100%, the project at 98%, 203 tests.
+
+| Tier | Reference only | + amount/date | + subset sum | Precision | Refusals | Shortfalls named |
+|---|---|---|---|---|---|---|
+| clean | 100.0% | 100.0% | 100.0% | 100.0% | 0/0 | 0/0 |
+| realistic | 87.9% | 93.9% | 100.0% | 100.0% | 1/1 | 1/3 |
+| messy | 53.6% | 85.7% | 100.0% | 100.0% | 3/3 | 3/4 |
+| adversarial | 33.3% | 71.4% | 100.0% | 100.0% | 8/8 | 4/6 |
+
+The shortfall column is the honest new one, and it is deliberately not 100%.
+The credits we cannot name lost their reference *as well as* being short —
+nothing identifies which settlement is missing money, so the only truthful
+output is UNEXPLAINED. The breakdown says so by defect rather than leaving a
+reader to assume it was a failure.

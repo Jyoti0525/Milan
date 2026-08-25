@@ -83,6 +83,8 @@ _LOOKALIKES = {
 """Characters that get confused when a reference is read and re-typed. Not
 invented: these are the pairs that collide in most sans-serif faces."""
 
+_VARIANCE_KINDS = ("fee", "tax", "refund")
+
 _MERGEABLE_DEFECTS = frozenset({None, "UTR_CORRUPTED", "UTR_DAMAGED"})
 """What a credit may already be carrying and still be merged. Reference
 defects, yes - a bank sweeping two transfers together does not care whether
@@ -129,6 +131,23 @@ class _Batch:
     net_total: Paise = ZERO
     debits: list[_Debit] = field(default_factory=list)
 
+    variance: Paise = ZERO
+    """Money that left this batch which the report cannot account for.
+    Signed: negative means the merchant received less than the rows say."""
+
+    variance_kind: str | None = None
+
+
+def _combined_defect(reference: str | None, variance: str | None) -> str | None:
+    """Both, when both apply.
+
+    A credit can lose its reference *and* be short by an undisclosed fee, and
+    those two facts have different fixes. Recording only the first made the
+    per-defect breakdown quietly wrong about which one was costing us.
+    """
+    parts = [part for part in (reference, variance) if part]
+    return "+".join(parts) if parts else None
+
 
 def _reference_defect(corrupted: bool, damaged: bool) -> str | None:
     if corrupted:
@@ -154,8 +173,14 @@ class ChaosEngine:
 
         unreported = self._choose_unreported(payments, refunds, adjustments)
         batches, rows, leaks = self._assemble(orders, payments, refunds, adjustments, unreported)
+        # Which payouts never arrive is decided before variances are placed.
+        # A variance on a settlement nobody ever receives is unobservable: no
+        # credit exists to be short, so the defect would be spent producing
+        # nothing and the tier would silently inject fewer than it claims.
+        missing = self._choose_missing(batches, self._config.defects.missing_credits)
+        self._inject_payout_variances(batches, rows, missing)
         settlements = self._finalise_settlements(batches, rows)
-        credits, truths, missing = self._emit_bank_credits(batches, settlements)
+        credits, truths = self._emit_bank_credits(batches, settlements, missing)
 
         return Dataset(
             seed=self._config.seed,
@@ -170,7 +195,7 @@ class ChaosEngine:
             answer_key=AnswerKey(
                 seed=self._config.seed,
                 credits=tuple(truths),
-                missing_settlement_ids=tuple(missing),
+                missing_settlement_ids=tuple(sorted(missing)),
                 unreported_payment_ids=tuple(sorted(unreported)),
                 leaks=tuple(leaks),
             ),
@@ -577,7 +602,7 @@ class ChaosEngine:
                 Settlement(
                     settlement_id=batch.settlement_id,
                     settlement_utr=batch.utr,
-                    amount=Paise(batch.net_total - debit_total + drift),
+                    amount=Paise(batch.net_total - debit_total + drift + batch.variance),
                     fee=batch.fee_total,
                     tax=batch_tax,
                     settled_at=datetime.combine(batch.settle_date, _SETTLEMENT_HOUR),
@@ -585,6 +610,74 @@ class ChaosEngine:
                 )
             )
         return settlements
+
+    def _inject_payout_variances(
+        self, batches: list[_Batch], rows: list[SettlementRow], missing: set[str]
+    ) -> None:
+        """Make some payouts disagree with the report that describes them.
+
+        Every other defect in this file either leaves the arithmetic intact
+        or removes a reference. This one breaks the arithmetic itself, which
+        is the situation the deterministic categoriser exists for: the credit
+        cannot be proved, so it must not be claimed, and the only useful
+        output is an exception that says exactly how much is missing and
+        which of the three ordinary causes fits.
+        """
+        count = self._config.defects.payout_variances
+        eligible = [
+            b for b in batches if b.payments and b.net_total > 0 and b.settlement_id not in missing
+        ]
+        if count <= 0 or not eligible:
+            return
+
+        chosen = self._rng.sample(eligible, k=min(count, len(eligible)))
+        for index, batch in enumerate(chosen):
+            # Cycled rather than drawn at random, so a tier that asks for
+            # three variances gets one of each kind instead of whichever the
+            # seed happened to pick. A defect class that appears only on some
+            # seeds is a defect class that is tested only on some runs.
+            kind = _VARIANCE_KINDS[index % len(_VARIANCE_KINDS)]
+            if kind == "fee":
+                batch.variance, batch.variance_kind = self._extra_fee(batch), "FEE"
+            elif kind == "tax":
+                batch.variance, batch.variance_kind = self._wrong_gst(batch), "TAX"
+            else:
+                batch.variance, batch.variance_kind = self._foreign_refund(batch, rows), "REFUND"
+
+    def _extra_fee(self, batch: _Batch) -> Paise:
+        """Charged at a higher rate than the report shows, plus GST on it.
+
+        A rate change applied at payout but not reflected in the export. The
+        merchant sees a credit short by a few hundred rupees against a report
+        that foots perfectly.
+        """
+        surcharge = apply_rate(batch.gross_total, Decimal("0.0015"))
+        return Paise(-(surcharge + apply_rate(surcharge, self._config.rates.gst)))
+
+    def _wrong_gst(self, batch: _Batch) -> Paise:
+        """GST deducted at something other than 18% of the fee charged."""
+        applied = apply_rate(batch.fee_total, Decimal("0.28"))
+        return Paise(-(applied - apply_rate(batch.fee_total, self._config.rates.gst)))
+
+    def _foreign_refund(self, batch: _Batch, rows: list[SettlementRow]) -> Paise:
+        """A refund whose cash came out of this batch, filed against another.
+
+        The report shows the refund netted into whichever batch was running
+        when it cleared. The money came out of this one. Nothing in the
+        report is wrong on its own - the two statements simply describe
+        different batches, and the merchant is short by exactly one refund.
+        """
+        elsewhere = [
+            row
+            for row in rows
+            if row.type is EntityType.REFUND
+            and row.settlement_id is not None
+            and row.settlement_id != batch.settlement_id
+            and row.debit < batch.net_total
+        ]
+        if not elsewhere:
+            return self._extra_fee(batch)
+        return Paise(-self._rng.choice(elsewhere).debit)
 
     def _batch_tax(self, batch: _Batch) -> Paise:
         if not self._config.defects.batch_tax_rounding:
@@ -594,8 +687,8 @@ class ChaosEngine:
     # --------------------------------------------------------- the bank side
 
     def _emit_bank_credits(
-        self, batches: list[_Batch], settlements: list[Settlement]
-    ) -> tuple[list[BankCredit], list[CreditTruth], list[str]]:
+        self, batches: list[_Batch], settlements: list[Settlement], missing: set[str]
+    ) -> tuple[list[BankCredit], list[CreditTruth]]:
         """Turn settlements into what the bank statement actually shows.
 
         The bank knows an amount, a date and a narration string. Everything
@@ -606,7 +699,6 @@ class ChaosEngine:
         """
         defects = self._config.defects
         by_id = {batch.settlement_id: batch for batch in batches}
-        missing = self._choose_missing(settlements, defects.missing_credits)
 
         credits: list[BankCredit] = []
         truths: list[CreditTruth] = []
@@ -646,7 +738,10 @@ class ChaosEngine:
                     adjustments=Paise(sum(debit.amount for debit in batch.debits)),
                     rounding_drift=Paise(batch.tax_row_total - settlement.tax),
                     matchable=True,
-                    defect=_reference_defect(corrupted, damaged),
+                    provable=batch.variance == 0,
+                    defect=_combined_defect(
+                        _reference_defect(corrupted, damaged), batch.variance_kind
+                    ),
                 )
             )
 
@@ -657,16 +752,16 @@ class ChaosEngine:
         order = {credit.credit_id: index for index, credit in enumerate(credits)}
         credits.sort(key=lambda credit: (credit.value_date, credit.credit_id))
         truths.sort(key=lambda truth: (order[truth.credit_id],))
-        return credits, truths, sorted(missing)
+        return credits, truths
 
-    def _choose_missing(self, settlements: list[Settlement], count: int) -> set[str]:
+    def _choose_missing(self, batches: list[_Batch], count: int) -> set[str]:
         """Pick payouts that never reach the bank.
 
         Never the first batch: an opening batch that is simply absent is
         indistinguishable from a dataset that starts a day later, which would
         make the case unanswerable rather than hard.
         """
-        eligible = [settlement.settlement_id for settlement in settlements[1:]]
+        eligible = [batch.settlement_id for batch in batches[1:]]
         if not eligible or count <= 0:
             return set()
         return set(self._rng.sample(eligible, k=min(count, len(eligible))))
@@ -797,6 +892,7 @@ class ChaosEngine:
             adjustments=Paise(sum(part.adjustments for part in parts)),
             rounding_drift=Paise(sum(part.rounding_drift for part in parts)),
             matchable=True,
+            provable=all(part.provable for part in parts),
             defect=defect,
         )
         return credit, truth
@@ -932,5 +1028,6 @@ class ChaosEngine:
             adjustments=Paise(0),
             rounding_drift=Paise(0),
             matchable=False,
+            provable=False,
             defect=defect,
         )

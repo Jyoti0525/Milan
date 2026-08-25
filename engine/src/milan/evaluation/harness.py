@@ -18,9 +18,10 @@ from collections import Counter
 from pydantic import BaseModel, ConfigDict
 
 from milan.domain.dataset import Dataset
+from milan.domain.enums import ExceptionCode
 from milan.domain.rates import RateCard
 from milan.domain.results import ReconReport
-from milan.domain.truth import AnswerKey
+from milan.domain.truth import AnswerKey, CreditTruth
 from milan.evaluation.metrics import Scorecard
 from milan.recon.inputs import ReconInput
 from milan.recon.matching.cascade import Cascade
@@ -112,7 +113,12 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
             # to look like accuracy.
             false_positives += 1
 
-    resolvable = [t for t in answers.credits if t.matchable]
+    # Three outcomes, not two. A credit whose payout disagrees with the
+    # report is identifiable and unprovable, and the right answer for it is an
+    # exception rather than a match - so it belongs in neither the match-rate
+    # numerator nor the missed column.
+    resolvable = [t for t in answers.credits if t.matchable and t.provable]
+    unprovable = [t for t in answers.credits if t.matchable and not t.provable]
     impossible = [t for t in answers.credits if not t.matchable]
 
     return Scorecard(
@@ -130,6 +136,8 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
         proofs_claimed=len(report.proofs),
         exceptions_total=len(report.exceptions),
         exceptions_by_code=dict(Counter(e.code.value for e in report.exceptions)),
+        unprovable_expected=len(unprovable),
+        unprovable_explained=_explained(report, unprovable),
         missing_settlements_expected=len(answers.missing_settlement_ids),
         missing_settlements_detected=_missing_detected(report, answers),
         unreported_payments_expected=len(answers.unreported_payment_ids),
@@ -138,8 +146,25 @@ def score(report: ReconReport, answers: AnswerKey, label: str) -> Scorecard:
         merged_resolved=merged_resolved,
         matches_by_strategy=dict(Counter(p.strategy.value for p in balanced)),
         unresolved_by_defect=_unresolved_by_defect(answers, set(claimed)),
+        unexplained_by_defect=_unexplained_by_defect(report, unprovable),
         categorised_by=dict(Counter(e.categorised_by for e in report.exceptions)),
     )
+
+
+def _explained(report: ReconReport, unprovable: list[CreditTruth]) -> int:
+    """Shortfalls that were named rather than shrugged at.
+
+    `UNEXPLAINED` does not count. Raising an exception that says only "these
+    amounts differ" is what a spreadsheet already does; the claim this project
+    makes is that the difference gets a cause, and this is the number that
+    makes that claim checkable.
+    """
+    named = {
+        exception.subject_id
+        for exception in report.exceptions
+        if exception.code is not ExceptionCode.UNEXPLAINED
+    }
+    return sum(1 for truth in unprovable if truth.credit_id in named)
 
 
 def _missing_detected(report: ReconReport, answers: AnswerKey) -> int:
@@ -164,6 +189,26 @@ def _unreported_detected(report: ReconReport, answers: AnswerKey) -> int:
     return len(expected & flagged)
 
 
+def _unexplained_by_defect(report: ReconReport, unprovable: list[CreditTruth]) -> dict[str, int]:
+    """Shortfalls we could not name, and what each was carrying.
+
+    Usually the answer is that the reference was gone too: a credit nobody
+    can identify is a credit nobody can explain, and that is the correct
+    output rather than a failure. Reporting it by defect is what makes that
+    distinction visible instead of assumed.
+    """
+    named = {
+        exception.subject_id
+        for exception in report.exceptions
+        if exception.code is not ExceptionCode.UNEXPLAINED
+    }
+    counts: Counter[str] = Counter()
+    for truth in unprovable:
+        if truth.credit_id not in named:
+            counts[truth.defect or "none"] += 1
+    return dict(counts)
+
+
 def _unresolved_by_defect(answers: AnswerKey, claimed: set[str]) -> dict[str, int]:
     """Which injected defect each unresolved credit was carrying.
 
@@ -173,7 +218,13 @@ def _unresolved_by_defect(answers: AnswerKey, claimed: set[str]) -> dict[str, in
     """
     counts: Counter[str] = Counter()
     for candidate in answers.credits:
-        if not candidate.matchable or candidate.credit_id in claimed:
+        # Only credits a correct system should have matched. An unprovable
+        # credit belongs in the shortfall count, not here - listing it as
+        # "missed" contradicted the false-negative total two lines above it
+        # and made the breakdown read as though something had gone wrong.
+        if not (candidate.matchable and candidate.provable):
+            continue
+        if candidate.credit_id in claimed:
             continue
         counts[candidate.defect or "none"] += 1
     return dict(counts)

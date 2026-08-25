@@ -47,6 +47,16 @@ class Attempt(BaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     note: str = ""
 
+    withdrawn_ids: tuple[str, ...] = ()
+    """Settlements this credit was matched to and then withdrawn from.
+
+    Kept rather than discarded, because a rejected claim is still the best
+    evidence anyone has about the credit. "This is settlement A and it is
+    short by eleven thousand rupees" is an answer a finance team can act on;
+    "no candidate" is not, and it is what the queue said for two days after
+    the veto was introduced.
+    """
+
     @property
     def resolved(self) -> bool:
         return self.verdict is Verdict.MATCHED and bool(self.settlement_ids)
@@ -66,6 +76,7 @@ class Attempt(BaseModel):
             update={
                 "verdict": Verdict.NO_CANDIDATE,
                 "settlement_ids": (),
+                "withdrawn_ids": self.settlement_ids,
                 "confidence": 0.0,
                 "note": reason,
             }

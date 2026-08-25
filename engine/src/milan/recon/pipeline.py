@@ -67,7 +67,7 @@ class ReconciliationPipeline:
         attempts = cascade.run(data.bank_credits, batches)
 
         proofs, exceptions, claimed = self._prove_matches(data, by_id, attempts)
-        exceptions.extend(self._explain_unmatched(data, batches, attempts))
+        exceptions.extend(self._explain_unmatched(data, batches, by_id, attempts))
         exceptions.extend(
             self._categoriser.missing_settlement(batch)
             for batch in batches
@@ -128,13 +128,39 @@ class ReconciliationPipeline:
         self,
         data: ReconInput,
         batches: tuple[GatewayBatch, ...],
+        by_id: dict[str, GatewayBatch],
         attempts: dict[str, Attempt],
     ) -> list[ReconException]:
-        return [
-            self._categoriser.unmatched_credit(credit, attempts[credit.credit_id], batches)
-            for credit in data.bank_credits
-            if credit.credit_id in attempts and not attempts[credit.credit_id].resolved
-        ]
+        """Say what is wrong with each credit nothing could claim.
+
+        A credit whose claim was withdrawn is not the same as one nothing
+        recognised. The veto identified a settlement and then found the
+        arithmetic did not close, and that is far more actionable than "no
+        candidate" - it is the difference between "this is settlement A and
+        it is short by exactly refund R" and a shrug.
+
+        Reconstructing the withdrawn claim here rather than caching it from
+        the cascade keeps the categoriser reading the same proof the run
+        would have reported, instead of a summary of it.
+        """
+        explanations: list[ReconException] = []
+        for credit in data.bank_credits:
+            attempt = attempts.get(credit.credit_id)
+            if attempt is None or attempt.resolved:
+                continue
+
+            withdrawn = [by_id[sid] for sid in attempt.withdrawn_ids if sid in by_id]
+            if withdrawn:
+                group = BatchGroup.of(*withdrawn)
+                result = prove(credit, group, attempt.strategy, attempt.confidence, self._rates)
+                if isinstance(result, UnprovenCredit):
+                    explanations.append(
+                        self._categoriser.unproven_credit(result, group, data.settlement_rows)
+                    )
+                    continue
+
+            explanations.append(self._categoriser.unmatched_credit(credit, attempt, batches))
+        return explanations
 
     def _find_unsettled_payments(self, data: ReconInput) -> list[ReconException]:
         """Captured money the settlement report never accounts for."""

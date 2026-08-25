@@ -170,11 +170,27 @@ class Cascade:
         "Two settlements fit this" is a more useful thing to report than
         "nothing fit", and it comes from a later rung that looked harder. The
         exception queue reads better when the reason survives the cascade.
+
+        A withdrawn claim outranks both. It names a specific settlement, which
+        is what lets the categoriser say *why* the credit is short instead of
+        reporting that nothing matched.
         """
         if previous is None:
             return current
+        merged = self._carry_withdrawal(previous, current)
         if current.verdict is Verdict.AMBIGUOUS:
-            return current
+            return merged
         if previous.verdict is Verdict.AMBIGUOUS:
-            return previous
-        return current
+            return previous.model_copy(update={"withdrawn_ids": merged.withdrawn_ids})
+        return merged
+
+    def _carry_withdrawal(self, previous: Attempt, current: Attempt) -> Attempt:
+        """Withdrawals survive later rungs.
+
+        A credit rejected at rung one and then failing rung three has still
+        been identified once, and that identification is the most specific
+        thing known about it.
+        """
+        if current.withdrawn_ids or not previous.withdrawn_ids:
+            return current
+        return current.model_copy(update={"withdrawn_ids": previous.withdrawn_ids})

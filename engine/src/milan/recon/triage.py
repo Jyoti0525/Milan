@@ -13,15 +13,21 @@ actually left over.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from milan.domain.enums import EntityType, ExceptionCode
-from milan.domain.money import Paise, apply_rate, format_inr
+from milan.domain.money import Paise, format_inr
 from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit, Payment, SettlementRow
 from milan.domain.results import ReconException
 from milan.recon.batches import BatchGroup, GatewayBatch
 from milan.recon.matching.base import Attempt, Verdict
 from milan.recon.waterfall import UnprovenCredit
+
+_GST_SLABS = (Decimal("0.05"), Decimal("0.12"), Decimal("0.18"), Decimal("0.28"))
+"""India's GST rate slabs. A shortfall is only called a tax variance when it
+implies one of these; anything else is an unexplained deduction that happens
+to divide neatly."""
 
 
 class Categoriser:
@@ -127,10 +133,14 @@ class Categoriser:
     ) -> ReconException:
         """A credit matched to a settlement that does not reconstruct it.
 
-        Checked in order of how specific the explanation is. A generic
-        "amounts differ" is the last resort, not the first answer.
+        Checked in order of how specific the explanation is, and the order
+        is load-bearing. A refund matches the shortfall to the paisa; a GST
+        slab matches it to a published rate; a fee surcharge merely has to
+        divide into gross at some small percentage, which almost any number
+        does. Running the loosest check first made it answer for a tax
+        variance it had no business explaining.
         """
-        for check in (self._as_recovery_gap, self._as_fee_variance, self._as_tax_variance):
+        for check in (self._as_recovery_gap, self._as_tax_variance, self._as_fee_variance):
             found = check(unproven, group, all_rows)
             if found is not None:
                 return found
@@ -191,36 +201,48 @@ class Categoriser:
     def _as_fee_variance(
         self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
     ) -> ReconException | None:
-        """The group was charged at a rate the merchant is not contracted to."""
+        """More came off than the report's own fee column accounts for.
+
+        Two different things can go wrong with a fee and only one of them is
+        visible here. If the report shows a rate the merchant is not
+        contracted to, the batch still balances and nothing is unmatched -
+        that is a leak, and it is found by comparing against the contract,
+        not by arithmetic. This is the other case: the report is internally
+        consistent and the bank still paid less, which means a deduction was
+        applied at payout that the export never mentions.
+
+        The shortfall is read back as a rate on gross rather than matched
+        against a list of known rates, because the useful output for a
+        finance team is "you were charged an extra 0.15%", which is a
+        sentence they can take to their account manager.
+        """
         del all_rows
-        expected = Paise(
-            sum(
-                apply_rate(row.amount, self._rates.platform_rate(row.method, row.card_type))
-                for row in group.payment_rows
-                if row.method is not None
-            )
-        )
-        difference = Paise(group.fee - expected)
-        if difference == 0:
+        if unproven.residual >= 0 or not group.gross:
             return None
 
-        with_gst = Paise(difference + apply_rate(difference, self._rates.gst))
-        if abs(with_gst + unproven.residual) > group.rounding_allowance:
+        shortfall = Paise(-unproven.residual)
+        # A surcharge carries GST like any other fee, so strip that back off
+        # before reading the rate, or every rate reported here is 18% high.
+        base = Paise(round(shortfall / (1 + float(self._rates.gst))))
+        implied = Decimal(base) / Decimal(group.gross)
+        if not (Decimal("0.0005") <= implied <= Decimal("0.01")):
             return None
 
         return ReconException(
             code=ExceptionCode.FEE_DEDUCTION,
             subject_id=unproven.credit_id,
-            amount=Paise(abs(difference)),
+            amount=shortfall,
             summary=(
-                f"Fee charged was {format_inr(group.fee)} against a contracted "
-                f"{format_inr(expected)}. The {format_inr(Paise(abs(difference)))} "
-                "difference, plus GST on it, accounts for the shortfall."
+                f"Short by {format_inr(shortfall)} against a report that foots. "
+                f"That is an extra {implied:.3%} of the {format_inr(group.gross)} "
+                "settled, plus GST on it - a deduction taken at payout that the "
+                "settlement report does not show."
             ),
             evidence={
                 "settlements": ", ".join(unproven.settlement_ids),
-                "fee_charged": format_inr(group.fee),
-                "fee_contracted": format_inr(expected),
+                "fee_reported": format_inr(group.fee),
+                "extra_charged": format_inr(base),
+                "implied_rate": f"{implied:.3%}",
                 "rows": str(len(group.payment_rows)),
             },
         )
@@ -228,26 +250,40 @@ class Categoriser:
     def _as_tax_variance(
         self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
     ) -> ReconException | None:
-        """GST that is not the statutory rate on the fee that was charged."""
+        """GST came off at a rate that is not the statutory one.
+
+        Read from the shortfall rather than from the report, because the
+        report says 18% - it is the payout that disagrees. Only the real GST
+        slabs are accepted as an explanation: an arbitrary percentage that
+        happens to fit is a coincidence, and naming it "GST" would attach a
+        tax to a number that has nothing to do with tax.
+        """
         del all_rows
-        expected = apply_rate(group.fee, self._rates.gst)
-        difference = Paise(group.tax - expected)
-        if difference == 0 or abs(difference) <= group.rounding_allowance:
+        if unproven.residual >= 0 or not group.fee:
             return None
-        if abs(difference + unproven.residual) > group.rounding_allowance:
+
+        shortfall = Paise(-unproven.residual)
+        applied = Decimal(group.tax + shortfall) / Decimal(group.fee)
+        slab = next(
+            (rate for rate in _GST_SLABS if abs(applied - rate) <= Decimal("0.005")),
+            None,
+        )
+        if slab is None or slab == self._rates.gst:
             return None
 
         return ReconException(
             code=ExceptionCode.TAX_DEDUCTION,
             subject_id=unproven.credit_id,
-            amount=Paise(abs(difference)),
+            amount=shortfall,
             summary=(
-                f"GST of {format_inr(group.tax)} is not {self._rates.gst:.0%} of the "
-                f"{format_inr(group.fee)} fee charged. Expected {format_inr(expected)}."
+                f"GST was deducted at {slab:.0%} of the {format_inr(group.fee)} fee, "
+                f"not the {self._rates.gst:.0%} the report shows. The "
+                f"{format_inr(shortfall)} difference is the shortfall."
             ),
             evidence={
                 "settlements": ", ".join(unproven.settlement_ids),
-                "tax_charged": format_inr(group.tax),
-                "tax_expected": format_inr(expected),
+                "tax_reported": format_inr(group.tax),
+                "tax_implied": format_inr(Paise(group.tax + shortfall)),
+                "rate_applied": f"{slab:.0%}",
             },
         )
