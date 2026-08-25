@@ -419,3 +419,67 @@ Tier 1 item 6, the one the cut rules say is never cut.
 - No write actions. Nothing in this system resolves a case yet, and a button
   that pretended to would be the dishonest kind of demo
 
+
+---
+
+# Day 8 — the first day anything touches a model
+
+## The number this day exists to move
+
+Pooled across 20 seeds, detection is 100% and **explanation is 55%**:
+shortfalls named 66/120, range 16.7%–83.3%. Every graded number is already at
+its ceiling. This one is not, and it is the one a merchant actually reads.
+
+The 45% is locatable to a single fall-through. `Categoriser.unproven_credit`
+tries three checks — recovery gap, tax slab, fee surcharge — and when none
+fires it emits `UNEXPLAINED` with the bare residual. That fall-through is the
+whole gap.
+
+## The rule that governs the design
+
+**A model may propose. Only arithmetic may conclude.**
+
+An LLM that writes "this looks like a refund" into a summary is fabricating a
+finding, which is the one thing this project claims never to do. So the seam
+is not model-writes-prose. It is:
+
+    proposer → Hypothesis (typed, checkable) → verifier → finding | discarded
+
+A `Hypothesis` names a *kind* and an *entity that exists*. It carries no
+amount, because an amount from a model is an amount nobody checked. The
+verifier does the arithmetic that already exists in `triage.py` and rejects
+anything that does not foot to the paisa. A wrong proposal is therefore
+discarded, never printed — the failure mode is a missed explanation, not a
+false one.
+
+This makes the LLM's contribution measurable rather than asserted: the share
+of its hypotheses that survive verification is a number, and so is the share
+of shortfalls it names that rules alone did not.
+
+## The order of work
+
+- [ ] **Diagnose before designing.** Dump the unnamed shortfalls across the
+      20-seed sweep and read what they actually are. Widening the rules may
+      close most of the gap on its own, and if it does, that is the finding —
+      not a disappointment. Measure first, then decide what a model is for.
+- [ ] Ollama installed, Qwen 2.5 3B pulled, verified on the 4 GB RTX 3050
+- [ ] `OllamaProvider`: health-checked, timed out, never raises, absent daemon
+      degrades to unanswered rather than failing the run
+- [ ] Free hosted adapters behind the same interface (Groq, Gemini). Absent
+      key means unavailable, not broken
+- [ ] Cache exercised against a real provider end to end, and the cached run
+      shown to be reproducible without a model present
+- [ ] `Hypothesis` / verifier seam, with the three existing checks rewritten
+      as proposers so rules and model go through identical verification
+- [ ] Deterministic proposers widened to cover whatever the diagnosis found
+- [ ] LLM proposer behind the seam, constrained to existing entity ids
+- [ ] Measurement: shortfalls named under rules-only vs rules+LLM, LLM
+      proposal precision, and **a test that every graded number is identical
+      across all three configurations**
+- [ ] `--provider` on the CLI, docs, and the build log
+
+## What would make this day a failure
+
+Not "the model did not help" — that is a publishable result and cut rule 6
+already accepts it. A failure is a summary on screen that no arithmetic
+checked.
