@@ -233,6 +233,13 @@ domestic consumer charged 2.15%, contracted 2.00%          47    Rs 232.87
 uv run milan leaks --seed 42 --difficulty adversarial
 ```
 
+It has its own place in the workspace, filed apart from the queue rather
+than inside it. An exception is something that did not reconcile; every row
+behind these findings reconciled to the paisa, and filing them together would
+bury the one result in the run that a clean reconciliation cannot hide.
+
+![Charged above contract](docs/images/leaks.png)
+
 **One finding, not forty-seven rows.** A list of small charges is technically
 complete and nobody reads it. The sentence underneath — one rate pair, one
 date range, one owner — is what a merchant takes to their account manager, and
@@ -255,9 +262,9 @@ learned to find nothing.
 
 ## The exception queue
 
-Two halves of one honest answer. **Queue** is what could not be resolved, and
-why — each case joined back to the record it is about, with what the engine
-looked at before it gave up.
+Two halves of one honest answer, and a third list beside them. **Queue** is
+what could not be resolved, and why — each case joined back to the record it
+is about, with what the engine looked at before it gave up.
 
 ![The exception queue](docs/images/queue.png)
 
@@ -270,6 +277,11 @@ can check it against their own export rather than take it on trust.
 
 The last row is the point. `Unexplained  0.00` is the claim this project
 makes, stated so it can be checked rather than believed.
+
+**Charged above contract** is the third list, and it is the odd one out:
+everything in it balanced. It is [shown above](#the-money-that-is-wrong-while-everything-balances),
+in its own section, because it answers a different question from the other
+two.
 
 ```bash
 # terminal one

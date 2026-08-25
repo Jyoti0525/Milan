@@ -27,10 +27,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
-
 from milan.domain.enums import EntityType
-from milan.domain.money import ZERO, Paise, apply_rate, format_inr
+from milan.domain.money import Paise, apply_rate
 from milan.domain.rates import RateCard
 from milan.domain.records import SettlementRow
 from milan.domain.results import Leak
@@ -104,37 +102,3 @@ def detect(rows: tuple[SettlementRow, ...], rates: RateCard | None = None) -> tu
         )
 
     return tuple(found)
-
-
-class LeakTotal(BaseModel):
-    """What the leaks add up to."""
-
-    model_config = ConfigDict(frozen=True)
-
-    count: int = 0
-    overcharge: Paise = ZERO
-    gst: Paise = ZERO
-    gross_affected: Paise = ZERO
-
-    @property
-    def cash_impact(self) -> Paise:
-        return Paise(self.overcharge + self.gst)
-
-    def describe(self) -> str:
-        if not self.count:
-            return "No row was charged above its contracted rate."
-        return (
-            f"{self.count} payments were charged above contract, costing "
-            f"{format_inr(self.overcharge)} in fees and {format_inr(self.gst)} in "
-            f"GST on those fees. The GST is recoverable as input tax credit; the "
-            f"{format_inr(self.overcharge)} is not."
-        )
-
-
-def total(leaks: tuple[Leak, ...]) -> LeakTotal:
-    return LeakTotal(
-        count=len(leaks),
-        overcharge=Paise(sum(leak.overcharge for leak in leaks)),
-        gst=Paise(sum(leak.gst_on_overcharge for leak in leaks)),
-        gross_affected=Paise(sum(leak.gross for leak in leaks)),
-    )

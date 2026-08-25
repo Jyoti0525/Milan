@@ -9,10 +9,12 @@
  * next task, and a side-by-side view for working a case one at a time. The
  * surfaces and type are Blade's.
  *
- * Two lists behind one navigation, because there are two halves to an honest
- * answer. **Queue** is what could not be resolved and why. **Proved** is what
- * could, each one openable and checkable line by line. A tool that showed only
- * the second would be a demo.
+ * Three lists behind one navigation. **Queue** is what could not be resolved
+ * and why. **Proved** is what could, each one openable and checkable line by
+ * line — a tool that showed only the second would be a demo. **Charged above
+ * contract** is the third answer and the odd one out: every row behind it
+ * reconciled to the paisa, and it is still money the merchant should not have
+ * paid.
  *
  * One state object holds the loaded run *and the run it belongs to*. Whether
  * the screen is loading is then derived by comparing that key against the
@@ -27,8 +29,10 @@ import { ApiError, listRuns, loadRun, type RunRef, type RunView } from "@/lib/ap
 import { ExceptionPanel } from "@/components/ExceptionPanel";
 import { Metrics } from "@/components/Metrics";
 import { ProofPanel } from "@/components/ProofPanel";
-import { ProofList, QueueList, sortQueue, type Selection } from "@/components/Queue";
+import { LeakList, LeakPanel } from "@/components/Leaks";
+import { ProofList, QueueList, sortQueue } from "@/components/Queue";
 import { Sidebar, type Tab } from "@/components/Sidebar";
+import type { Selection } from "@/components/Table";
 
 /** A loaded run, tagged with which run it is. */
 interface Loaded {
@@ -38,6 +42,41 @@ interface Loaded {
 }
 
 const keyOf = (run: RunRef | null) => (run ? `${run.difficulty}:${run.seed}` : "");
+
+/** Which sort of selection each list makes. */
+const KIND: Record<Tab, Selection["kind"]> = {
+  queue: "exception",
+  proved: "proof",
+  leaks: "leak",
+};
+
+/**
+ * What each list is, said once.
+ *
+ * These were ternaries inline in the markup, which worked for two lists and
+ * turned into nested conditionals at three - the shape that quietly ends with
+ * one branch saying something slightly different from the others.
+ */
+const HEADINGS: Record<Tab, { title: string; blurb: string; empty: string; absent: string }> = {
+  queue: {
+    title: "Exception queue",
+    blurb: "Everything the engine would not claim, worst first.",
+    empty: "Select a case to see what the engine looked at before it gave up.",
+    absent: "Nothing to open. Every credit on this run was resolved.",
+  },
+  proved: {
+    title: "Proved credits",
+    blurb: "Every credit rebuilt from its settlement rows, to the paisa.",
+    empty: "Select a credit to see it rebuilt from its settlement rows, line by line.",
+    absent: "Nothing to open. No credit on this run was proved.",
+  },
+  leaks: {
+    title: "Charged above contract",
+    blurb: "Rows that reconciled perfectly and were still priced wrong.",
+    empty: "Select a finding to see the rate pair, the window, and every row behind it.",
+    absent: "Nothing to open. Every fee on this run matched the rate its own row describes.",
+  },
+};
 
 function Notice({ title, body, command }: { title: string; body: string; command?: string }) {
   return (
@@ -116,7 +155,7 @@ export default function Workspace() {
     to Proved - the panel and the list disagreeing about what was selected,
     with nothing highlighted in the list to explain it.
   */
-  const wanted: Selection["kind"] = tab === "proved" ? "proof" : "exception";
+  const wanted = KIND[tab];
   const selected =
     picked?.key === key && picked.selection.kind === wanted ? picked.selection : null;
 
@@ -138,6 +177,8 @@ export default function Workspace() {
   const fallback = useMemo((): Selection | null => {
     if (!view) return null;
     if (tab === "proved") return view.proofs.length > 0 ? { kind: "proof", index: 0 } : null;
+    if (tab === "leaks")
+      return view.leaks.findings.length > 0 ? { kind: "leak", index: 0 } : null;
     const first = sortQueue(view.queue)[0];
     return first ? { kind: "exception", index: first.index } : null;
   }, [view, tab]);
@@ -150,6 +191,10 @@ export default function Workspace() {
       const proof = view.proofs[shown.index];
       return proof ? <ProofPanel proof={proof} /> : null;
     }
+    if (shown.kind === "leak") {
+      const finding = view.leaks.findings[shown.index];
+      return finding ? <LeakPanel finding={finding} /> : null;
+    }
     const item = view.queue[shown.index];
     if (!item) return null;
     // A queue item about a credit that was also proved is rare but real — a
@@ -159,7 +204,16 @@ export default function Workspace() {
     return proof ? <ProofPanel proof={proof} /> : <ExceptionPanel item={item} />;
   }, [view, shown]);
 
-  const counts = { queue: view?.queue.length ?? 0, proved: view?.proofs.length ?? 0 };
+  // Keyed by tab name, so the navigation counts and the empty-state copy
+  // read the same number.
+  const counts: Record<Tab, number> = {
+    queue: view?.queue.length ?? 0,
+    proved: view?.proofs.length ?? 0,
+    // Findings, not affected rows. Forty-seven small charges is a report
+    // nobody reads; the one pattern behind them is the thing somebody picks
+    // up, and the count in the navigation should be a count of those.
+    leaks: view?.leaks.findings.length ?? 0,
+  };
 
   const body = (() => {
     if (failure && !view) {
@@ -210,13 +264,9 @@ export default function Workspace() {
           <section className="card flex min-w-0 flex-1 flex-col overflow-hidden 2xl:max-w-[58%]">
             <div className="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
               <div>
-                <h1 className="text-[14px] font-semibold">
-                  {tab === "queue" ? "Exception queue" : "Proved credits"}
-                </h1>
+                <h1 className="text-[14px] font-semibold">{HEADINGS[tab].title}</h1>
                 <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                  {tab === "queue"
-                    ? "Everything the engine would not claim, worst first."
-                    : "Every credit rebuilt from its settlement rows, to the paisa."}
+                  {HEADINGS[tab].blurb}
                 </p>
               </div>
               {current && (
@@ -238,16 +288,24 @@ export default function Workspace() {
               {view && tab === "proved" && (
                 <ProofList proofs={view.proofs} selected={shown} onSelect={pick} />
               )}
+              {view && tab === "leaks" && (
+                <LeakList leaks={view.leaks} selected={shown} onSelect={pick} />
+              )}
             </div>
           </section>
 
           <section className="card hidden min-w-0 flex-1 overflow-hidden xl:block">
             {detail ?? (
               <div className="grid h-full place-items-center px-6 text-center">
+                {/*
+                  "Select a case" is the wrong sentence when there is nothing
+                  to select. On a clean tier all three lists can be empty, and
+                  an instruction to click a row that does not exist reads as a
+                  screen that failed to load rather than a run with nothing
+                  wrong in it.
+                */}
                 <p className="max-w-xs text-[13px] leading-relaxed text-[var(--text-subtle)]">
-                  {tab === "queue"
-                    ? "Select a case to see what the engine looked at before it gave up."
-                    : "Select a credit to see it rebuilt from its settlement rows, line by line."}
+                  {counts[tab] === 0 ? HEADINGS[tab].absent : HEADINGS[tab].empty}
                 </p>
               </div>
             )}

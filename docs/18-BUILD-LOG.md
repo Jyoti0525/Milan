@@ -1403,3 +1403,50 @@ not reconcile; every one of these reconciled perfectly. Filing them together
 would bury the only finding in the report that survives the books balancing.
 
 481 tests, 97% coverage, both new modules at 100%.
+
+### The screen it needed, and the code it did not
+
+Leak detection shipped into the engine, the CLI, the metrics and the README
+on the same day, and into the workspace a day later. The delay is worth
+recording because of what it exposed.
+
+**A third list, beside the queue and not inside it.** The navigation now has
+two groups: *Review*, which is about credits - what could not be resolved and
+what could - and *Recover*, which is about rows that reconciled perfectly and
+were still charged too much. Filing a leak among the exceptions would have
+said the reconciliation missed something. It did not; the price was wrong,
+which is a different job for a different person.
+
+The panel carries the rate pair, the excess, the settled value, the window,
+the card networks, the fee overcharged separately from the GST charged on it,
+and every payment id behind the claim - untruncated, because a finding a
+merchant cannot check against their own export is a number they have to take
+on trust. Above it sits the sentence that explains why nothing else in the
+tool found it: *every one of these rows reconciled to the paisa.*
+
+**Building the screen deleted more code than it added to the engine.** Four
+things had been written and read by nothing:
+
+| gone | what it was |
+|---|---|
+| `LeakTotal` + `total()` | a second implementation of the four sums `LeakReport` already computed, called only by its own tests |
+| `LeakCluster.describe()` | a canned sentence; the CLI writes a table row, the queue writes a list row, and neither could use it verbatim |
+| `ProofView.merged` | dead since it was written - the browser derives it |
+| `Service.forget()` | a cache-invalidation method whose docstring claimed the tests used it. They did not |
+
+None of it was wrong. All of it was unreachable, which is the state that
+looks most like being careful while being untested by construction - the same
+finding as day 9's `_rate_of` guard, one layer up. The conformance suite
+catches this for `Scorecard` fields specifically; these sat outside its reach,
+and coverage found them only once a real consumer existed to show what was
+still unused.
+
+**One display bug, found by testing the boring tier.** On the clean tier the
+**Refused** card read `0.0%`. The rate is 0/0 there - no credit is impossible,
+so none was refused - and a percentage with nothing underneath it is not a
+measurement. Under the word "Refused" it reads as a system that guessed at
+every hard case, which is the exact opposite of what the run showed. The card
+now shows a dash and names the denominator when there is one: *of 6
+impossible, never guessed*.
+
+485 tests, 97% coverage, both leak modules still at 100%.

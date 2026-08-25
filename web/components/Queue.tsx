@@ -22,11 +22,8 @@ import type { Proof, QueueItem } from "@/lib/api";
 import { shortDate, withRupeeSign } from "@/lib/money";
 import { Amount } from "./Amount";
 import { Badge, Tag } from "./Badge";
+import { Empty, Id, rowProps, type Selection } from "./Table";
 import { codeLabel, codeTone, severity } from "./codes";
-
-export type Selection =
-  | { kind: "exception"; index: number }
-  | { kind: "proof"; index: number };
 
 export function sortQueue(items: QueueItem[]): { item: QueueItem; index: number }[] {
   return items
@@ -37,39 +34,6 @@ export function sortQueue(items: QueueItem[]): { item: QueueItem; index: number 
         Math.abs(b.item.amount) - Math.abs(a.item.amount) ||
         a.item.subject.id.localeCompare(b.item.subject.id),
     );
-}
-
-/**
- * An identifier, whole.
- *
- * This used to clip to ten characters with an ellipsis, which is the same
- * mistake the truncated summaries were: `xzxbqya4bc…` cannot be pasted into a
- * ledger search, cannot be read out over a call, and cannot be told apart from
- * another id sharing its first ten characters. The ids this engine mints are
- * a fixed nineteen characters and they fit.
- */
-function Id({ id }: { id: string }) {
-  return <span className="chip font-mono text-[10.5px]">{id}</span>;
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="px-6 py-10 text-center text-[13px] text-[var(--text-subtle)]">{children}</div>;
-}
-
-/** Not a hook — plain props. Named without `use` so it is not treated as one. */
-function rowProps(active: boolean, choose: () => void) {
-  return {
-    "aria-selected": active,
-    tabIndex: 0,
-    onClick: choose,
-    onKeyDown: (event: React.KeyboardEvent) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        choose();
-      }
-    },
-    className: "row-link",
-  };
 }
 
 export function QueueList({

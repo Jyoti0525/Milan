@@ -680,18 +680,40 @@ is the same sin as understating it.
 
 ## The order of work
 
-- [ ] `milan/leaks/detector.py` - find rate mismatches against the rate card
-- [ ] Scored against `LeakTruth`: found, missed, and **false leaks**, because
+- [x] `milan/leaks/detector.py` - find rate mismatches against the rate card
+- [x] Scored against `LeakTruth`: found, missed, and **false leaks**, because
       accusing a gateway of overcharging when it did not is the expensive
       mistake here
-- [ ] Root-cause clustering: 36 rows become "every corporate-rate charge on a
+- [x] Root-cause clustering: 36 rows become "every corporate-rate charge on a
       domestic consumer card, 36 payments, Rs X". A list is not a finding.
-- [ ] Both figures in the eval harness and the sweep, per the definition of
+- [x] Both figures in the eval harness and the sweep, per the definition of
       done
-- [ ] `milan leaks` on the CLI
-- [ ] Surface it in the queue, because this is what carries the video
-- [ ] Tests, including the two that matter: a clean tier reports no leaks at
+- [x] `milan leaks` on the CLI
+- [x] Surface it in the queue, because this is what carries the video
+- [x] Tests, including the two that matter: a clean tier reports no leaks at
       all, and a leak is still found when the batch balances perfectly
+
+**Done.** 762/762 caught with 762/762 precision across twenty adversarial
+seeds; the clean and realistic tiers report nothing.
+
+The screen is a third list beside the queue and the proofs, under its own
+heading, because every row behind a finding *reconciled* - filing them with
+the exceptions would say the reconciliation missed something when it did not.
+The rate pair, the window, the networks and every payment id behind the claim
+are on the panel, untruncated.
+
+Three things went out with it that had been shipped the day before and read
+by nothing: `LeakTotal`/`total()`, a second implementation of sums
+`LeakReport` already had; `LeakCluster.describe()`, a canned sentence no
+surface could use verbatim; and `ProofView.merged` and `Service.forget()` in
+the API, dead since they were written. Coverage found all of them once the
+screen existed to demand the rest. A metric nobody can see is a metric nobody
+checks, and the same is true of a method.
+
+One display bug fell out of testing the clean tier: **Refused** read `0.0%`
+where no credit was impossible, which says "guessed at every hard case" when
+the truth is "was never asked one". The card now shows a dash and names the
+denominator when there is one.
 
 ## What would make this day a failure
 

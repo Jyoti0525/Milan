@@ -28,7 +28,7 @@ from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import SettlementRow
 from milan.evaluation.harness import to_recon_input
 from milan.leaks.clusters import cluster, summarise
-from milan.leaks.detector import detect, total
+from milan.leaks.detector import detect
 from milan.recon.batches import BatchGroup, rebuild_batches
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 from milan.recon.waterfall import prove
@@ -188,14 +188,20 @@ class TestTheFindingRatherThanTheList:
         assert len(groups) == 1
         assert groups[0].payments == 12
 
-    def test_the_finding_says_both_rates_and_the_money(self) -> None:
+    def test_the_finding_carries_both_rates_and_the_money(self) -> None:
+        """The rate pair is the finding. Every surface writes the sentence its
+        own layout needs - the CLI a table row, the queue a list row - so what
+        the cluster owes them is the fields, and a canned sentence none of
+        them could use verbatim was deleted rather than kept."""
         rows = tuple(
             payment_row(f"pay_{n}", "10000", charged_as=CardType.DOMESTIC_CORPORATE)
             for n in range(12)
         )
-        said = cluster(detect(rows))[0].describe()
-        assert "2.15%" in said and "2.00%" in said
-        assert "domestic consumer" in said
+        found = cluster(detect(rows))[0]
+        assert f"{found.charged_rate:.2%}" == "2.15%"
+        assert f"{found.contracted_rate:.2%}" == "2.00%"
+        assert f"{found.excess_rate:.2%}" == "0.15%"
+        assert found.card_type == "domestic_consumer"
 
     def test_every_row_behind_a_finding_is_kept(self) -> None:
         """A claim about money that cannot be drilled into is a claim nobody
@@ -261,7 +267,7 @@ class TestAgainstGroundTruth:
         dataset = ChaosEngine(
             GenerationConfig(seed=7, difficulty=Difficulty.ADVERSARIAL, order_count=600)
         ).generate()
-        found = total(detect(dataset.settlement_rows))
+        found = summarise(detect(dataset.settlement_rows), rows_examined=0)
         expected = sum(leak.overcharge for leak in dataset.answer_key.leaks)
         assert found.overcharge == expected
 
@@ -288,6 +294,11 @@ class TestTheTotalsAddUp:
     Left uncovered on the first pass because every other test in this file
     asserts on individual leaks, and a summary that quietly summed the wrong
     field would have looked correct in all of them.
+
+    Written against `LeakReport` rather than a second summing helper. Day 9
+    shipped `total()` beside it, computing the same four figures from the same
+    leaks, and nothing outside this file ever called it - two implementations
+    of one sum, one of them exercised only by its own test.
     """
 
     def _leaked(self, count: int) -> tuple[SettlementRow, ...]:
@@ -298,21 +309,25 @@ class TestTheTotalsAddUp:
 
     def test_a_total_is_the_sum_of_its_leaks(self) -> None:
         leaks = detect(self._leaked(7))
-        summed = total(leaks)
-        assert summed.count == 7
+        summed = summarise(leaks, rows_examined=40)
+        assert summed.payments == 7
         assert summed.overcharge == sum(leak.overcharge for leak in leaks)
         assert summed.gst == sum(leak.gst_on_overcharge for leak in leaks)
         assert summed.cash_impact == summed.overcharge + summed.gst
 
     def test_an_empty_total_says_nothing_was_wrong(self) -> None:
-        summed = total(())
-        assert summed.count == 0
-        assert "No row was charged above" in summed.describe()
+        summed = summarise((), rows_examined=40)
+        assert summed.clean
+        assert summed.payments == 0
+        assert "charged at its contracted rate" in summed.headline()
 
-    def test_a_total_names_both_figures_and_which_is_recoverable(self) -> None:
-        said = total(detect(self._leaked(7))).describe()
+    def test_the_headline_names_both_figures_and_which_is_recoverable(self) -> None:
+        """The GST is stated apart from the overcharge because it comes back
+        as input tax credit. Rolling it into the headline would overstate the
+        permanent loss by 18%, which is the same failure as understating it."""
+        said = summarise(detect(self._leaked(7)), rows_examined=40).headline()
         assert "input tax credit" in said
-        assert "is not" in said
+        assert "in 1 pattern" in said
 
     def test_the_report_rolls_its_clusters_up(self) -> None:
         report = summarise(detect(self._leaked(9)), rows_examined=100)

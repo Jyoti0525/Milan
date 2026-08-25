@@ -51,8 +51,25 @@ export function Metrics({ summary }: { summary: RunSummary }) {
         <Figure value={percent(summary.precision)} />
       </Card>
 
-      <Card label="Refused" hint="of the impossible, never guessed">
-        <Figure value={percent(summary.refusal_rate)} />
+      {/*
+        A rate with nothing underneath it is not a measurement. On the clean
+        tier no credit is impossible, so this was rendering `0.0%` under the
+        word "Refused" - which reads as a system that guessed at every hard
+        case, and is the exact opposite of what the run showed.
+      */}
+      <Card
+        label="Refused"
+        hint={
+          summary.refusals_expected === 0
+            ? "nothing impossible in this run"
+            : `of ${summary.refusals_expected} impossible, never guessed`
+        }
+      >
+        {summary.refusals_expected === 0 ? (
+          <Figure value="—" tone="var(--text-disabled)" />
+        ) : (
+          <Figure value={percent(summary.refusal_rate)} />
+        )}
       </Card>
 
       <Card

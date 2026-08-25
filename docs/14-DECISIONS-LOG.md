@@ -643,3 +643,25 @@ If a decision is not here, it is not settled.
      against a zero amount its only caller had already rejected. Correct dead
      code is the state that looks most like being careful while being untested
      by construction.
+
+160. **Leaks get their own group in the navigation, not a third item under
+     Review.** Review is about credits: what could not be resolved, and what
+     could. Every row behind a leak reconciled to the paisa, so listing it
+     beside the exceptions would suggest the reconciliation missed something.
+     The heading has to say "Recover" before the count says anything.
+161. **Rates cross the API already formatted; money never does.** Every amount
+     is integer paise and the browser groups it Indian-style with its own
+     tested code. A rate is not money, nothing in the browser multiplies by
+     one, and sending `0.0215` would only give two implementations a chance to
+     disagree about how to write `2.15%`.
+162. **A rate with a zero denominator is shown as a dash, not as 0.0%.** The
+     clean tier has nothing impossible in it, so the refusal rate is 0/0.
+     Printing `0.0%` under "Refused" claims the system guessed at every hard
+     case; the truth is that it was never asked one, and the card now names
+     the denominator when there is one.
+163. **The dead code a new consumer exposes is deleted, not kept for later.**
+     Building the leak screen showed that `LeakTotal`, `total()`,
+     `LeakCluster.describe()`, `ProofView.merged` and `Service.forget()` were
+     read by nothing. Correct, tested, unreachable code is the state that
+     looks most like being finished, and the honest response to finding it is
+     `git rm`, not a comment explaining why it is still there.

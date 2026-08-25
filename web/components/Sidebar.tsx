@@ -7,14 +7,18 @@
  * for a side navigation organised around jobs rather than objects, and the
  * earlier version of this screen had no navigation at all — a header strip
  * and two tabs floating above a table. This gives the run picker somewhere to
- * live and puts the two halves of the answer where they can be counted at a
- * glance.
+ * live and puts the lists where they can be counted at a glance.
+ *
+ * Two groups, because there are two jobs. **Review** is about credits: what
+ * could not be resolved, and what could. **Recover** is about rows that
+ * reconciled perfectly and were still charged too much, which is somebody
+ * else's morning entirely.
  */
 
 import type { RunRef } from "@/lib/api";
 import { Badge } from "./Badge";
 
-export type Tab = "queue" | "proved";
+export type Tab = "queue" | "proved" | "leaks";
 
 const TIER_ORDER = ["clean", "realistic", "messy", "adversarial"];
 
@@ -60,7 +64,7 @@ export function Sidebar({
   onPick: (run: RunRef) => void;
   tab: Tab;
   onTab: (tab: Tab) => void;
-  counts: { queue: number; proved: number };
+  counts: { queue: number; proved: number; leaks: number };
 }) {
   const ordered = [...runs].sort(
     (a, b) =>
@@ -100,6 +104,31 @@ export function Sidebar({
             active={tab === "proved"}
             onClick={() => onTab("proved")}
             hint="credits rebuilt to the paisa"
+          />
+        </div>
+      </div>
+
+      {/*
+        Its own group, not a third item under Review.
+
+        Review is about credits: what could not be resolved, and what could.
+        Every row behind a leak *was* resolved - it reconciled to the paisa -
+        so listing it beside them would suggest the reconciliation missed
+        something. It did not. The price was wrong, which is a different job
+        for a different person, and the heading has to say so before the count
+        does.
+      */}
+      <div className="px-3 pb-3">
+        <div className="mb-1.5 px-1 text-[11px] font-medium tracking-wide text-[var(--text-subtle)] uppercase">
+          Recover
+        </div>
+        <div className="space-y-0.5">
+          <Item
+            label="Charged above contract"
+            count={counts.leaks}
+            active={tab === "leaks"}
+            onClick={() => onTab("leaks")}
+            hint="findings on rows that balanced"
           />
         </div>
       </div>

@@ -22,12 +22,13 @@ from pydantic import BaseModel, ConfigDict
 
 from milan.chaos.config import Difficulty
 from milan.domain.dataset import Dataset
-from milan.domain.enums import ExceptionCode
+from milan.domain.enums import EntityType, ExceptionCode
 from milan.domain.money import Paise
 from milan.domain.records import BankCredit
 from milan.domain.results import Proof, ReconException, ReconReport
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.metrics import Scorecard
+from milan.leaks.clusters import LeakCluster, LeakReport, summarise
 from milan.persistence import store
 from milan.persistence.store import StaleDatasetError
 from milan.recon.batches import GatewayBatch, rebuild_batches
@@ -123,9 +124,65 @@ class ProofView(BaseModel):
     residual: Paise
     """What the lines failed to account for. Zero, or it is not a proof."""
 
-    @property
-    def merged(self) -> bool:
-        return len(self.settlement_ids) > 1
+
+class LeakFinding(BaseModel):
+    """One overcharge pattern, as a screen shows it.
+
+    Rates cross the wire already formatted, unlike every amount here. A rate
+    is not money and nothing in the browser does arithmetic with one, so the
+    choice is between sending `0.0215` and letting two implementations agree
+    on how to turn it into `2.15%`, or sending the string the CLI already
+    prints. The second is one place where a percentage is written, and it is
+    the place with tests.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    """What was charged wrongly, in a merchant's words: `domestic consumer`,
+    `netbanking`. The card type when there is one, because that is the field
+    the mispricing is actually about, and the method when there is not."""
+
+    contracted_rate: str
+    charged_rate: str
+    excess_rate: str
+
+    method: str
+    card_type: str | None
+
+    payments: int
+    overcharge: Paise
+    gst: Paise
+    cash_impact: Paise
+    gross_affected: Paise
+
+    first_seen: str
+    last_seen: str
+    networks: tuple[str, ...]
+
+    payment_ids: tuple[str, ...]
+    """Every row behind the claim, untruncated. What gets shown is the
+    browser's decision; what can be checked is not."""
+
+
+class LeakFindings(BaseModel):
+    """What the leak pass found, whole.
+
+    Carried beside the queue and never inside it. An exception is something
+    that did not reconcile; every one of these reconciled perfectly, and
+    filing them together would bury the only finding in the run that survives
+    the books balancing.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    headline: str
+    rows_examined: int
+    payments: int
+    overcharge: Paise
+    gst: Paise
+    cash_impact: Paise
+    findings: tuple[LeakFinding, ...]
 
 
 class RunSummary(BaseModel):
@@ -148,6 +205,14 @@ class RunSummary(BaseModel):
     match_rate: float
     precision: float
     refusal_rate: float
+    refusals_expected: int
+    """How many credits were impossible by construction.
+
+    Carried because the rate alone is unreadable when this is zero: a clean
+    tier has nothing to refuse, and `0.0%` in a card headed "refused" reads
+    as a system that guessed at everything rather than one that was never
+    asked to."""
+
     explained_rate: float
 
 
@@ -164,6 +229,10 @@ class RunView(BaseModel):
     summary: RunSummary
     queue: tuple[QueueItem, ...]
     proofs: tuple[ProofView, ...]
+    leaks: LeakFindings
+    """Charges above contract, on rows that reconciled. Always present, and
+    empty on a clean tier - a run that found none has to be able to say so,
+    or the only evidence of a working detector is the runs where it fired."""
 
 
 class RunNotFoundError(LookupError):
@@ -235,11 +304,6 @@ class Service:
             self._cache[key] = self._build(difficulty, seed)
         return self._cache[key]
 
-    def forget(self) -> None:
-        """Drop the cache. Used by the tests, and by anything that
-        regenerates a dataset inside a running process."""
-        self._cache.clear()
-
     # ------------------------------------------------------------- internals
 
     def _dataset(self, difficulty: str, seed: int) -> Dataset:
@@ -268,6 +332,7 @@ class Service:
                 for proof in report.proofs
                 if proof.credit_id in credits
             ),
+            leaks=self._leaks(dataset, report),
         )
 
     def _summary(self, dataset: Dataset, report: ReconReport) -> RunSummary:
@@ -291,6 +356,7 @@ class Service:
             match_rate=card.match_rate,
             precision=card.precision,
             refusal_rate=card.refusal_rate,
+            refusals_expected=card.unprovable_expected,
             explained_rate=card.explained_rate,
         )
 
@@ -355,6 +421,28 @@ class Service:
                 )
         return Subject(kind="unknown", id=subject_id)
 
+    @staticmethod
+    def _leaks(dataset: Dataset, report: ReconReport) -> LeakFindings:
+        """Group what the pipeline already detected.
+
+        The detection ran inside the pipeline, so this reads `report.leaks`
+        rather than calling the detector again. Two call sites on the same
+        rows would eventually be given two different rate cards, and the
+        screen would then disagree with the score for reasons nobody could
+        see.
+        """
+        examined = sum(1 for row in dataset.settlement_rows if row.type is EntityType.PAYMENT)
+        grouped: LeakReport = summarise(report.leaks, examined)
+        return LeakFindings(
+            headline=grouped.headline(),
+            rows_examined=grouped.rows_examined,
+            payments=grouped.payments,
+            overcharge=grouped.overcharge,
+            gst=grouped.gst,
+            cash_impact=grouped.cash_impact,
+            findings=tuple(_finding(group) for group in grouped.clusters),
+        )
+
     def _proof_view(self, proof: Proof, credit: BankCredit) -> ProofView:
         running: list[Paise] = []
         balance = Paise(0)
@@ -378,6 +466,26 @@ class Service:
             running=tuple(running),
             residual=proof.residual,
         )
+
+
+def _finding(group: LeakCluster) -> LeakFinding:
+    return LeakFinding(
+        label=(group.card_type or group.method).replace("_", " "),
+        contracted_rate=f"{group.contracted_rate:.2%}",
+        charged_rate=f"{group.charged_rate:.2%}",
+        excess_rate=f"{group.excess_rate:.2%}",
+        method=group.method,
+        card_type=group.card_type,
+        payments=group.payments,
+        overcharge=group.overcharge,
+        gst=group.gst,
+        cash_impact=group.cash_impact,
+        gross_affected=group.gross_affected,
+        first_seen=group.first_seen,
+        last_seen=group.last_seen,
+        networks=group.networks,
+        payment_ids=group.payment_ids,
+    )
 
 
 def _as_date(moment: datetime | date) -> date:

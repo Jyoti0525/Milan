@@ -95,7 +95,7 @@ class TestOneRun:
         """One response, because they are one consistent picture of one run."""
         body = client.get("/api/runs/adversarial/42").json()
 
-        assert set(body) == {"summary", "queue", "proofs"}
+        assert set(body) == {"summary", "queue", "proofs", "leaks"}
         assert body["summary"]["seed"] == 42
         assert body["queue"]
         assert body["proofs"]
@@ -149,6 +149,62 @@ class TestOneRun:
 
         assert response.status_code == 409
         assert "no config beside it" in response.json()["detail"]
+
+
+class TestTheLeaksItReports:
+    """Charges above contract, on rows that reconciled perfectly.
+
+    Served beside the queue rather than inside it. Every one of these
+    balanced, so filing them as exceptions would bury the only finding in a
+    run that survives the books being right - and would make the exception
+    count, which every other figure here is scored against, mean two
+    different things at once.
+    """
+
+    def test_a_finding_carries_the_rows_it_is_a_claim_about(self, client: TestClient) -> None:
+        """A grouped claim about money that cannot be drilled into is a claim
+        nobody should act on. The rate pair is the finding; the ids are what
+        make it checkable against the merchant's own export."""
+        leaks = client.get("/api/runs/adversarial/42").json()["leaks"]
+
+        assert leaks["findings"]
+        for finding in leaks["findings"]:
+            assert finding["payments"] == len(finding["payment_ids"])
+            assert finding["overcharge"] > 0
+            assert finding["label"]
+            assert finding["contracted_rate"].endswith("%")
+            assert finding["charged_rate"].endswith("%")
+
+    def test_the_totals_are_the_findings_added_up(self, client: TestClient) -> None:
+        leaks = client.get("/api/runs/adversarial/42").json()["leaks"]
+
+        assert leaks["overcharge"] == sum(f["overcharge"] for f in leaks["findings"])
+        assert leaks["gst"] == sum(f["gst"] for f in leaks["findings"])
+        assert leaks["cash_impact"] == leaks["overcharge"] + leaks["gst"]
+        assert leaks["payments"] == sum(f["payments"] for f in leaks["findings"])
+        assert leaks["payments"] <= leaks["rows_examined"]
+
+    def test_no_leak_is_also_an_exception(self, client: TestClient) -> None:
+        """The two lists describe disjoint situations, and a row appearing in
+        both would mean one of them is lying about what it contains."""
+        body = client.get("/api/runs/adversarial/42").json()
+        subjects = {item["subject"]["id"] for item in body["queue"]}
+        charged = {
+            payment for finding in body["leaks"]["findings"] for payment in finding["payment_ids"]
+        }
+
+        assert not (subjects & charged)
+
+    def test_a_clean_run_says_so_rather_than_saying_nothing(self, client: TestClient) -> None:
+        """The realistic tier contains no leaks, and the screen has to be able
+        to report that. A detector whose only visible output is the runs where
+        it fired cannot be told apart from one that fires at random."""
+        leaks = client.get("/api/runs/realistic/42").json()["leaks"]
+
+        assert leaks["findings"] == []
+        assert leaks["overcharge"] == 0
+        assert "contracted rate" in leaks["headline"]
+        assert str(leaks["rows_examined"]) in leaks["headline"].replace(",", "")
 
 
 class TestTheBoundaryTheEngineEnforces:

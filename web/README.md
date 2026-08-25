@@ -36,7 +36,7 @@ Point the interface somewhere other than `127.0.0.1:8000` with
 |---|---|
 | `app/page.tsx` | The workspace: run bar, list, detail pane |
 | `app/globals.css` | The design tokens, and why they are these ones |
-| `components/` | Run bar, queue and proved lists, the two detail panels |
+| `components/` | The three lists, their detail panels, and the pieces all three share |
 | `lib/api.ts` | Types written against the FastAPI schema, and the fetch layer |
 | `lib/money.ts` | Paise to rupees, Indian grouping, no floats anywhere |
 

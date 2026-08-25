@@ -67,19 +67,6 @@ class LeakCluster(BaseModel):
     def excess_rate(self) -> Decimal:
         return self.charged_rate - self.contracted_rate
 
-    def describe(self) -> str:
-        """The finding, in the form a merchant would repeat it."""
-        what = self.card_type.replace("_", " ") if self.card_type else self.method
-        return (
-            f"{self.payments} {what} payments were charged at "
-            f"{self.charged_rate:.2%} against a contracted {self.contracted_rate:.2%}"
-            f" - {self.excess_rate:.2%} too much on "
-            f"{format_inr(self.gross_affected)} of settled value, between "
-            f"{self.first_seen} and {self.last_seen}. "
-            f"{format_inr(self.overcharge)} in fees, plus "
-            f"{format_inr(self.gst)} of GST charged on them."
-        )
-
 
 def _quantise(rate: Decimal) -> Decimal:
     """Round a rate read back from a fee to four places.

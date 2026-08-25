@@ -67,6 +67,44 @@ export interface Proof {
   residual: Paise;
 }
 
+/**
+ * One overcharge pattern: a rate pair, the rows it was applied to, and what
+ * it cost.
+ *
+ * The rates arrive already formatted — `"2.15%"`, not `0.0215`. Nothing here
+ * multiplies them by anything, and writing a second percentage formatter in
+ * TypeScript would give the screen and the CLI two chances to disagree about
+ * a number that is the whole finding.
+ */
+export interface LeakFinding {
+  label: string;
+  contracted_rate: string;
+  charged_rate: string;
+  excess_rate: string;
+  method: string;
+  card_type: string | null;
+  payments: number;
+  overcharge: Paise;
+  gst: Paise;
+  cash_impact: Paise;
+  gross_affected: Paise;
+  first_seen: string;
+  last_seen: string;
+  networks: string[];
+  /** Every row behind the claim. Truncated for display, never in the payload. */
+  payment_ids: string[];
+}
+
+export interface LeakFindings {
+  headline: string;
+  rows_examined: number;
+  payments: number;
+  overcharge: Paise;
+  gst: Paise;
+  cash_impact: Paise;
+  findings: LeakFinding[];
+}
+
 export interface RunSummary {
   seed: number;
   difficulty: string;
@@ -83,6 +121,9 @@ export interface RunSummary {
   match_rate: number;
   precision: number;
   refusal_rate: number;
+  /** Credits impossible by construction. Zero means there was nothing to
+   *  refuse, which is a different statement from refusing none of them. */
+  refusals_expected: number;
   explained_rate: number;
 }
 
@@ -90,6 +131,9 @@ export interface RunView {
   summary: RunSummary;
   queue: QueueItem[];
   proofs: Proof[];
+  /** Charges above contract, on rows that reconciled. Empty on a clean tier,
+   *  and the screen says so rather than showing nothing. */
+  leaks: LeakFindings;
 }
 
 export const API =
