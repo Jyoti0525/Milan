@@ -193,40 +193,74 @@ class Categoriser:
     def _as_recovery_gap(
         self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
     ) -> ReconException | None:
-        """Short by exactly the size of a refund sitting somewhere else.
+        """Short by the size of a refund sitting somewhere else.
 
         Refunds are netted into whichever group is running when they clear,
         five to seven working days later - normally a group with no other
-        connection to the sale. A shortfall that equals a known refund to the
-        paisa is that, and saying so turns a variance into a fact.
+        connection to the sale. A shortfall that equals a known refund is
+        that, and saying so turns a variance into a fact.
+
+        Matched inside the group's rounding allowance rather than on exact
+        equality, and that one word was most of this project's explanation
+        gap. The shortfall is a residual, so it carries the same per-row
+        against batch-level tax rounding every other figure here carries;
+        demanding the refund equal it to the paisa meant a credit short by
+        one paisa more than a refund got no explanation at all, while the
+        prover two modules away was already treating that same paisa as
+        drift. Same allowance, derived the same way, for the same reason.
+
+        Uniqueness is required, not preferred. If two refunds both sit inside
+        the window then the evidence does not say which one this is, and
+        naming the nearer of them would be exactly the guess this system
+        refuses to make everywhere else. In practice they are far apart - the
+        runner-up is typically hundreds of paise away - so this rejects
+        almost nothing while ruling out the case that would produce a
+        confident wrong answer.
         """
         if unproven.residual >= 0:
             return None
         shortfall = Paise(-unproven.residual)
+        allowance = group.rounding_allowance
         culprits = [
             row
             for row in all_rows
             if row.type in (EntityType.REFUND, EntityType.ADJUSTMENT)
-            and row.debit == shortfall
+            and abs(row.debit - shortfall) <= allowance
             and row.settlement_id not in group.settlement_set
         ]
-        if not culprits:
+        if len(culprits) != 1:
             return None
 
         row = culprits[0]
         landed = row.settlement_id or "no batch yet"
+        drift = Paise(shortfall - row.debit)
+        # Said out loud when it is not nil. A reader who checks this against
+        # their own export will find the two numbers differ, and a sentence
+        # claiming "exactly" would look like the tool got it wrong.
+        if drift == 0:
+            qualifier = f", which is {row.type.value} {row.entity_id}"
+        else:
+            direction = "more than" if drift > 0 else "less than"
+            qualifier = (
+                f", which is {format_inr(Paise(abs(drift)))} {direction} "
+                f"{row.type.value} {row.entity_id} - rounding drift, inside the "
+                f"{format_inr(allowance)} these rows carry"
+            )
         return ReconException(
             code=ExceptionCode.PARTIAL_PAYMENT,
             subject_id=unproven.credit_id,
             amount=shortfall,
             summary=(
-                f"Short by {format_inr(shortfall)}, which is exactly {row.type.value} "
-                f"{row.entity_id}. It was recovered from {landed}, not from this group."
+                f"Short by {format_inr(shortfall)}{qualifier}. It was recovered "
+                f"from {landed}, not from this group."
             ),
             evidence={
                 "settlements": ", ".join(unproven.settlement_ids),
                 "recovered_by": landed,
                 "entity": row.entity_id,
+                "entity_amount": format_inr(row.debit),
+                "rounding_drift": format_inr(drift),
+                "allowance": format_inr(allowance),
                 "raised_on": row.created_at.date().isoformat(),
             },
         )
