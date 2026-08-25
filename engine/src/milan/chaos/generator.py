@@ -110,6 +110,13 @@ class _Debit:
     clearing_date: date
     payment_id: str | None
     dispute_id: str | None = None
+    fee: Paise = ZERO
+    tax: Paise = ZERO
+
+    @property
+    def cash(self) -> Paise:
+        """Everything this debit takes out of a payout, charges included."""
+        return Paise(self.amount + self.fee + self.tax)
 
 
 @dataclass(slots=True)
@@ -499,8 +506,18 @@ class ChaosEngine:
     def _pending_debits(self, refunds: list[Refund], adjustments: list[Adjustment]) -> list[_Debit]:
         """Work out when each refund and chargeback becomes recoverable."""
         pending: list[_Debit] = []
+        rates = self._config.rates
         for refund in refunds:
-            lag = self._rng.randint(REFUND_CLEARING_DAYS_MIN, REFUND_CLEARING_DAYS_MAX)
+            # An instant refund clears the next working day rather than in
+            # five to seven, and costs a flat fee to do it. Both halves of
+            # that trade have to be modelled or the fee looks arbitrary.
+            instant = self._rng.random() < self._config.instant_refund_probability
+            lag = (
+                1
+                if instant
+                else self._rng.randint(REFUND_CLEARING_DAYS_MIN, REFUND_CLEARING_DAYS_MAX)
+            )
+            fee = rates.instant_refund_fee(refund.amount) if instant else ZERO
             pending.append(
                 _Debit(
                     entity_id=refund.refund_id,
@@ -509,6 +526,8 @@ class ChaosEngine:
                     created_at=refund.created_at,
                     clearing_date=add_working_days(refund.created_at.date(), lag),
                     payment_id=refund.payment_id,
+                    fee=fee,
+                    tax=apply_rate(fee, rates.gst) if instant else ZERO,
                 )
             )
         for adjustment in adjustments:
@@ -549,11 +568,15 @@ class ChaosEngine:
                 SettlementRow(
                     entity_id=debit.entity_id,
                     type=debit.kind,
-                    debit=debit.amount,
+                    # The debit column is the whole cash impact, so that
+                    # `credit - debit` stays the row's effect on the payout.
+                    # The fee and tax columns break out what part of it was a
+                    # charge rather than money returned to a customer.
+                    debit=debit.cash,
                     credit=Paise(0),
                     amount=debit.amount,
-                    fee=Paise(0),
-                    tax=Paise(0),
+                    fee=debit.fee,
+                    tax=debit.tax,
                     settled=landed is not None,
                     created_at=debit.created_at,
                     settled_at=(
@@ -573,8 +596,8 @@ class ChaosEngine:
         for batch in batches:
             if batch.settle_date < debit.clearing_date:
                 continue
-            if capacity[batch.settlement_id] >= debit.amount:
-                capacity[batch.settlement_id] = Paise(capacity[batch.settlement_id] - debit.amount)
+            if capacity[batch.settlement_id] >= debit.cash:
+                capacity[batch.settlement_id] = Paise(capacity[batch.settlement_id] - debit.cash)
                 return batch
         return None
 
@@ -595,7 +618,7 @@ class ChaosEngine:
 
         settlements: list[Settlement] = []
         for batch in batches:
-            debit_total = Paise(sum(debit.amount for debit in batch.debits))
+            debit_total = Paise(sum(debit.cash for debit in batch.debits))
             batch_tax = self._batch_tax(batch)
             drift = Paise(batch.tax_row_total - batch_tax)
             settlements.append(
@@ -735,7 +758,7 @@ class ChaosEngine:
                     fee=batch.fee_total,
                     tax=batch.tax_row_total,
                     tds=batch.tds_total,
-                    adjustments=Paise(sum(debit.amount for debit in batch.debits)),
+                    adjustments=Paise(sum(debit.cash for debit in batch.debits)),
                     rounding_drift=Paise(batch.tax_row_total - settlement.tax),
                     matchable=True,
                     provable=batch.variance == 0,

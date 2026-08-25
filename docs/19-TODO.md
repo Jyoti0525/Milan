@@ -66,9 +66,9 @@ It is unit-tested in `test_rates.py` and dead in integration. For a submission
 to an India-specific finance track, the statutory withholding path being
 untested end to end is the most serious gap found.
 
-- [ ] Add a tier or config flag that turns 194-O on
-- [ ] Confirm the oracle test still passes with withholding present
-- [ ] Confirm the "TDS" label appears only at the statutory rate, and the
+- [x] Add a tier or config flag that turns 194-O on
+- [x] Confirm the oracle test still passes with withholding present
+- [x] Confirm the "TDS" label appears only at the statutory rate, and the
       fallback label appears otherwise
 
 ### 2. "UTR corrupted" actually means "UTR deleted"
@@ -82,8 +82,8 @@ measured that.
 This is a generator bug in its own right. It also invalidated the argument for
 cutting Splink, which is why it is P0 and not P2.
 
-- [ ] Generate damaged-but-present references as a distinct defect class
-- [ ] Re-measure the baseline, then reopen the Splink decision with evidence
+- [x] Generate damaged-but-present references as a distinct defect class
+- [x] Re-measure the baseline, then reopen the Splink decision with evidence
 
 ### 3. The deterministic categoriser's headline number is not printed
 
@@ -95,8 +95,8 @@ claim in the submission.
 Fails the definition of done on "its numbers appear in the eval harness
 output".
 
-- [ ] Render `rules_share` in `scorecard_detail`
-- [ ] Same for `merged_rate`, `unreported_detection_rate`, `exception_rate` —
+- [x] Render `rules_share` in `scorecard_detail`
+- [x] Same for `merged_rate`, `unreported_detection_rate`, `exception_rate` —
       all computed, none shown
 
 ---
@@ -112,33 +112,33 @@ different data than was generated, and nothing would fail.
 Checked by hand today: round-trips identically on all four tiers. Nothing
 would catch a regression.
 
-- [ ] Round-trip test: `content_hash(dataset) == content_hash(reload(dataset))`
+- [x] Round-trip test: `content_hash(dataset) == content_hash(reload(dataset))`
 
 ### 5. The CLI has no test
 
 `cli/main.py` and `cli/render.py` are untested. A broken typer signature or a
 renderer that raises on a merged proof would ship green.
 
-- [ ] Smoke test each command through typer's `CliRunner`
+- [x] Smoke test each command through typer's `CliRunner`
 
 ### 6. Property tests do not exist
 
 Day 6 in the plan, so not overdue — recorded so it does not become overdue.
 `tests/property/` is an empty package and Hypothesis is already a dependency.
 
-- [ ] Invariants: proof lines sum to the credit; deductions never exceed
+- [x] Invariants: proof lines sum to the credit; deductions never exceed
       gross; `from_rupees` round-trips; batch net is the sum of its rows
 
 ---
 
 ## P2 — dead code, small
 
-- [ ] `ExceptionCode.ROUNDING` is never emitted. Drift inside the allowance is
+- [x] `ExceptionCode.ROUNDING` is never emitted. Drift inside the allowance is
       explained as a proof line, not raised — which is right, so the member
       should go rather than the behaviour change.
-- [ ] `total_pending()` has no callers.
-- [ ] `LedgerDirection` has no real use.
-- [ ] `AnswerKey.matchable_count` has no callers.
+- [x] `total_pending()` has no callers.
+- [x] `LedgerDirection` has no real use.
+- [x] `AnswerKey.matchable_count` has no callers.
 
 ---
 
@@ -163,7 +163,7 @@ adapter, the disk cache, and a null provider — so day 8 is only "point it at
 Ollama" rather than "design the seam". It is a few hours, it has no dependency
 on any model running, and it removes the single-day risk.
 
-### 8. Splink — DECIDED: cut the library, and no fuzzy rung for now
+### 8. Splink — the library is cut; the RUNG IS BEING BUILT
 
 Two separate questions, and both are now answered on evidence rather than
 taste.
@@ -202,9 +202,23 @@ combination *contains A*, which collapses the subset-sum search and resolves
 exactly the credits that fail above. That is the next matching improvement,
 and it is not Splink.
 
-Revisit only if a defect class appears where narration is the sole surviving
-evidence. There is now a test for that condition rather than an opinion about
-it.
+**Corrected scope.** The measurement above says a fuzzy rung is not needed to
+raise the match rate. It does not license dropping Tier 1 item 5 from the
+plan, and treating it as though it did was wrong twice over: the rung was
+skipped *and* `FUZZY_NARRATION` was quietly excluded from the conformance check
+that asserts every rung matches something — precisely the kind of exclusion
+that hides missing work.
+
+So the rung gets built, on the same evidence:
+
+- **Not with Splink.** Probabilistic record linkage with EM-learned weights is
+  the wrong tool for comparing one damaged reference against forty candidates.
+  A normalised similarity over the narration is the right size of hammer.
+- **Measured, not assumed.** It runs as a fourth rung with its own row in the
+  eval harness. If it adds nothing, that is a published ablation result — a
+  stronger claim than either shipping it untested or skipping it on argument.
+- **The exclusion goes.** Once the rung exists, the conformance check covers
+  every strategy with no special cases.
 
 ---
 
@@ -213,7 +227,7 @@ it.
 [02-THE-MONEY-RULES.md](02-THE-MONEY-RULES.md) says "our engine must model
 every line here". Four lines are not modelled.
 
-### 9. Instant refund fees — worth building
+### 9. Instant refund fees — DONE
 
 Rs 7.99 up to Rs 1,000, Rs 11.99 to Rs 25,000, Rs 14.99 above. This is the one
 that matters, because it creates an exception class nothing else produces: a
@@ -228,10 +242,10 @@ tax, and the waterfall needs its own line for instant refund charges rather
 than folding them into the platform fee. The oracle test will catch any
 arithmetic error in that.
 
-- [ ] `RateCard.instant_refund_fee(amount)` with the three slabs
-- [ ] Split batch fee/tax into payment and debit components
-- [ ] A named "Instant refund fees" proof line
-- [ ] Confirm the oracle still balances
+- [x] `RateCard.instant_refund_fee(amount)` with the three slabs
+- [x] Split batch fee/tax into payment and debit components
+- [x] A named "Instant refund fees" proof line
+- [x] Confirm the oracle still balances
 
 ### 10. Route, Smart Collect and QR pricing — deliberately deferred
 

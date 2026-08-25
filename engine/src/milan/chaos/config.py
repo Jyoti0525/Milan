@@ -175,6 +175,14 @@ class GenerationConfig(BaseModel):
     happens and what makes the second rung have to earn its answer."""
 
     refund_probability: float = Field(default=0.06, ge=0.0, le=1.0)
+    instant_refund_probability: float = Field(default=0.20, ge=0.0, le=1.0)
+    """Share of refunds pushed out immediately, at a flat charge.
+
+    Not a defect and not a difficulty knob - a merchant choosing to pay for
+    speed. It earns a place here because it is the only charge in the whole
+    fee stack that does not scale with the transaction, which makes it the
+    one shortfall that looks like noise on a large refund and like a real
+    error on a small one."""
     chargeback_probability: float = Field(default=0.015, ge=0.0, le=1.0)
     unpaid_probability: float = Field(default=0.04, ge=0.0, le=1.0)
     international_probability: float = Field(default=0.05, ge=0.0, le=1.0)

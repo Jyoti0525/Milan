@@ -17,13 +17,24 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from milan.domain.enums import CardType, PaymentMethod
-from milan.domain.money import Paise, apply_rate
+from milan.domain.money import PAISE_PER_RUPEE, Paise, apply_rate, from_rupees
 
 GST_RATE: Final = Decimal("0.18")
 """GST charged on the platform fee. Not on the transaction value."""
 
 TDS_194O_RATE: Final = Decimal("0.01")
 """Section 194-O withholding, on gross, excluding the GST component."""
+
+INSTANT_REFUND_SLABS: Final = (
+    (Decimal("1000"), Decimal("7.99")),
+    (Decimal("25000"), Decimal("11.99")),
+)
+"""Instant refund pricing: Rs 7.99 up to Rs 1,000, Rs 11.99 to Rs 25,000.
+Anything larger falls to `INSTANT_REFUND_TOP`. Flat amounts, not a rate -
+which is why they are the one charge in this file that gets proportionally
+more painful the smaller the refund."""
+
+INSTANT_REFUND_TOP: Final = Decimal("14.99")
 
 
 class RateCard(BaseModel):
@@ -45,6 +56,26 @@ class RateCard(BaseModel):
         default=False,
         description="Section 194-O withholding is merchant-specific; off by default.",
     )
+
+    def instant_refund_fee(self, amount: Paise) -> Paise:
+        """What Razorpay charges to push a refund out immediately.
+
+        An ordinary refund costs the merchant nothing to process - that is
+        published and it is why refund rows normally carry a zero fee. An
+        *instant* refund does not, and it is the only charge in this system
+        that is a flat amount rather than a rate.
+
+        That distinction matters for reconciliation: every other shortfall
+        scales with the transaction, so a discrepancy of a few rupees on a
+        large batch reads as rounding. This one does not scale, so it looks
+        like noise on a big refund and like a real error on a small one,
+        which is exactly the shape of thing that gets written off.
+        """
+        rupees = Decimal(amount) / PAISE_PER_RUPEE
+        for ceiling, fee in INSTANT_REFUND_SLABS:
+            if rupees <= ceiling:
+                return from_rupees(fee)
+        return from_rupees(INSTANT_REFUND_TOP)
 
     def platform_rate(self, method: PaymentMethod, card_type: CardType | None) -> Decimal:
         """The platform fee rate for one transaction.

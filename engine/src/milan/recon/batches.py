@@ -38,6 +38,14 @@ def _debits(rows: tuple[SettlementRow, ...]) -> tuple[SettlementRow, ...]:
     return tuple(row for row in rows if row.type is not EntityType.PAYMENT)
 
 
+def _fee_of(rows: tuple[SettlementRow, ...]) -> Paise:
+    return Paise(sum(row.fee for row in rows))
+
+
+def _tax_of(rows: tuple[SettlementRow, ...]) -> Paise:
+    return Paise(sum(row.tax for row in rows))
+
+
 def _allowance(rows: tuple[SettlementRow, ...]) -> Paise:
     """How far the bank may legitimately differ from one batch of rows.
 
@@ -48,8 +56,14 @@ def _allowance(rows: tuple[SettlementRow, ...]) -> Paise:
     The allowance is deliberately derived rather than picked. A fixed "within
     a rupee" tolerance would swallow real errors on small batches and reject
     real drift on large ones.
+
+    Only payment rows count. A refund row's tax is GST on a flat instant
+    refund fee, charged and rounded once on that row - it never takes part in
+    the per-row-versus-batch disagreement this allowance exists to cover, so
+    including it would widen the tolerance for no reason and let real errors
+    through on batches that happen to contain refunds.
     """
-    taxed = sum(1 for row in rows if row.tax != 0)
+    taxed = sum(1 for row in _payments(rows) if row.tax != 0)
     return Paise((taxed + 1) // 2 + 1)
 
 
@@ -77,16 +91,38 @@ class GatewayBatch(BaseModel):
 
     @property
     def fee(self) -> Paise:
-        return Paise(sum(row.fee for row in self.rows))
+        """Platform fee on the payments. Deliberately not every row's fee.
+
+        A refund row can carry a fee too - the flat charge for pushing a
+        refund out instantly - and folding that into the platform fee would
+        both misreport it and double-count it, because the refund row's debit
+        already includes the charge.
+        """
+        return _fee_of(self.payment_rows)
 
     @property
     def tax(self) -> Paise:
-        """GST as the rows report it, summed. Not necessarily what was charged."""
-        return Paise(sum(row.tax for row in self.rows))
+        """GST on the platform fee, as the rows report it. Payments only."""
+        return _tax_of(self.payment_rows)
+
+    @property
+    def debit_fee(self) -> Paise:
+        """Charges on the refunds themselves, not on the sales."""
+        return _fee_of(self.debit_rows)
+
+    @property
+    def debit_tax(self) -> Paise:
+        return _tax_of(self.debit_rows)
 
     @property
     def debits(self) -> Paise:
+        """The full cash impact of the refunds, charges included."""
         return Paise(sum(row.debit for row in self.debit_rows))
+
+    @property
+    def refund_principal(self) -> Paise:
+        """The refunds themselves, with their charges stripped back out."""
+        return Paise(self.debits - self.debit_fee - self.debit_tax)
 
     @property
     def expected_net(self) -> Paise:
@@ -151,8 +187,20 @@ class BatchGroup(BaseModel):
         return Paise(sum(batch.tax for batch in self.batches))
 
     @property
+    def debit_fee(self) -> Paise:
+        return Paise(sum(batch.debit_fee for batch in self.batches))
+
+    @property
+    def debit_tax(self) -> Paise:
+        return Paise(sum(batch.debit_tax for batch in self.batches))
+
+    @property
     def debits(self) -> Paise:
         return Paise(sum(batch.debits for batch in self.batches))
+
+    @property
+    def refund_principal(self) -> Paise:
+        return Paise(sum(batch.refund_principal for batch in self.batches))
 
     @property
     def expected_net(self) -> Paise:

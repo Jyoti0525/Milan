@@ -120,6 +120,10 @@ def _build_lines(group: BatchGroup, rates: RateCard) -> tuple[ProofLine, ...]:
 
     lines.extend(_recovered(group, EntityType.REFUND, "Refunds recovered"))
     lines.extend(_recovered(group, EntityType.ADJUSTMENT, "Chargebacks and adjustments"))
+
+    charges = _refund_charges(group)
+    if charges is not None:
+        lines.append(charges)
     return tuple(lines)
 
 
@@ -181,16 +185,45 @@ def _implied_deduction(row: SettlementRow) -> Paise:
 
 
 def _recovered(group: BatchGroup, kind: EntityType, label: str) -> list[ProofLine]:
+    """The refunds themselves, with any charge on them stripped back out.
+
+    A refund row's debit is the whole cash impact, so it includes the flat
+    fee for an instant refund. Reporting that total here would leave the
+    charge invisible - folded into a number the merchant reads as "money
+    returned to customers" - which is precisely how a fee nobody agreed to
+    stops being noticed.
+    """
     rows = [row for row in group.debit_rows if row.type is kind]
     if not rows:
         return []
     return [
         ProofLine(
             label=f"{label} ({len(rows)})",
-            amount=Paise(-sum(row.debit for row in rows)),
+            amount=Paise(-sum(row.debit - row.fee - row.tax for row in rows)),
             refs=tuple(row.entity_id for row in rows),
         )
     ]
+
+
+def _refund_charges(group: BatchGroup) -> ProofLine | None:
+    """What it cost to send the refunds, as its own line.
+
+    Instant refunds carry a flat charge - Rs 7.99, Rs 11.99 or Rs 14.99 by
+    size - while an ordinary refund is free. Flat is the important word. Every
+    other deduction in this waterfall scales with the transaction, so a few
+    rupees adrift on a large batch reads as rounding; this one does not scale,
+    and on a small refund it is a real percentage. Giving it a line of its own
+    is the difference between a merchant seeing a charge and seeing noise.
+    """
+    charged = [row for row in group.debit_rows if row.fee or row.tax]
+    if not charged:
+        return None
+    total = Paise(sum(row.fee + row.tax for row in charged))
+    return ProofLine(
+        label=f"Instant refund charges ({len(charged)}), incl. GST",
+        amount=Paise(-total),
+        refs=tuple(row.entity_id for row in charged),
+    )
 
 
 def _drift_line(gap: Paise, group: BatchGroup) -> ProofLine:

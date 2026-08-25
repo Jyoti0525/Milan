@@ -36,8 +36,19 @@ def build(difficulty: Difficulty, orders: int = 900, seed: int = 42) -> Dataset:
 
 
 def damaged_credits(data: Dataset) -> list:
+    """Credits whose reference was damaged, whatever else they also carry.
+
+    Exact equality used to work and stopped when defects became combinable -
+    a credit that is both damaged and short is labelled `UTR_DAMAGED+FEE`,
+    and matching on the whole string quietly selected nothing. The assertion
+    that some tier damages *something* is what caught it.
+    """
     truth = data.answer_key.by_credit()
-    return [c for c in data.bank_credits if truth[c.credit_id].defect == DAMAGED]
+    return [
+        credit
+        for credit in data.bank_credits
+        if DAMAGED in (truth[credit.credit_id].defect or "").split("+")
+    ]
 
 
 class TestTheDefectIsReal:

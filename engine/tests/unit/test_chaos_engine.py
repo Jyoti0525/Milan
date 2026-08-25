@@ -16,7 +16,7 @@ from milan.domain.calendar import is_working_day
 from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType
 from milan.domain.money import Paise, apply_rate
-from milan.domain.rates import GST_RATE
+from milan.domain.rates import GST_RATE, RateCard
 
 
 def build(difficulty: Difficulty = Difficulty.REALISTIC, **overrides: object) -> Dataset:
@@ -117,7 +117,12 @@ class TestTheMoneyAddsUp:
             if row.settlement_id is None:
                 continue
             rows_by_settlement.setdefault(row.settlement_id, []).append(row.signed_net)
-            row_tax[row.settlement_id] = Paise(row_tax.get(row.settlement_id, 0) + row.tax)
+            if row.type is EntityType.PAYMENT:
+                # Drift is the disagreement between per-row and batch-level
+                # GST on the platform fee. A refund row's tax is GST on a
+                # flat instant-refund charge, rounded once on that row, and
+                # never takes part in it.
+                row_tax[row.settlement_id] = Paise(row_tax.get(row.settlement_id, 0) + row.tax)
 
         varied = _unprovable_settlements(data)
         for settlement in data.settlements:
@@ -194,13 +199,37 @@ class TestTheMoneyAddsUp:
             assert credits[truth.credit_id].amount == expected
 
     @ALL_TIERS
-    def test_refund_rows_carry_no_fee(self, difficulty: Difficulty) -> None:
-        """Razorpay does not charge for processing a refund."""
+    def test_an_ordinary_refund_costs_the_merchant_nothing(self, difficulty: Difficulty) -> None:
+        """Razorpay does not charge for processing a refund - unless it is
+        instant, which is a flat fee by size. Chargebacks are never charged.
+
+        The rule got narrower rather than weaker when instant refunds went
+        in. Asserting "no refund row has a fee" would now be false, and
+        deleting the assertion would have left the only published Rs 0 in the
+        whole fee stack unchecked.
+        """
+        data = build(difficulty)
+        rates = RateCard()
+        for row in data.settlement_rows:
+            if row.type is EntityType.ADJUSTMENT:
+                assert row.fee == 0, row.entity_id
+                assert row.tax == 0, row.entity_id
+            elif row.type is EntityType.REFUND and row.fee:
+                assert row.fee == rates.instant_refund_fee(row.amount), row.entity_id
+                assert row.tax == apply_rate(row.fee, rates.gst), row.entity_id
+
+    @ALL_TIERS
+    def test_a_refund_debit_is_the_whole_cash_impact(self, difficulty: Difficulty) -> None:
+        """The debit column has to be what actually left the payout.
+
+        If it were the refund alone, a batch would appear to net more than it
+        paid, and the instant charge would vanish into the drift line where
+        nobody would ever ask about it.
+        """
         data = build(difficulty)
         for row in data.settlement_rows:
             if row.type in (EntityType.REFUND, EntityType.ADJUSTMENT):
-                assert row.fee == 0
-                assert row.tax == 0
+                assert row.debit == row.amount + row.fee + row.tax, row.entity_id
 
 
 class TestDefectsAreActuallyInjected:

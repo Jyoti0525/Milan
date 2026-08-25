@@ -304,3 +304,22 @@ If a decision is not here, it is not settled.
     variance on a settlement nobody receives is unobservable, so the defect
     would be spent producing nothing and the tier would silently inject fewer
     than it claims.
+96. **A refund row's debit column is the whole cash impact, charges
+    included.** `credit - debit` has to stay the row's effect on the payout,
+    or a batch appears to net more than it paid. The fee and tax columns then
+    break out how much of that was a charge rather than money returned to a
+    customer, which is what lets the proof show it on its own line.
+97. **Instant refund charges get their own proof line.** Every other deduction
+    in the waterfall scales with the transaction, so a few rupees adrift on a
+    large batch reads as rounding. A flat Rs 7.99 does not scale: it is noise
+    on a big refund and a real percentage on a small one. Folding it into
+    "refunds recovered" would hide a charge inside a number the merchant reads
+    as money returned to customers.
+98. **`GatewayBatch.fee` and `.tax` mean the payment side only.** Summing every
+    row's fee would both misreport the platform fee and double-count the
+    instant charge, since the refund row's debit already contains it.
+99. **The rounding allowance counts payment rows only.** A refund row's tax is
+    GST on a flat charge, rounded once on that row, and never takes part in the
+    per-row-versus-batch disagreement the allowance exists to cover. Including
+    it widened the tolerance for no reason on any batch containing a refund.
+    Follows from decision 62.
