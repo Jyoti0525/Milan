@@ -199,6 +199,38 @@ class GenerationConfig(BaseModel):
     fee stack that does not scale with the transaction, which makes it the
     one shortfall that looks like noise on a large refund and like a real
     error on a small one."""
+    instant_settlement_probability: float = Field(default=0.0, ge=0.0, le=1.0)
+    """Payouts the merchant asked for in minutes instead of T+2 working days.
+
+    A merchant attribute, not a defect, which is why it sits here beside the
+    refund settings rather than in `DefectRates`. Razorpay offers it on
+    request and our sourced pricing does not record what it charges, so this
+    models the *timing* only. Inventing a fee would put a number in the
+    generator that no citation supports, and every accuracy figure this
+    project reports is already conditional on the defect catalogue being
+    honest.
+
+    It was deferred once on the reasoning that the date window already
+    tolerates a day either side, which was an assumption about the matcher
+    that nothing had tested. It has now been tested, and the deferral was
+    right for a reason nobody had stated.
+
+    The prediction written here first was that it would make matching harder:
+    a payment captured today settles today, into the same date bucket as
+    payments captured two working days ago, so more batches share a date and
+    amount-plus-date has more ways to be ambiguous. Measured over ten
+    adversarial seeds at 400 orders, that is wrong. It produces 59% more
+    batches (344 to 546) and barely moves the batches-per-date figure (2.05
+    to 2.22), and it creates **zero** new same-date same-total collisions,
+    because an instant batch holds only that day's instant payments and its
+    total therefore looks nothing like a scheduled run's.
+
+    Match rate and precision hold at 100% from 0% instant through 60%. So it
+    is volume rather than difficulty - which is worth generating anyway,
+    since a shape a merchant really has should not be one the engine has
+    never seen, but it is recorded here as a measurement rather than left
+    looking like a difficulty knob it is not.
+    """
     chargeback_probability: float = Field(default=0.015, ge=0.0, le=1.0)
     unpaid_probability: float = Field(default=0.04, ge=0.0, le=1.0)
     international_probability: float = Field(default=0.05, ge=0.0, le=1.0)

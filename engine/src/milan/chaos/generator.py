@@ -442,11 +442,38 @@ class ChaosEngine:
         grouped: dict[tuple[date, str], list[Payment]] = defaultdict(list)
         for payment in payments:
             international = payment.card_type is CardType.INTERNATIONAL
+            if not international and self._instant_settlement():
+                # Same day, and its own channel. Instant payouts do not join
+                # a scheduled run - they leave when they are asked for, which
+                # is what puts them on a date already carrying batches from
+                # captures two working days older.
+                grouped[(payment.captured_at.date(), "instant")].append(payment)
+                continue
             lag = INTERNATIONAL_SETTLEMENT_DAYS if international else DOMESTIC_SETTLEMENT_DAYS
             settle_date = add_working_days(payment.captured_at.date(), lag)
             channel = "intl" if international else self._cycle(payment)
             grouped[(settle_date, channel)].append(payment)
         return grouped
+
+    def _instant_settlement(self) -> bool:
+        """Whether this payout was asked for in minutes rather than T+2.
+
+        Drawn per payment rather than per merchant. A merchant with instant
+        settlement enabled does not use it on everything - they use it when
+        they need the cash - so a month containing both is the realistic
+        shape, and it is also the harder one: a dataset that was entirely
+        instant would simply shift every date by two days and change nothing
+        about the matching.
+
+        The zero check is not an optimisation. Drawing unconditionally
+        consumes a number from the stream for every payment, which shifts
+        every later draw and silently changes every dataset this project has
+        ever published - at a setting that is supposed to mean "this merchant
+        does not use the feature". Caught by the counts moving at
+        `instant=0.0`, where by definition nothing should have moved.
+        """
+        share = self._config.instant_settlement_probability
+        return share > 0.0 and self._rng.random() < share
 
     def _cycle(self, payment: Payment) -> str:
         """Which cut-off this capture fell before."""

@@ -899,9 +899,32 @@ arriving in minutes lands *outside* the T+2 window `AmountDateStrategy` uses,
 which means the deferral was resting on the date tolerance absorbing it - an
 assumption never tested.
 
-- [ ] Instant-settlement merchants in the generator
-- [ ] Measure what the existing date window does with them before changing it
-- [ ] Widen or split the window on that evidence, not before
+- [x] Instant-settlement merchants in the generator
+- [x] Measure what the existing date window does with them before changing it
+- [x] Widen or split the window on that evidence, not before
+
+**Done, and the window was not touched.** Measured over ten adversarial seeds
+at 400 orders: match rate and precision hold at 100% from 0% instant through
+60%. The prediction written into this plan - that same-day payouts would crowd
+the date buckets and give amount-plus-date more ways to be wrong - is wrong.
+It produces 59% more batches (344 to 546), barely moves batches-per-date (2.05
+to 2.22), and creates **zero** new same-date same-total collisions, because an
+instant batch holds only that day's instant payments and its total looks
+nothing like a scheduled run's.
+
+So it is volume, not difficulty. Generated anyway, because a shape a real
+merchant has should not be one the engine has never seen, but recorded as a
+measurement rather than left looking like a difficulty knob it is not.
+
+The fee is deliberately not modelled: our sourced pricing records the timing
+and not the charge, and inventing a rate would put a number in the generator
+that no citation supports.
+
+One regression caught by the measurement rather than by a test: drawing from
+the random stream even at probability zero shifted every later draw, so every
+dataset this project has published would have changed at a setting that means
+"this merchant does not use the feature". Found because the counts moved at
+`instant=0.0`, where by definition nothing should have moved.
 
 ### The queue at scale, and case state
 
