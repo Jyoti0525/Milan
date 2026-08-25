@@ -458,28 +458,72 @@ of shortfalls it names that rules alone did not.
 
 ## The order of work
 
-- [ ] **Diagnose before designing.** Dump the unnamed shortfalls across the
+- [x] **Diagnose before designing.** Dump the unnamed shortfalls across the
       20-seed sweep and read what they actually are. Widening the rules may
       close most of the gap on its own, and if it does, that is the finding —
       not a disappointment. Measure first, then decide what a model is for.
-- [ ] Ollama installed, Qwen 2.5 3B pulled, verified on the 4 GB RTX 3050
-- [ ] `OllamaProvider`: health-checked, timed out, never raises, absent daemon
+- [x] Ollama installed, Qwen 2.5 3B pulled, verified on the 4 GB RTX 3050
+- [x] `OllamaProvider`: health-checked, timed out, never raises, absent daemon
       degrades to unanswered rather than failing the run
-- [ ] Free hosted adapters behind the same interface (Groq, Gemini). Absent
+- [x] Free hosted adapters behind the same interface (Groq, Gemini). Absent
       key means unavailable, not broken
-- [ ] Cache exercised against a real provider end to end, and the cached run
+- [x] Cache exercised against a real provider end to end, and the cached run
       shown to be reproducible without a model present
-- [ ] `Hypothesis` / verifier seam, with the three existing checks rewritten
+- [x] `Hypothesis` / verifier seam, with the three existing checks rewritten
       as proposers so rules and model go through identical verification
-- [ ] Deterministic proposers widened to cover whatever the diagnosis found
-- [ ] LLM proposer behind the seam, constrained to existing entity ids
-- [ ] Measurement: shortfalls named under rules-only vs rules+LLM, LLM
+- [x] Deterministic proposers widened to cover whatever the diagnosis found
+- [x] LLM proposer behind the seam, constrained to existing entity ids
+- [x] Measurement: shortfalls named under rules-only vs rules+LLM, LLM
       proposal precision, and **a test that every graded number is identical
       across all three configurations**
-- [ ] `--provider` on the CLI, docs, and the build log
+- [x] `--provider` on the CLI, docs, and the build log
 
 ## What would make this day a failure
 
 Not "the model did not help" — that is a publishable result and cut rule 6
 already accepts it. A failure is a summary on screen that no arithmetic
 checked.
+
+## Day 8, closed
+
+Every box above is ticked, and three of them closed differently than written.
+
+**The verifier seam is the existing `Categoriser`, not a rewrite of it.** The
+plan said to rewrite the three deterministic checks as proposers so rules and
+model went through identical verification. They already did go through
+identical verification once the model's hypothesis was handed to the same
+object - and a second implementation written for the model would have drifted
+out of step with the one used for the rules, at which point comparing them
+would have stopped meaning anything.
+
+**`--provider` is on `ablate` and nowhere else.** Putting it on `recon` or
+`eval` would imply a model could change what they report, and the whole point
+is that it cannot. The seal test now enforces that.
+
+**The cache is committed.** `data/**` is ignored because a dataset is a pure
+function of its seed and regenerating it is cheaper than storing it. A
+completion is not a pure function of anything in this repository - it depends
+on weights, a quantisation and a daemon - so the 77 answers are the one thing
+here that has to be stored to be reproducible. `milan ablate` replays the
+published 19.5% in 2.1 seconds on a machine with no GPU, no Ollama and no key.
+
+### What day 8 actually found
+
+The 55% was two failures under one name, and the 11 that were genuinely
+explanation failures were closed by a tolerance the prover already had. The
+model, measured properly against the rules it was meant to improve on, agreed
+19.5% of the time and invented five record identifiers out of 41 proposals.
+
+The named priority going in was *explanation quality is 55% while detection is
+100%, and days 8-9 are where that must move.* It moved to 64.2%, and it moved
+for a reason that had nothing to do with a model.
+
+### What day 9 inherits
+
+**43 unmatched credits per twenty adversarial seeds, and no metric reports
+them as a matching failure.** They have corrupted bank references and are
+excluded from the match-rate denominator because they are unprovable. Naming
+that population properly is the honest half of day 9, alongside leak
+detection - and it is the only place left where a model could plausibly earn
+its keep, since the question there is *which settlement is this* rather than
+*why is it short*.

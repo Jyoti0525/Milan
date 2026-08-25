@@ -18,6 +18,16 @@ out/
 
 # Generated datasets — reproducible from a seed, never committed
 data/**
+
+# ...except the model's answers, which are the one thing here that is not
+# reproducible from a seed. A dataset is a pure function of its seed, so
+# committing one is redundant. A completion depends on weights, a quantisation
+# and a daemon, none of which live in this repository - so committing these is
+# the only way `milan ablate` can produce the published 19.5% on a machine
+# with no GPU, no Ollama and no API key. 85K, and it is what turns "here are
+# our numbers" into "here are our numbers, and here is the run".
+!data/llm-cache/
+!data/llm-cache/**
 !data/.gitkeep
 !data/README.md
 
