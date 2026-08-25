@@ -211,7 +211,17 @@ class RunSummary(BaseModel):
     Carried because the rate alone is unreadable when this is zero: a clean
     tier has nothing to refuse, and `0.0%` in a card headed "refused" reads
     as a system that guessed at everything rather than one that was never
-    asked to."""
+    asked to.
+
+    This was wired to `unprovable_expected` for four days, which is a
+    different population: credits that are identifiable but cannot be
+    reconstructed. The screen therefore printed a rate measured over the
+    impossible credits beside a count of the unprovable ones - on the
+    adversarial tier, "100.0%" above "of 6 impossible" when the run had
+    refused ten of ten. Both halves were true of something; together they
+    described no run that ever existed. Caught by reading the CLI and the
+    screen side by side, which is the only place a mislabel like this is
+    visible at all."""
 
     explained_rate: float
 
@@ -356,7 +366,7 @@ class Service:
             match_rate=card.match_rate,
             precision=card.precision,
             refusal_rate=card.refusal_rate,
-            refusals_expected=card.unprovable_expected,
+            refusals_expected=card.impossible,
             explained_rate=card.explained_rate,
         )
 

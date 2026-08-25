@@ -227,6 +227,54 @@ class TestTheBoundaryTheEngineEnforces:
         assert summary["precision"] == 1.0
 
 
+class TestEveryRateIsPairedWithItsOwnDenominator:
+    """A rate and a count shown together must describe the same population.
+
+    The screen renders `refusal_rate` above the words "of N impossible", and
+    for four days N came from `unprovable_expected` - a different set. The
+    adversarial tier reported "100.0%" over "of 6 impossible" while actually
+    refusing ten of ten. Neither number was wrong on its own, which is why
+    nothing failed: only the pairing was false, and a pairing is not
+    something a type checker can see.
+    """
+
+    @staticmethod
+    def _card(root: Path, difficulty: str):
+        from milan.evaluation.harness import evaluate
+
+        return evaluate(store.load_dataset(root, 42, difficulty), headline_only=True).headline
+
+    @pytest.mark.parametrize("difficulty", ["realistic", "adversarial"])
+    def test_the_refusal_count_is_the_one_the_rate_was_measured_over(
+        self, client: TestClient, populated: Path, difficulty: str
+    ) -> None:
+        summary = client.get(f"/api/runs/{difficulty}/42").json()["summary"]
+        card = self._card(populated, difficulty)
+
+        assert summary["refusals_expected"] == card.impossible
+        assert summary["refusal_rate"] == pytest.approx(card.refusal_rate)
+
+    def test_the_unprovable_credits_are_a_different_population(self, populated: Path) -> None:
+        """The guard on the test above. If these two ever coincided on every
+        tier the pairing could be wrong again without anything failing."""
+        card = self._card(populated, "adversarial")
+
+        assert card.impossible != card.unprovable_expected
+
+    def test_a_tier_with_nothing_impossible_still_reports_a_real_count(
+        self, tmp_path: Path
+    ) -> None:
+        """The clean tier is where the screen chooses to print a dash instead
+        of a rate, and it decides that on this field."""
+        config = GenerationConfig(seed=42, difficulty=Difficulty.CLEAN, order_count=120)
+        store.save_dataset(ChaosEngine(config).generate(), tmp_path, config)
+        client = TestClient(create_app(tmp_path))
+
+        summary = client.get("/api/runs/clean/42").json()["summary"]
+
+        assert summary["refusals_expected"] == 0
+
+
 class TestMoneyCrossesTheWireAsPaise:
     def test_no_amount_is_ever_a_float(self, client: TestClient) -> None:
         """The oldest bug in finance software, reintroduced at the last
