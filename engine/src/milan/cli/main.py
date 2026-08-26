@@ -777,5 +777,41 @@ def reproduce(
     console.print("[green]Identical.[/green]")
 
 
+@app.command()
+def samples(
+    to: Annotated[
+        Path,
+        typer.Option("--to", help="Where to write the sample folders."),
+    ] = Path("milan-samples"),
+    seed: SeedOption = 42,
+    orders: Annotated[int, typer.Option("--orders", help="How many orders the month holds.")] = 400,
+) -> None:
+    """Write sample merchant files, in other people's formats.
+
+    Generated on demand rather than committed. A megabyte of settlement rows
+    checked into the repository would go stale the first time the chaos engine
+    changed, and a stale sample folder is worse than no sample folder: it
+    demonstrates a month this code no longer produces.
+
+    Nothing here is written to Milan's own schema. Every file imitates a real
+    export - HDFC's `dd/mm/yy`, the trailing space inside ICICI's
+    `Withdrawal Amount (INR )`, Kotak's `Cr` suffix - because test data
+    invented by whoever wrote the reader tends to be data the reader happens
+    to handle.
+    """
+    from milan.samples import write_all
+
+    root = to.expanduser().resolve()
+    built = write_all(root, seed=seed, orders=orders)
+
+    console.print(f"Wrote [bold]{len(built)}[/bold] folders to [dim]{root}[/dim]\n")
+    for folder in built:
+        names = sorted(path.name for path in (root / folder.name).iterdir())
+        console.print(f"  [bold]{folder.name}[/bold]  {folder.title}")
+        console.print(f"  [dim]{', '.join(names)}[/dim]\n")
+    console.print("Each folder has a README saying what it should do.")
+    console.print(f"[dim]uv run milan import --from {root / built[0].name}[/dim]")
+
+
 if __name__ == "__main__":
     app()

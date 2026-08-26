@@ -250,7 +250,7 @@ def _identify(
     profiles: dict[str, ColumnProfile],
     proposer: SchemaProposer | None,
     propose: Mapper | None = None,
-) -> tuple[RecordKind | None, str]:
+) -> tuple[RecordKind | None, str, bool]:
     """Place a file: by its names where they suffice, by a model where they do not.
 
     A cascade, like the matcher, and for the same reason - each rung is
@@ -267,23 +267,31 @@ def _identify(
     """
     ranked = _rank(profiles)
     if not ranked:
-        return None, "; ".join(sorted({_feasible(profiles, kind) for kind in RecordKind} - {""}))
+        return (
+            None,
+            "; ".join(sorted({_feasible(profiles, kind) for kind in RecordKind} - {""})),
+            False,
+        )
 
     best, (required, coverage) = ranked[0]
     runner_up = ranked[1][1] if len(ranked) > 1 else (0.0, 0.0)
     ahead = (coverage, required) > (runner_up[1], runner_up[0])
 
     if required >= CONFIDENT_KIND and ahead:
-        return best, (
+        return (
+            best,
             f"{int(required * 100)}% of the required column names recognised, "
-            f"and {int(coverage * 100)}% of the file's columns accounted for"
+            f"and {int(coverage * 100)}% of the file's columns accounted for",
+            False,
         )
 
     if required >= ACCEPTABLE_KIND and ahead and required >= runner_up[0] * DECISIVE:
-        return best, (
+        return (
+            best,
             f"the clearest fit by some way: {int(required * 100)}% of what "
             f"{best.value} needs is here, against {int(runner_up[0] * 100)}% "
-            f"for the next best"
+            f"for the next best",
+            False,
         )
 
     if proposer is None or propose is None:
@@ -292,10 +300,12 @@ def _identify(
     mapped = _rank(profiles, propose)
     chosen, (filled, explained) = mapped[0]
     if filled >= ACCEPTABLE_KIND:
-        return chosen, (
+        return (
+            chosen,
             f"{proposer.name} matched columns to {int(filled * 100)}% of what "
             f"{chosen.value} requires and the values agree, accounting for "
-            f"{int(explained * 100)}% of the file"
+            f"{int(explained * 100)}% of the file",
+            False,
         )
 
     return _unplaced(
@@ -306,16 +316,20 @@ def _identify(
     )
 
 
-def _unplaced(best: RecordKind, required: float, why: str) -> tuple[RecordKind | None, str]:
+def _unplaced(best: RecordKind, required: float, why: str) -> tuple[RecordKind | None, str, bool]:
     """The last rung: take the best-scoring kind if it is good enough, else stop.
 
     Falling back to the header names rather than giving up matters. A model
     being wrong about a file is not a reason to discard what the column names
     already said about it.
+
+    The third value marks the placement as weak, and it is what stops this
+    rung from being worse than giving up. A file placed here is placed on half
+    its required names and nothing else - see `_map` for what that costs it.
     """
     if required >= ACCEPTABLE_KIND:
-        return best, f"{why}; placed as {best.value} on its column names alone"
-    return None, why
+        return best, f"{why}; placed as {best.value} on its column names alone", True
+    return None, why, False
 
 
 def _placeable(source: SourceFile, profiles: dict[str, ColumnProfile]) -> tuple[Question, ...]:
@@ -812,10 +826,13 @@ class Importer:
         profiles = self._profiles[source.name]
 
         kind: RecordKind | None
+        weak = False
         if decisions.kind is not None:
+            # A person saying what a file is settles it. Their answer is never
+            # weak evidence, whatever the column names scored.
             kind, reason = decisions.kind, "chosen"
         else:
-            kind, reason = _identify(
+            kind, reason, weak = _identify(
                 source,
                 profiles,
                 self.proposer,
@@ -867,6 +884,30 @@ class Importer:
             resolutions.append(resolution)
             if question is not None:
                 questions.append(question)
+
+        if weak and any(question.blocking for question in questions):
+            # A file placed on half its names, which then cannot answer
+            # something required, was not placed - it was guessed at, and the
+            # question that follows is a question about our own guess rather
+            # than about the merchant's data.
+            #
+            # The case that produced this rule: a hand-kept refund log, four
+            # columns wide, scored two thirds against `orders` because it has
+            # an amount and a date. It was placed, found no order id, and
+            # stopped the entire import until somebody answered a question
+            # about a file that was never an order book. Being left alone with
+            # the reason printed is the right outcome, and `_placeable` still
+            # offers to be told otherwise.
+            unanswered = ", ".join(sorted({q.subject for q in questions if q.blocking}))
+            return FileMapping(
+                source=source,
+                kind=None,
+                kind_reason=(
+                    f"the closest fit was {kind.value}, but nothing in this "
+                    f"file answers {unanswered} - so it is left alone"
+                ),
+                questions=_placeable(source, profiles),
+            )
 
         return FileMapping(
             source=source,

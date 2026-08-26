@@ -202,6 +202,7 @@ def _assemble(
 
     header_index = _find_header(rows)
     headers = _name_columns(rows[header_index])
+    records = _without_footer(records, header_index, len(headers))
 
     body: list[dict[str, str]] = []
     numbers: list[int] = []
@@ -223,6 +224,43 @@ def _assemble(
         header_line=records[header_index][0],
         sheet=sheet,
     )
+
+
+MIN_COLUMNS_FOR_FOOTER = 3
+"""Below this width, a one-cell row is not distinguishable from a record."""
+
+
+def _without_footer(
+    records: list[tuple[int, list[str]]], header_index: int, width: int
+) -> list[tuple[int, list[str]]]:
+    """Drop the closing line a statement signs off with.
+
+    `*** End of Statement ***` sits under the last transaction of an HDFC
+    export, in the first column, with every other column empty. It is not a
+    transaction, and reading it as one puts a row on the screen that has a
+    narration and no date, no reference and no amount.
+
+    Nothing downstream breaks on it - a credit line with no amount is not a
+    credit line, so the money stays right either way. What it costs is the
+    count: a statement of thirty-eight credits reports thirty-nine rows read,
+    and a merchant checking our number against their own is the person that
+    matters most here.
+
+    Only trailing rows, and only rows with a single populated cell in a table
+    at least three columns wide. An interior sparse row is somebody's data; a
+    two-column file has no room for the distinction. `Total` lines are left to
+    the parser, because they carry an amount and refusing to read a number
+    that is genuinely there is not this function's call to make.
+    """
+    if width < MIN_COLUMNS_FOR_FOOTER:
+        return records
+    end = len(records)
+    while end > header_index + 1:
+        filled = [cell for cell in records[end - 1][1] if cell.strip()]
+        if len(filled) != 1:
+            break
+        end -= 1
+    return records[:end]
 
 
 def read_text(path: Path) -> SourceFile:
@@ -313,7 +351,7 @@ def discover(root: Path) -> tuple[Path, ...]:
         # importing a merchant's folder while they have the statement open is
         # not an unusual thing to do.
         if path.is_file()
-        and path.suffix.lower() in workbook.READABLE
+        and path.suffix.lower() in workbook.DISCOVERABLE
         and not path.name.startswith("~$")
     )
     return tuple(sorted(found, key=lambda path: path.name))

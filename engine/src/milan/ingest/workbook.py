@@ -42,6 +42,20 @@ TEXT_SUFFIXES = frozenset({".csv", ".tsv", ".txt"})
 
 READABLE = WORKBOOK_SUFFIXES | TEXT_SUFFIXES
 
+DISCOVERABLE = READABLE | frozenset({".pdf", ".xls", ".json", ".zip"})
+"""What a folder import picks up, which is wider than what it can read.
+
+The four extras are files somebody could reasonably believe they had just
+handed over their books in, and each one has advice attached. Silently
+skipping a PDF bank statement is the worst available outcome: the merchant
+dropped a folder containing their statement, the import ran, and the report
+covers a month with no bank side - with nothing anywhere saying why.
+
+Everything outside this set is skipped without a word, because a logo, a
+signature image or a `.DS_Store` is not something anybody expected us to
+read, and reporting it would bury the one line that matters.
+"""
+
 MAX_FRACTION_DIGITS = 6
 """How many decimal places survive the trip out of a spreadsheet.
 
