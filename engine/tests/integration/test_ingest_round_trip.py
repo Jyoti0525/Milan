@@ -26,6 +26,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+from openpyxl import Workbook
 
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
@@ -338,3 +339,189 @@ class TestTheReaderIsNotQuietlyRepairingAnything:
         assert result.withdrawals == 1
         assert result.dropped == ()
         assert result.counts["bank_credits"] == len(dataset.bank_credits)
+
+
+def export_workbook(dataset: Dataset, root: Path) -> Path:
+    """The same month, as one Excel workbook with three sheets.
+
+    This is the shape the files most often actually arrive in. A gateway's
+    dashboard exports a workbook; a bank's net banking offers `.xls` above
+    `.csv`; and a finance team that has opened either has saved it back as
+    `.xlsx`. A merchant handing over "my settlement report and my statement"
+    is frequently handing over one file with several sheets in it.
+
+    Deliberately typed rather than stringified. Dates go in as `datetime` and
+    amounts as `float`, because that is what a spreadsheet holds and the
+    interesting question is whether the reader gets the merchant's own numbers
+    back out of Excel's binary doubles - not whether it can read a CSV that
+    has been renamed.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    book = Workbook()
+    # A fresh workbook comes with one empty sheet; the three below are
+    # created by name, so the default has to go or the import sees a fourth
+    # table with nothing in it.
+    del book[str(book.sheetnames[0])]
+
+    settlements = book.create_sheet("Settlements")
+    settlements.append(
+        [
+            "entity_id",
+            "type",
+            "amount",
+            "credit",
+            "debit",
+            "fee",
+            "tax",
+            "created_at",
+            "settlement_id",
+            "settled_at",
+            "settlement_utr",
+            "payment_id",
+            "order_id",
+            "method",
+            "card_type",
+            "on_hold",
+            "settled",
+        ]
+    )
+    for row in dataset.settlement_rows:
+        settlements.append(
+            [
+                row.entity_id,
+                row.type.value,
+                row.amount / 100,
+                row.credit / 100,
+                row.debit / 100,
+                row.fee / 100,
+                row.tax / 100,
+                row.created_at,
+                row.settlement_id or "",
+                row.settled_at or "",
+                row.settlement_utr or "",
+                row.payment_id or "",
+                row.order_id or "",
+                row.method.value if row.method else "",
+                row.card_type.value if row.card_type else "",
+                row.on_hold,
+                row.settled,
+            ]
+        )
+
+    statement = book.create_sheet("Bank Statement")
+    # The banner an actual downloaded statement carries, in the cells it
+    # carries it in. The header finder has to walk past it here exactly as it
+    # does in a CSV.
+    statement.append(["HDFC BANK LIMITED"])
+    statement.append(["Account No :50100XXXXXX1234"])
+    statement.append([])
+    statement.append(["Value Date", "Narration", "Ref No", "Withdrawal Amt.", "Deposit Amt."])
+    for credit in sorted(dataset.bank_credits, key=lambda c: (c.value_date, c.credit_id)):
+        statement.append(
+            [credit.value_date, credit.narration, credit.utr or "", None, credit.amount / 100]
+        )
+
+    captures = book.create_sheet("Payments")
+    captures.append(["payment_id", "order_id", "amount", "method", "card_type", "captured_at"])
+    for payment in dataset.payments:
+        captures.append(
+            [
+                payment.payment_id,
+                payment.order_id,
+                payment.amount / 100,
+                payment.method.value,
+                payment.card_type.value if payment.card_type else "",
+                payment.captured_at,
+            ]
+        )
+
+    book.save(root / "razorpay_july_2026.xlsx")
+    return root
+
+
+@pytest.fixture(scope="module")
+def from_workbook(dataset: Dataset, tmp_path_factory: pytest.TempPathFactory) -> ReconReport:
+    root = export_workbook(dataset, tmp_path_factory.mktemp("workbook"))
+    plan = Importer(None).plan(root)
+    assert plan.ready, plan.blockers()
+    return ReconciliationPipeline().run(
+        build.build(plan).data,
+        RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty),
+    )
+
+
+class TestOneWorkbookIsAsGoodAsThreeCsvs:
+    """The format most merchants actually have, held to the same standard.
+
+    Every assertion below has a twin in the CSV class above. That is the
+    point: supporting spreadsheets is only worth anything if it produces the
+    same answer, and "we can open .xlsx files" is a claim about a library
+    rather than about this engine.
+    """
+
+    def test_three_sheets_become_three_tables(self, dataset: Dataset, tmp_path: Path) -> None:
+        """Reading only the active sheet would import a third of the month and
+        balance perfectly over it - the one failure here that produces no
+        error anywhere."""
+        plan = Importer(None).plan(export_workbook(dataset, tmp_path / "wb"))
+        assert len(plan.placed) == 3
+        assert {mapping.kind for mapping in plan.placed} == {
+            RecordKind.SETTLEMENT_ROWS,
+            RecordKind.BANK_CREDITS,
+            RecordKind.PAYMENTS,
+        }
+
+    def test_no_model_is_needed_and_nothing_is_asked(
+        self, dataset: Dataset, tmp_path: Path
+    ) -> None:
+        plan = Importer(None).plan(export_workbook(dataset, tmp_path / "wb"))
+        assert plan.consulted == "none"
+        assert plan.questions == ()
+
+    def test_every_record_survives_the_trip_through_excel(
+        self, dataset: Dataset, tmp_path: Path
+    ) -> None:
+        """Including the ones whose amounts went in as binary doubles."""
+        result = build.build(Importer(None).plan(export_workbook(dataset, tmp_path / "wb")))
+        assert result.dropped == ()
+        assert result.counts["settlement_rows"] == len(dataset.settlement_rows)
+        assert result.counts["bank_credits"] == len(dataset.bank_credits)
+        assert result.counts["payments"] == len(dataset.payments)
+
+    def test_not_one_paisa_is_lost_to_a_float(self, dataset: Dataset, tmp_path: Path) -> None:
+        """The assertion this whole format hangs on. Excel had every amount as
+        a double for the length of the round trip, and the sum has to come back
+        exactly."""
+        result = build.build(Importer(None).plan(export_workbook(dataset, tmp_path / "wb")))
+        assert sum(credit.amount for credit in result.data.bank_credits) == sum(
+            credit.amount for credit in dataset.bank_credits
+        )
+        assert sum(row.credit for row in result.data.settlement_rows) == sum(
+            row.credit for row in dataset.settlement_rows
+        )
+
+    def test_the_same_credits_are_proved_by_the_same_rungs(
+        self, dataset: Dataset, from_workbook: ReconReport
+    ) -> None:
+        expected = native(dataset)
+        assert Counter(p.strategy.value for p in from_workbook.proofs) == Counter(
+            p.strategy.value for p in expected.proofs
+        )
+
+    def test_the_exception_list_is_the_same_list(
+        self, dataset: Dataset, from_workbook: ReconReport
+    ) -> None:
+        expected = native(dataset)
+        assert sorted((e.code.value, e.amount) for e in from_workbook.exceptions) == sorted(
+            (e.code.value, e.amount) for e in expected.exceptions
+        )
+
+    def test_the_leak_findings_survive_too(
+        self, dataset: Dataset, from_workbook: ReconReport
+    ) -> None:
+        """Card type is an optional column and a boolean-ish enum, which is
+        exactly the sort of value a spreadsheet mangles."""
+        expected = native(dataset)
+        assert sorted(leak.overcharge for leak in from_workbook.leaks) == sorted(
+            leak.overcharge for leak in expected.leaks
+        )

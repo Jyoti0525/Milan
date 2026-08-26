@@ -19,6 +19,7 @@ import csv
 import io
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -112,7 +113,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     yield TestClient(create_app(tmp_path))
 
 
-def upload(client: TestClient, **files: bytes) -> dict[str, object]:
+def upload(client: TestClient, **files: bytes) -> dict[str, Any]:
     response = client.post(
         "/api/uploads",
         files=[
@@ -270,11 +271,34 @@ class TestAFilenameIsDataAndNotAPath:
         assert "\\" not in safe_name(hostile)
         assert not safe_name(hostile).startswith("..")
 
-    @pytest.mark.parametrize("refused", ["", "   ", ".hidden.csv", "report.xlsx", "run.sh"])
+    @pytest.mark.parametrize("refused", ["", "   ", ".hidden.csv", "run.sh", "statement.pdf"])
     def test_a_name_that_is_not_usable_is_refused_rather_than_corrected(self, refused: str) -> None:
         """Silently renaming a merchant's file is how the wrong file gets
         reconciled."""
         with pytest.raises(StagingError):
+            safe_name(refused)
+
+    @pytest.mark.parametrize("taken", ["report.xlsx", "BOOK.XLSM", "statement.tsv"])
+    def test_a_spreadsheet_is_taken(self, taken: str) -> None:
+        """The formats a merchant actually has. A gateway dashboard's export
+        button gives a workbook, and refusing it at the door was the reason
+        the browser could not accept the most likely file in the folder."""
+        assert safe_name(taken) == taken
+
+    @pytest.mark.parametrize(
+        ("refused", "phrase"),
+        [
+            ("statement.pdf", "no columns to read"),
+            ("statement.xls", "before 2007"),
+            ("export.json", "not a table yet"),
+            ("books.zip", "unzip it"),
+        ],
+    )
+    def test_a_refusal_says_what_to_do_about_it(self, refused: str, phrase: str) -> None:
+        """A PDF bank statement is the single most likely thing to arrive here
+        and be unreadable, and "unsupported format" leaves that person stuck
+        beside a download page that also offers CSV."""
+        with pytest.raises(StagingError, match=phrase):
             safe_name(refused)
 
     def test_an_upload_of_too_many_files_is_refused(self, client: TestClient) -> None:

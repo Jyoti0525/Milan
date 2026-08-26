@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from milan.chaos.config import Difficulty
-from milan.evaluation.control import compare
+from milan.evaluation.control import Comparison, compare
 
 SEEDS = tuple(range(1, 21))
 ORDERS = 600
@@ -25,14 +25,14 @@ ADAPTIVE = "adaptive (routed per credit)"
 
 
 @pytest.fixture(scope="module")
-def adversarial():
+def adversarial() -> Comparison:
     return compare(Difficulty.ADVERSARIAL, SEEDS, ORDERS)
 
 
 class TestThePublishedFigures:
     """What the README says, checked against a fresh run."""
 
-    def test_the_cascade_scores_what_the_readme_claims(self, adversarial) -> None:
+    def test_the_cascade_scores_what_the_readme_claims(self, adversarial: Comparison) -> None:
         arm = adversarial.arm(CASCADE)
         assert (arm.named("match rate").numerator, arm.named("match rate").denominator) == (
             389,
@@ -47,7 +47,7 @@ class TestThePublishedFigures:
             arm.named("shortfalls named").denominator,
         ) == (110, 120)
 
-    def test_the_adaptive_arm_scores_what_the_readme_claims(self, adversarial) -> None:
+    def test_the_adaptive_arm_scores_what_the_readme_claims(self, adversarial: Comparison) -> None:
         arm = adversarial.arm(ADAPTIVE)
         assert (arm.named("match rate").numerator, arm.named("match rate").denominator) == (
             389,
@@ -62,7 +62,7 @@ class TestThePublishedFigures:
             arm.named("shortfalls named").denominator,
         ) == (107, 120)
 
-    def test_routing_costs_about_twice_the_work(self, adversarial) -> None:
+    def test_routing_costs_about_twice_the_work(self, adversarial: Comparison) -> None:
         """The cost axis, which is what actually settles the question.
 
         A ratio rather than two totals. The absolute attempt counts move with
@@ -77,7 +77,7 @@ class TestThePublishedFigures:
 class TestAdaptivityNeverWins:
     """The claim the vocabulary rests on."""
 
-    def test_it_never_scores_higher_on_any_measure(self, adversarial) -> None:
+    def test_it_never_scores_higher_on_any_measure(self, adversarial: Comparison) -> None:
         fixed, routed = adversarial.arm(CASCADE), adversarial.arm(ADAPTIVE)
         better = [
             name
@@ -86,7 +86,7 @@ class TestAdaptivityNeverWins:
         ]
         assert not better, f"adaptive beat the cascade on {better}; the docs need rewriting"
 
-    def test_it_never_asks_for_less_work(self, adversarial) -> None:
+    def test_it_never_asks_for_less_work(self, adversarial: Comparison) -> None:
         assert adversarial.arm(ADAPTIVE).attempts >= adversarial.arm(CASCADE).attempts
 
     @pytest.mark.parametrize(

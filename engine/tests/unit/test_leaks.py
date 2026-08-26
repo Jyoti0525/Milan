@@ -26,6 +26,7 @@ from milan.domain.enums import CardType, EntityType, PaymentMethod
 from milan.domain.money import Paise, apply_rate, from_rupees
 from milan.domain.rates import RateCard, compute_deductions
 from milan.domain.records import SettlementRow
+from milan.domain.results import Proof
 from milan.evaluation.harness import to_recon_input
 from milan.leaks.clusters import cluster, summarise
 from milan.leaks.detector import detect
@@ -99,7 +100,7 @@ class TestTheThingNoMatcherCanSee:
         )
         proof = prove(credit, group, MatchStrategy.EXACT_UTR, 1.0, RateCard())
 
-        assert not isinstance(proof, tuple)
+        assert isinstance(proof, Proof)
         assert proof.balances, "the batch must reconcile, or this proves nothing"
         assert proof.residual == 0
 

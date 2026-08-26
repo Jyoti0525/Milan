@@ -33,6 +33,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from milan.ingest import workbook
 from milan.ingest.plan import ABSENT, IngestPlan
 from milan.ingest.reading import UnreadableFileError
 from milan.ingest.resolver import Decisions, Importer
@@ -52,7 +53,14 @@ month is about four megabytes of CSV, so this is generous rather than tight -
 but it is a number, and an upload endpoint without one is a way to fill a
 disk."""
 
-ALLOWED = frozenset({".csv", ".tsv", ".txt"})
+ALLOWED = workbook.READABLE
+"""Taken from the reader rather than restated here.
+
+These two lists were separate for a day and that was long enough for them to
+disagree: the reader learned to open workbooks and the upload endpoint went on
+refusing them at the door, so the browser could not send the format the
+merchant was most likely to have.
+"""
 
 STALE_SECONDS = 60 * 60
 """How long an unanswered upload is kept.
@@ -87,10 +95,45 @@ def safe_name(raw: str) -> str:
     name = raw.replace("\\", "/").rsplit("/", 1)[-1].strip()
     if not name or name.startswith("."):
         raise StagingError(f"{raw!r} is not a usable file name")
-    if Path(name).suffix.lower() not in ALLOWED:
-        allowed = ", ".join(sorted(ALLOWED))
-        raise StagingError(f"{name} is not a file this reader takes. Allowed: {allowed}")
+    suffix = Path(name).suffix.lower()
+    if suffix not in ALLOWED:
+        # Named rather than listed, where there is something useful to say.
+        # "Allowed: .csv, .tsv, .txt, .xlsx" is a true sentence that leaves
+        # somebody holding a PDF bank statement no better off, and a PDF bank
+        # statement is the single most common thing to arrive here.
+        raise StagingError(f"{name}: {_why_not(suffix)}")
     return name
+
+
+_ADVICE: dict[str, str] = {
+    ".pdf": (
+        "a PDF has no columns to read, only ink in the shape of columns. "
+        "Every major Indian bank offers the same statement as CSV or Excel "
+        "next to the PDF - download that one."
+    ),
+    ".xls": (
+        "this is the Excel format from before 2007. Open it and use Save As "
+        "to write it as .xlsx or .csv, and it will read."
+    ),
+    ".json": (
+        "a JSON dump is not a table yet. Export the same data from your dashboard as CSV or Excel."
+    ),
+    ".zip": "unzip it and hand over the files inside.",
+}
+
+
+def _why_not(suffix: str) -> str:
+    """What to do about a file this reader does not take.
+
+    Advice where advice exists, and the plain list where it does not. The
+    refusal is not in question either way - the difference is whether the
+    person reading it knows what to do next.
+    """
+    known = _ADVICE.get(suffix)
+    allowed = ", ".join(sorted(ALLOWED))
+    if known:
+        return f"{known} (this reader takes {allowed})"
+    return f"not a file this reader takes. It takes {allowed}"
 
 
 @dataclass

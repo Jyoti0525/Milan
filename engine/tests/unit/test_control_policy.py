@@ -15,12 +15,13 @@ import pytest
 
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
+from milan.domain.dataset import Dataset
 from milan.domain.enums import MatchStrategy
 from milan.domain.money import Paise
 from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit
 from milan.evaluation.harness import to_recon_input
-from milan.recon.batches import rebuild_batches
+from milan.recon.batches import GatewayBatch, rebuild_batches
 from milan.recon.matching.adaptive import EVIDENCE_RANK, AdaptiveMatcher, HeuristicRouter
 from milan.recon.matching.base import Attempt, Verdict
 from milan.recon.matching.cascade import Cascade
@@ -38,7 +39,7 @@ def _credit(narration: str, amount: int = 100_000, utr: str | None = None) -> Ba
     )
 
 
-def _batches(seed: int = 1, orders: int = 200):
+def _batches(seed: int = 1, orders: int = 200) -> tuple[Dataset, tuple[GatewayBatch, ...]]:
     config = GenerationConfig(seed=seed, difficulty=Difficulty.ADVERSARIAL, order_count=orders)
     dataset = ChaosEngine(config).generate()
     return dataset, rebuild_batches(dataset.settlement_rows)

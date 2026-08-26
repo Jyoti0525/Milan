@@ -50,7 +50,7 @@ from milan.ingest.plan import (
 )
 from milan.ingest.profile import ColumnProfile, profile_column
 from milan.ingest.propose import Proposal, SchemaProposer
-from milan.ingest.reading import SourceFile, UnreadableFileError, discover, read
+from milan.ingest.reading import SourceFile, UnreadableFileError, discover, read_all
 from milan.ingest.schema import RecordKind, TargetField, ValueKind, fields_of, required_of
 from milan.llm.provider import Provider
 
@@ -732,7 +732,11 @@ class Importer:
         unreadable: list[Unreadable] = []
         for path in discover(root):
             try:
-                sources.append(read(path))
+                # Plural: one workbook is one path and several tables, and
+                # importing only its first sheet would be the rare kind of bug
+                # that leaves every downstream figure internally consistent
+                # and describing less money than the merchant actually took.
+                sources.extend(read_all(path))
             except UnreadableFileError as failure:
                 unreadable.append(Unreadable(path=path, reason=str(failure)))
         self._sources = tuple(sources)

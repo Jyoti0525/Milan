@@ -13,13 +13,14 @@ import pytest
 
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
+from milan.domain.dataset import Dataset
 from milan.domain.enums import CardType, EntityType
 from milan.evaluation.harness import evaluate
 from milan.persistence.store import content_hash
 from milan.recon.batches import rebuild_batches
 
 
-def _dataset(share: float, seed: int = 3, orders: int = 300):
+def _dataset(share: float, seed: int = 3, orders: int = 300) -> Dataset:
     return ChaosEngine(
         GenerationConfig(
             seed=seed,
@@ -53,6 +54,7 @@ class TestTheFeatureOffChangesNothing:
             row
             for row in rows
             if row.payment_id in captured
+            and row.settlement_id is not None
             and batches[row.settlement_id].settled_on == captured[row.payment_id]
         ]
 
@@ -67,6 +69,7 @@ class TestTheFeatureOnMovesDatesOnly:
             for row in dataset.settlement_rows
             if row.type is EntityType.PAYMENT
             and row.payment_id in captured
+            and row.settlement_id is not None
             and batches[row.settlement_id].settled_on == captured[row.payment_id]
         ]
         assert same_day
@@ -83,6 +86,7 @@ class TestTheFeatureOnMovesDatesOnly:
             row
             for row in dataset.settlement_rows
             if row.payment_id in international
+            and row.settlement_id is not None
             and batches[row.settlement_id].settled_on == captured[row.payment_id]
         ]
 

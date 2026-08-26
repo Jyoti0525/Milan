@@ -12,15 +12,20 @@ import pytest
 
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
+from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType
 from milan.domain.money import Paise
 from milan.domain.rates import RateCard
+from milan.domain.records import SettlementRow
+from milan.domain.results import Proof
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.persistence.store import content_hash
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
 
-def _dataset(share: float, seed: int = 4, difficulty: Difficulty = Difficulty.ADVERSARIAL):
+def _dataset(
+    share: float, seed: int = 4, difficulty: Difficulty = Difficulty.ADVERSARIAL
+) -> Dataset:
     return ChaosEngine(
         GenerationConfig(
             seed=seed,
@@ -31,7 +36,7 @@ def _dataset(share: float, seed: int = 4, difficulty: Difficulty = Difficulty.AD
     ).generate()
 
 
-def _transfers(dataset):
+def _transfers(dataset: Dataset) -> list[SettlementRow]:
     return [row for row in dataset.settlement_rows if row.type is EntityType.TRANSFER]
 
 
@@ -86,7 +91,7 @@ class TestTheProofNamesThemSeparately:
     engine claims never to do."""
 
     @staticmethod
-    def _proof_with_route():
+    def _proof_with_route() -> Proof:
         dataset = ChaosEngine(
             GenerationConfig(
                 seed=4,

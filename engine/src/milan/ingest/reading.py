@@ -10,6 +10,14 @@ header and is followed by lines with the same number of fields. Everything
 above it is kept as `preamble`, because it is usually the account number and
 the statement period, and a person checking whether Milan read their file
 correctly wants to see that we knew it was there.
+
+That search is the valuable part of this module, and it has nothing to do
+with CSV. It works on a grid of strings - so an Excel sheet, whose banner
+rows and merged title cell are the same problem in a different container,
+goes through the identical code. `workbook` turns a sheet into that grid;
+everything from `_find_header` down cannot tell the two apart, which is why
+supporting spreadsheets did not mean writing a second reader with its own
+subtly different idea of where a statement begins.
 """
 
 from __future__ import annotations
@@ -19,6 +27,8 @@ import io
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+
+from milan.ingest import workbook
 
 ENCODINGS: tuple[str, ...] = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
 """Tried in order. `utf-8-sig` first because Excel writes a BOM and a BOM read
@@ -62,9 +72,28 @@ class SourceFile:
     """1-based line number the header was found on. Printed so a person can
     check we started where they would have."""
 
+    sheet: str = ""
+    """Which sheet of a workbook this came from. Empty for a CSV.
+
+    One file can now produce several of these, and everything downstream -
+    the profiles, the answers a merchant gives, the saved mapping that makes
+    a re-import reproducible - is keyed on `name`. So the sheet title has to
+    be part of the name rather than a label beside it, or a workbook with a
+    settlements sheet and a payments sheet would have both halves answering
+    to the same key and the second would overwrite the first.
+    """
+
     @property
     def name(self) -> str:
-        return self.path.name
+        """How this table is addressed: the file name, plus the sheet if any.
+
+        The separator is a middle dot rather than a slash or a colon, because
+        this string is shown to a person, used as a dictionary key, and
+        written into a saved mapping on disk - and the two obvious separators
+        are both meaningful in a path and in the `file:field` form the command
+        line answers questions with.
+        """
+        return f"{self.path.name} · {self.sheet}" if self.sheet else self.path.name
 
     def column(self, header: str) -> tuple[str, ...]:
         """Every value in one column, in file order, blanks included."""
@@ -154,20 +183,21 @@ def _name_columns(cells: list[str]) -> tuple[str, ...]:
     return tuple(named)
 
 
-def read(path: Path) -> SourceFile:
-    """Read one CSV into rows keyed by column name."""
-    text, encoding = _decode(path)
-    if not text.strip():
-        raise UnreadableFileError(f"{path.name} is empty")
+def _assemble(
+    path: Path,
+    records: list[tuple[int, list[str]]],
+    *,
+    encoding: str,
+    delimiter: str,
+    sheet: str = "",
+) -> SourceFile:
+    """A numbered grid of strings, with the header found and the rows keyed.
 
-    delimiter = _delimiter(text[:4096])
-    # Parsed from a stream rather than from `splitlines`, so that a quoted
-    # narration containing a line break stays one record. Splitting first and
-    # parsing after turns that row into two malformed ones, and the second is
-    # a row of fragments that will be reported as unreadable at a line number
-    # nobody can make sense of.
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    records = [(reader.line_num, cells) for cells in reader]
+    Shared by both readers on purpose. Finding the header, naming the blank
+    and duplicate columns, and keeping the line each row came from are the
+    three things this package needs from a table, and none of them depends on
+    whether the table arrived as text or as a sheet.
+    """
     rows = [cells for _, cells in records]
 
     header_index = _find_header(rows)
@@ -191,7 +221,79 @@ def read(path: Path) -> SourceFile:
         line_numbers=tuple(numbers),
         preamble=tuple(delimiter.join(row).strip() for row in rows[:header_index] if any(row)),
         header_line=records[header_index][0],
+        sheet=sheet,
     )
+
+
+def read_text(path: Path) -> SourceFile:
+    """Read one delimited text file into rows keyed by column name."""
+    text, encoding = _decode(path)
+    if not text.strip():
+        raise UnreadableFileError(f"{path.name} is empty")
+
+    delimiter = _delimiter(text[:4096])
+    # Parsed from a stream rather than from `splitlines`, so that a quoted
+    # narration containing a line break stays one record. Splitting first and
+    # parsing after turns that row into two malformed ones, and the second is
+    # a row of fragments that will be reported as unreadable at a line number
+    # nobody can make sense of.
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    records = [(reader.line_num, cells) for cells in reader]
+    return _assemble(path, records, encoding=encoding, delimiter=delimiter)
+
+
+def read_workbook(path: Path) -> tuple[SourceFile, ...]:
+    """Every sheet of a workbook that has a table in it.
+
+    A sheet nobody can find a header in is skipped rather than fatal. Real
+    workbooks carry a cover sheet with a logo and a date, a notes sheet, and
+    sometimes a pivot cache - none of which is a table, and any of which would
+    otherwise take the whole file down with it. The refusal is only raised
+    when *no* sheet yields a table, which is the case where the merchant
+    genuinely handed over something we cannot read.
+    """
+    found: list[SourceFile] = []
+    failures: list[str] = []
+    for title, grid in workbook.sheets(path):
+        records = [(number, cells) for number, cells in enumerate(grid, start=1)]
+        try:
+            found.append(_assemble(path, records, encoding="xlsx", delimiter=",", sheet=title))
+        except UnreadableFileError as failure:
+            failures.append(f"{title}: {failure}")
+    if not found:
+        raise UnreadableFileError(
+            f"{path.name} has no sheet that looks like a table ({'; '.join(failures)})"
+        )
+    return tuple(found)
+
+
+def read_all(path: Path) -> tuple[SourceFile, ...]:
+    """Every table in one file: one for a CSV, one per sheet for a workbook.
+
+    The plural is the whole reason this exists. A gateway that exports a
+    workbook puts settlements and payments on separate sheets of one file, and
+    an import that returned a single table per path would read one of them and
+    report success.
+    """
+    reason = workbook.diagnose(path)
+    if reason:
+        raise UnreadableFileError(f"{path.name}: {reason}")
+    if path.suffix.lower() in workbook.WORKBOOK_SUFFIXES:
+        try:
+            return read_workbook(path)
+        except workbook.FormatError as failure:
+            raise UnreadableFileError(str(failure)) from failure
+    return (read_text(path),)
+
+
+def read(path: Path) -> SourceFile:
+    """The first table in a file.
+
+    Kept for callers that know they are looking at a single-table file. An
+    import uses `read_all`; a test that wrote one CSV and wants it back uses
+    this.
+    """
+    return read_all(path)[0]
 
 
 def discover(root: Path) -> tuple[Path, ...]:
@@ -206,6 +308,12 @@ def discover(root: Path) -> tuple[Path, ...]:
     found: Iterable[Path] = (
         path
         for path in root.iterdir()
-        if path.is_file() and path.suffix.lower() in {".csv", ".tsv", ".txt"}
+        # Files Excel has open leave a `~$name.xlsx` lock file beside the real
+        # one. It is a workbook by extension and garbage by content, and
+        # importing a merchant's folder while they have the statement open is
+        # not an unusual thing to do.
+        if path.is_file()
+        and path.suffix.lower() in workbook.READABLE
+        and not path.name.startswith("~$")
     )
     return tuple(sorted(found, key=lambda path: path.name))

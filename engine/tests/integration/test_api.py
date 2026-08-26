@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 from milan.api.app import create_app
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
+from milan.evaluation.metrics import Scorecard
 from milan.persistence import store
 
 
@@ -239,7 +240,7 @@ class TestEveryRateIsPairedWithItsOwnDenominator:
     """
 
     @staticmethod
-    def _card(root: Path, difficulty: str):
+    def _card(root: Path, difficulty: str) -> Scorecard:
         from milan.evaluation.harness import evaluate
 
         return evaluate(store.load_dataset(root, 42, difficulty), headline_only=True).headline
