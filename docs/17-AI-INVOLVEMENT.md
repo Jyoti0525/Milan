@@ -128,21 +128,61 @@ called `Particulars`. Reading that is genuine judgment, and no alias list
 generalises to the next bank. What we kept is the boundary — the model maps
 columns, arithmetic still does the reconciling. See `docs/22-INGEST.md`.
 
-## So should we become that? Partly — and cheaply
+## So should we become that? Partly — and this section argued for the wrong slice
 
-**Add PDF bank statement parsing.** Not scanned images, not a whole document
-subsystem — just **text-PDFs**, which is what most Indian bank statements
-actually are.
+**The original argument, kept because reversing it is the interesting part:**
 
-Why this is the right slice:
-- **Genuinely AI load-bearing.** Layout varies by bank; no deterministic parser
-  generalises. This is real extraction work.
-- **Realistic.** Merchants get PDF statements, not tidy CSVs.
-- **Ground truth is free.** We render our own synthetic data TO PDFs, so we know
-  the correct answer and can report **extraction accuracy** as a measured number.
-- **Cheap.** pdfplumber plus an LLM for layout variance. Roughly half a day.
+> **Add PDF bank statement parsing.** Not scanned images, not a whole document
+> subsystem — just **text-PDFs**, which is what most Indian bank statements
+> actually are.
+>
+> - **Genuinely AI load-bearing.** Layout varies by bank; no deterministic
+>   parser generalises. This is real extraction work.
+> - **Realistic.** Merchants get PDF statements, not tidy CSVs.
+> - **Ground truth is free.** We render our own synthetic data TO PDFs, so we
+>   know the correct answer and can report **extraction accuracy** as a
+>   measured number.
+> - **Cheap.** pdfplumber plus an LLM for layout variance. Roughly half a day.
 
-Scope: Tier 3 stretch. Text-PDFs only. If it slips, the CSV path is untouched.
+### Why that was dropped
+
+Two of those four points do not survive contact with the thing they describe.
+
+**"Ground truth is free" is circular.** A PDF we render ourselves has clean,
+predictable layout, because we chose the layout. Real bank statements wrap a
+narration across two lines, right-align an amount into the next column's box,
+repeat a header at a page break, and change format between two months of the
+same account. Extraction accuracy measured against our own renders would be a
+high number that transfers to nothing — which is precisely the flattering
+measurement this project refuses everywhere else. Measuring it honestly needs
+real statements with hand-made keys, and that is not half a day.
+
+**"Merchants get PDF statements" is true and does not lead where it looks.**
+They get the PDF *and* a CSV or Excel download, on the same page, from every
+major Indian bank. The merchant is one click from a file that is a table
+rather than a picture of one.
+
+And the risk is asymmetric in the worst direction. Everywhere else in Milan a
+wrong answer announces itself: a batch that will not reconstruct becomes an
+exception. **A misread PDF column is a wrong balance that still foots** — the
+arithmetic closes, every downstream check passes, and the number is wrong. A
+system whose entire argument is that it refuses to guess cannot put its
+riskiest guess at the input boundary.
+
+### What was built instead
+
+**Excel workbook reading**, a sheet at a time. Less impressive to describe and
+more useful to have: it is the format a gateway dashboard's export button
+actually produces, it is a format rather than a rendering of one, and every
+amount in it can be proved to come back to the paisa. See `docs/22-INGEST.md`.
+
+A PDF now produces a refusal that says what to do about it, which is a worse
+demo and a better product.
+
+**If it is built later, the bar it has to clear:** extraction accuracy measured
+against real bank statements with hand-made keys, published beside the number
+of statements and banks it was measured over — never against PDFs we rendered
+ourselves.
 
 ## Drawbacks of being the heavy-AI competitor
 

@@ -6,10 +6,14 @@
 milan import --from C:\merchant\july-2026
 ```
 
-Point it at a folder. It reads every CSV in there, works out what each file is
-and what each column means, **stops and asks about anything it cannot settle**,
-and then reconciles — through the same pipeline, the same waterfall and the same
-cascade as a generated run.
+Point it at a folder. It reads every table in there — CSV, TSV, and Excel
+workbooks a sheet at a time — works out what each file is and what each column
+means, **stops and asks about anything it cannot settle**, and then reconciles
+through the same pipeline, the same waterfall and the same cascade as a
+generated run.
+
+Want files to try it on? `milan samples --to <folder>` writes four of them.
+See [Sample files](#sample-files) below.
 
 ---
 
@@ -187,6 +191,7 @@ switched off before they trust it.
 | A BOM from Excel | Otherwise `Date` becomes `﻿Date` and no alias ever matches it |
 | Two columns both called `Amount` | A dict would silently keep one |
 | `;` `\t` `|` delimiters, cp1252 encoding | Sniffed |
+| `*** End of Statement ***` under the last row | Not a transaction. Harmless to the money, and it made a statement of 38 credits report 39 rows |
 
 **A blank credit is not zero.** It is a line that is not a credit. Reading it as
 zero would invent a nil-rupee payout for every withdrawal the merchant made that
@@ -197,6 +202,112 @@ float touches an amount here, for the same reason it does not anywhere else.
 
 **Nothing is repaired.** A row that will not read is dropped, and reported with
 its file and the line number to open in a spreadsheet.
+
+---
+
+## Not everybody has a CSV
+
+The download button on a gateway dashboard gives a workbook. HDFC and ICICI both
+offer `.xls` above `.csv` in their list. Any file a finance team has actually
+opened has been saved by Excel. Asking a merchant for CSV was asking them to
+convert their books before we would look at them.
+
+### What is read
+
+| Format | How |
+|---|---|
+| `.csv` `.tsv` `.txt` | Delimiter sniffed, encoding tried in order |
+| `.xlsx` `.xlsm` | **One table per sheet** |
+
+The plural matters more than the format does. A real export puts settlements on
+one sheet and payments on another, and a reader that took `wb.active` would
+import a third of the month, balance perfectly over it, and raise nothing — the
+one failure in this package that produces no error anywhere.
+
+A sheet nobody can find a header in is skipped rather than fatal. Every real
+export leads with a cover sheet holding a logo and a generated-on date, and it
+should not take the file down with it.
+
+**The header search did not have to be rewritten.** Walking past a bank's banner
+rows is a problem about a grid of strings, not about CSV. `workbook` turns a
+sheet into that grid; everything below `_find_header` cannot tell the two apart.
+
+**Excel's floats stop at the boundary.** Every number in a spreadsheet is a
+binary double, so a column of amounts that has been through a `SUM` arrives as
+`1234.5600000000001`. A cell becomes a decimal string exactly once — in
+`workbook.render` — and everything after it is `Decimal`. Six fractional digits
+rather than two, because this converts contracted rates as well as amounts, and
+`0.0215` truncated to two places is a fee card that says 2% where the merchant
+pays 2.15%.
+
+### What is refused, and why the refusal is worth reading
+
+Detection is by **content, not extension**, because banks lie about extensions.
+
+| Arrives as | What it really is | What we say |
+|---|---|---|
+| `.pdf` | A PDF | "no columns to read, only ink in the shape of columns — every major Indian bank offers the same statement as CSV or Excel next to the PDF" |
+| `.xls` | The pre-2007 Excel format | "open it and Save As `.xlsx` or `.csv`" |
+| `.xls` | An **HTML table**. ICICI's "Excel" download is literally this | "a web page saved with a spreadsheet's name" |
+| `.zip` | An archive | "unzip it and hand over the files inside" |
+| `~$name.xlsx` | Excel's lock file for a workbook somebody has open | nothing at all — you should never hear about it |
+
+A PDF decodes as text perfectly well. Read as CSV it does not fail; it succeeds,
+and yields one column called `%PDF-1.7`. That is far worse than a refusal.
+
+### Why PDF is refused rather than parsed
+
+It is the obvious next feature and it is the wrong one.
+
+Extracting a table from a PDF is inference about the positions of ink. There is
+no column structure in the file to read — it is reconstructed from coordinates,
+and it is reconstructed wrongly whenever a narration wraps, an amount is
+right-aligned into the next column's box, or a statement changes layout at a
+page break.
+
+A misread column in a bank statement is **a wrong balance that still foots**.
+Every check downstream passes, the arithmetic closes, and the number is wrong.
+A system whose entire argument is that it refuses to guess cannot put its
+riskiest guess at the input boundary.
+
+So the refusal is the honest answer, and it costs the merchant almost nothing:
+the statement they are holding a PDF of is offered by their own bank, on the
+same page, as a table.
+
+---
+
+## Sample files
+
+```
+milan samples --to milan-samples
+```
+
+Four folders, each a claim with an outcome anybody can check, each shipping a
+README that says what should happen.
+
+| Folder | What it is | What to expect |
+|---|---|---|
+| `1-names-we-know` | A gateway and a bank whose columns we have aliases for | No model consulted, and **one** question — an HDFC statement carries both `Date` and `Value Dt` |
+| `2-names-we-do-not` | `Txn Ref No`, `Amount Credited`, `Service Tax (GST)` | Six questions with no model, far fewer with one |
+| `3-one-excel-workbook` | One `.xlsx`, four sheets | Three tables; the cover sheet skipped; not a paisa lost to Excel's floats |
+| `4-a-real-folder` | A statement, a report, a GST register, a hand-kept refund log, a PDF, an Excel lock file | Six outcomes and **none of them an error** |
+
+**Nothing is written to Milan's schema, and that is the only reason they are
+worth having.** Test data invented by whoever wrote the reader drifts toward the
+aliases the schema knows and the dates it parses first, and the confidence that
+follows is circular. Each writer imitates a specific real export instead: the
+trailing space inside ICICI's `Withdrawal Amount (INR )`, HDFC's `dd/mm/yy`,
+Kotak's `Cr` suffix, the bracketed negatives an accountant writes a refund in.
+
+Generated on demand rather than committed — a megabyte of settlement rows in the
+repository goes stale the first time the generator changes, and a stale sample
+demonstrates a month this code no longer produces. Every figure comes from a
+fixed seed, so nothing here is anybody's real money.
+
+Writing them found three defects, which is what they are for: a file placed on
+half its column names could block the whole import on a question about our own
+guess; a PDF in the folder was skipped in silence; and `*** End of Statement ***`
+was being read as a transaction.
 
 ---
 
@@ -343,6 +454,9 @@ column, the values permitted it, and nothing else agreed.
 | Module | Job |
 |---|---|
 | `ingest/reading.py` | Find the header, sniff the delimiter, decode, keep line numbers |
+| `ingest/workbook.py` | Read `.xlsx` a sheet at a time; diagnose what is not a table |
+| `samples/dialects.py` | Write a month the way HDFC, ICICI, Kotak and a GST register write one |
+| `samples/build.py` | Assemble the four sample folders, and their READMEs |
 | `ingest/parsing.py` | Money, dates, booleans, vocabulary |
 | `ingest/profile.py` | Measure each column. **The veto** |
 | `ingest/schema.py` | What Milan needs, its aliases, and what each absence costs |
@@ -360,5 +474,10 @@ column, the values permitted it, and nothing else agreed.
 
 - **The folder watcher.** Cut, as decision 47 always said it could be. A merchant
   points the command at a folder.
-- **PDF statements.** Still Tier 3 (`21c`). The CSV path does not depend on it.
+- **PDF statements.** Refused with advice rather than parsed, and this is a
+  decision rather than a gap — see [Why PDF is refused rather than
+  parsed](#why-pdf-is-refused-rather-than-parsed).
+- **Legacy `.xls`.** Detected by its magic bytes and refused with the two-step
+  fix. Supporting the pre-2007 binary format would mean a second parser for a
+  format Excel itself has been converting away from for eighteen years.
 - **Multi-currency.** The currency column is read and carried; nothing converts.

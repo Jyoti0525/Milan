@@ -67,7 +67,7 @@ then spend ten days making it excellent.
 |---|---|
 | 21 | **LLM-MATCHER ABLATION** — highest priority in Tier 3. A few hours, huge payoff. Includes the "run it twice, two different books" demo |
 | 21b | **Cascade vs adaptive Recon benchmark** — settles whether we have an agent |
-| 21c | **PDF bank statement parsing** (text-PDFs only). Genuinely AI load-bearing; ground truth free because we render our own synthetic data to PDF |
+| ~~21c~~ | ~~**PDF bank statement parsing**~~ — **dropped on purpose**, see decision 201. Excel workbook reading was built instead: it is the format merchants more often actually have, and it is a format rather than a picture of one. A PDF is now refused with the sentence that tells somebody to download the CSV their bank already offers |
 | 21d | **LLM-off experiment** (free — the no-LLM path exists from day 1) |
 | 22 | **Five-config benchmark** — off / Qwen 3B / Qwen 7B / Groq 70B / Gemini |
 | 23 | **Agreement-rate metric** + golden-output test across configs |
@@ -113,7 +113,8 @@ nice-to-have — never the submission.
 7. The five-config benchmark can shrink to three (off / local / one API) without
    losing the point.
 8. **The LLM-matcher ablation is NOT cut.** It is a few hours and it is the
-   single strongest answer to "why so little AI". Cut PDF parsing before it.
+   single strongest answer to "why so little AI". PDF parsing was cut before
+   it, and then cut entirely - see decision 201.
 9. If the cascade-vs-adaptive benchmark is not run, **we call it a cascade**,
    never an agent. — **Run on day 11. It is a cascade.** Adaptive control ties
    on three tiers, loses on the fourth, and costs 2.0x the rung attempts. The

@@ -340,6 +340,86 @@ system behind the Razorpay dashboard. Its tokens are transcribed rather than
 approximated, and money is set the way Blade sets it: the ₹ small, the rupees
 large, the paise small and muted.
 
+## Bring your own books
+
+Everything above runs on a generated month. The point of generating one is that
+it comes with an answer key, so every figure can be checked rather than
+asserted. But a merchant does not have an answer key, and a tool that only
+reads its own output is a demo.
+
+```bash
+uv run milan import --from C:\merchant\july-2026
+```
+
+Or press **Import your files** in the browser and drop a folder in.
+
+### It reads what you actually have
+
+CSV, TSV, and Excel workbooks **a sheet at a time**. The plural matters: a real
+export puts settlements on one sheet and payments on another, and a reader that
+took the first sheet would import a third of the month, balance perfectly over
+it, and raise nothing.
+
+Formats are diagnosed by content rather than extension, because banks lie about
+extensions — ICICI's "Excel" download is an HTML table named `.xls`. What cannot
+be read is refused with the sentence that gets you unstuck:
+
+> `Statement_Jul2026.pdf`: a PDF has no columns to read, only ink in the shape
+> of columns. Every major Indian bank offers the same statement as CSV or Excel
+> next to the PDF — download that one.
+
+PDF is refused rather than parsed, and that is a decision. Extracting a table
+from a PDF is inference about the positions of ink, and a misread column in a
+bank statement is **a wrong balance that still foots** — every downstream check
+passes and the number is wrong. A system whose argument is that it refuses to
+guess cannot put its riskiest guess at the input boundary.
+
+### It refuses to guess at your schema
+
+No fixed format is required. The column names are worked out — from the values
+first, the header name second, and a model third, for the names nobody has met
+before. **The values have the only veto.** A model that proposes the balance
+column for the credit amount is refused by arithmetic, and the refusal is
+printed rather than dropped.
+
+Anything that cannot be settled becomes a question with your name on it, not a
+guess. A statement with both a `Value Date` and a `Transaction Date` is asked
+about, because no amount of evidence in the file settles which day a settlement
+landed on.
+
+### Files to try it on
+
+```bash
+uv run milan samples --to milan-samples
+```
+
+Four folders, each shipping a README that says what should happen — and each
+assertion in those READMEs is a test, so they cannot quietly go stale.
+
+| Folder | What to expect |
+|---|---|
+| `1-names-we-know` | No model, one question |
+| `2-names-we-do-not` | Six questions without a model, far fewer with one |
+| `3-one-excel-workbook` | Three tables from one `.xlsx`, cover sheet skipped |
+| `4-a-real-folder` | A GST register left alone, a PDF refused, a lock file ignored — **six outcomes and none of them an error** |
+
+Nothing is written to Milan's own schema. Each writer imitates a specific real
+export — the trailing space inside ICICI's `Withdrawal Amount (INR )`, HDFC's
+`dd/mm/yy` and its `*** End of Statement ***`, Kotak's `Cr` suffix — because
+test data invented by whoever wrote the reader drifts toward the aliases the
+schema already knows, and the confidence that follows is circular.
+
+### And the read is proved, not asserted
+
+An imported run has no ground truth, so one is manufactured: a generated month
+is exported to hostile CSV and to a typed Excel workbook, then read back
+through the full pipeline. The engine has already reconciled the same month
+from its own records, so the two reports are compared line for line — every
+proof, every cascade rung, every exception code and amount.
+
+If the import drops a paisa, reads a date the other way round, or maps the
+debit onto the credit, they diverge and the suite fails.
+
 ## Where the model earns its place
 
 Four models sit behind one interface — two local through Ollama, two hosted

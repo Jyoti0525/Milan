@@ -860,3 +860,85 @@ If a decision is not here, it is not settled.
      repeated a figure the headline now states in rupees. Razorpay's brief
      asks for a match rate by name.
 
+198. **A merchant does not only have CSV, and pretending otherwise was our
+     problem to fix.** The download button on a gateway dashboard gives a
+     workbook; HDFC and ICICI both offer `.xls` above `.csv`; any file a
+     finance team has opened has been saved by Excel. Asking for CSV was
+     asking the merchant to convert their books before we would look at them.
+     `.xlsx` and `.xlsm` are now read, **one table per sheet** - a real export
+     puts settlements on one sheet and payments on another, and a reader
+     taking the active sheet would import a third of the month, balance
+     perfectly over it, and raise nothing.
+199. **The header search was never about CSV.** Walking past a bank's banner
+     rows is a problem about a grid of strings. `workbook` turns a sheet into
+     that grid and everything below `_find_header` cannot tell the two apart,
+     so supporting spreadsheets did not mean a second reader with its own
+     subtly different idea of where a statement begins.
+200. **Formats are diagnosed by content, not by extension, because banks lie
+     about extensions.** ICICI's "Excel" download is an HTML table named
+     `.xls`. A PDF decodes as text perfectly well and would import as one
+     column called `%PDF-1.7`. Every refusal names what to do instead - the
+     person holding a PDF statement is standing in front of a download page
+     that also offers CSV, and that sentence costs them thirty seconds rather
+     than an evening.
+201. **PDF is refused rather than parsed, deliberately.** Table extraction
+     from a PDF is inference about ink positions, and a misread column in a
+     bank statement is a wrong balance that still foots. A system whose whole
+     argument is that it refuses to guess cannot have its riskiest guess at
+     the input boundary. The refusal is the honest answer, and every Indian
+     bank offers the same statement in a format that is a table.
+202. **Excel's floats stop at the boundary.** A cell becomes a decimal string
+     exactly once, in `workbook.render`, and everything after it is `Decimal`.
+     Six fractional digits rather than two, because this converts contracted
+     rates as well as amounts and `0.0215` truncated to two places is a fee
+     card that says 2% where the merchant pays 2.15%.
+203. **Sample files are written in other people's dialects, and generated
+     rather than committed.** Test data invented by whoever wrote the reader
+     drifts toward the aliases the schema knows, and the confidence that
+     follows is circular. `milan samples` imitates specific real exports - the
+     trailing space inside ICICI's `Withdrawal Amount (INR )`, HDFC's
+     `dd/mm/yy` and its `*** End of Statement ***`, Kotak's `Cr` suffix. On
+     demand rather than in the repository, because a megabyte of settlement
+     rows goes stale the first time the generator changes and a stale sample
+     demonstrates a month this code no longer produces.
+204. **Each sample folder's README is asserted.** A folder is a claim - "one
+     question is asked", "this file is left alone with the reason printed" -
+     and it is the first thing somebody new points Milan at. A README
+     describing last month's behaviour is worse than none, because they will
+     believe it and conclude the engine is broken.
+205. **A weak placement may not block.** A hand-kept refund log has an amount
+     and a date, which is two thirds of what an order book needs; it was
+     placed as one, found no order id, and stopped the whole import until
+     somebody answered a question about a file that was never an order book. A
+     file placed on half its names, which then cannot answer something
+     required, was guessed at rather than placed - so the placement is
+     overturned and the file left alone, with `_placeable` still offering to
+     be told otherwise.
+206. **A folder import reports the formats it cannot read.** Skipping a PDF in
+     silence is the worst outcome available: the merchant dropped a folder
+     containing their bank statement, the run covered a month with no bank
+     side, and nothing said why. Discovery picks up the four formats somebody
+     could reasonably believe they had handed their books over in. Everything
+     else - a logo, a `.DS_Store`, Excel's `~$` lock file - is skipped without
+     a word, because reporting it would bury the line that matters.
+207. **The explanation moved behind the question it answers.** Every figure on
+     the screen needs a sentence to be trustworthy, each sentence was written
+     beside its figure, and all of them were on screen at once. `Explain` is a
+     `<details>` the width of its own question - closed by default, complete
+     when opened, findable by in-page search either way. Cutting the sentences
+     instead would have traded one failure for a worse one: figures with no
+     provenance, on a tool whose argument is that it does not ask to be
+     believed.
+208. **"Not scored" was true and read as a demerit.** A score needs something
+     to be measured against, and a merchant's books come with no answer key.
+     Putting "not scored" on their files blames the files for a property of
+     real data. The chip says what the run is - your books, or sample data -
+     and an `Explain` gives the reason, alongside what an imported run *can*
+     prove about itself: credits reconstructed to zero, exceptions refused,
+     arithmetic drift. None of that needs anyone else to agree.
+209. **A published rate carries its population.** `100.0%` sat above "21 of 37
+     credits" - a rate and a denominator that contradict each other, because
+     match rate excludes the credits that are impossible by construction. It
+     is 21 of 21 resolvable. A rate without its population invites exactly one
+     misreading and it is the flattering one, which is the lesson decision 187
+     already learned about the refusal rate and this screen had not.
