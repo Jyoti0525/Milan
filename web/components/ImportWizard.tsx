@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  addFiles,
   ApiError,
   answerImport,
   commitImport,
@@ -33,7 +34,19 @@ import {
   type Question,
   type StagedFile,
 } from "@/lib/api";
+import { fromDrop, keep } from "@/lib/files";
+import {
+  askDetail,
+  askTitle,
+  blockerHelp,
+  CERTAINTY_WORDS,
+  fieldName,
+  kindMeans,
+  kindName,
+  whyNotUsed,
+} from "@/lib/words";
 import { Badge, type Tone } from "./Badge";
+import { Explain } from "./Explain";
 
 const CERTAINTY: Record<string, Tone> = {
   confirmed: "good",
@@ -42,66 +55,128 @@ const CERTAINTY: Record<string, Tone> = {
   absent: "neutral",
 };
 
-/** What each label means, in one line, for somebody meeting it first time. */
-const MEANS: Record<string, string> = {
-  confirmed: "your header name and the values agree",
-  answered: "you chose this",
-  unconfirmed: "a model suggested it and the values allow it",
-  absent: "not in this file",
-};
-
-function Dropzone({ onFiles, busy }: { onFiles: (files: File[]) => void; busy: boolean }) {
+/**
+ * What to hand over, and three ways to hand it over.
+ *
+ * A merchant's books are a **folder**. That is how the command line takes
+ * them and how they sit on disk, and until this existed the dialog took files
+ * one at a time — so five files meant five trips through a picker, and the
+ * folder somebody actually had could not be given to us at all.
+ *
+ * Worse, each trip started a *new* upload. Picking the settlement report,
+ * looking at the result, and then picking the statement left a plan holding
+ * the statement alone, with the report silently gone and a message underneath
+ * saying there was nothing to reconcile against. That is fixed on the server
+ * (`addFiles`); this offers the folder so the situation stops arising.
+ */
+function Dropzone({
+  onFiles,
+  busy,
+  adding,
+}: {
+  onFiles: (files: File[]) => void;
+  busy: boolean;
+  /** Whether this is topping up an upload that already has files in it. */
+  adding?: boolean;
+}) {
   const [over, setOver] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
+  const files = useRef<HTMLInputElement>(null);
+  const folder = useRef<HTMLInputElement>(null);
+
+  const drop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setOver(false);
+    // Folders arrive as entries rather than files and have to be walked; see
+    // `lib/files`. A plain multi-file drop takes the same path and returns
+    // immediately.
+    void fromDrop(event.dataTransfer).then(onFiles);
+  };
 
   return (
-    <div className="p-5">
+    <div className={adding ? "px-5 pb-4" : "p-5"}>
       <div
         onDragOver={(event) => {
           event.preventDefault();
           setOver(true);
         }}
         onDragLeave={() => setOver(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setOver(false);
-          onFiles([...event.dataTransfer.files]);
-        }}
-        className="grid place-items-center rounded-[var(--r-card)] border border-dashed px-6 py-10 text-center transition-colors"
+        onDrop={drop}
+        className="grid place-items-center rounded-[var(--r-card)] border border-dashed px-6 text-center transition-colors"
         style={{
           borderColor: over ? "var(--accent)" : "var(--border-strong)",
           background: over ? "var(--accent-wash)" : "var(--surface-sunken)",
+          paddingTop: adding ? "1.25rem" : "2.25rem",
+          paddingBottom: adding ? "1.25rem" : "2.25rem",
         }}
       >
-        <div className="text-[14px] font-semibold">Drop your files here</div>
-        <p className="mt-1.5 max-w-md text-[12.5px] leading-relaxed text-[var(--text-muted)]">
-          Your settlement or recon report, and your bank statement. Add a payments export too and
-          the run can also look for money that was captured and never settled.
-        </p>
-        <button
-          type="button"
-          className="btn btn-primary mt-4"
-          disabled={busy}
-          onClick={() => input.current?.click()}
-        >
-          {busy ? "Reading…" : "Choose files"}
-        </button>
+        <div className="text-[14px] font-semibold">
+          {adding ? "Add another file" : "Drop the whole folder here"}
+        </div>
+
+        {!adding && (
+          <>
+            {/*
+              Named in the merchant's terms, and in the order they matter. The
+              old copy said "settlement or recon report" first, which is the
+              engine's vocabulary and the file people are least sure they have.
+            */}
+            <p className="mt-1.5 max-w-md text-[12.5px] leading-relaxed text-[var(--text-muted)]">
+              We need two things: the <strong className="font-medium">statement</strong> from the
+              bank account your payouts land in, and the{" "}
+              <strong className="font-medium">settlement report</strong> from your payment gateway.
+            </p>
+            <p className="mt-1 max-w-md text-[12px] leading-relaxed text-[var(--text-subtle)]">
+              Anything else in the folder is left alone. Add a payments export and we can also look
+              for money that was captured and never paid out.
+            </p>
+          </>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => folder.current?.click()}
+          >
+            {busy ? "Reading\u2026" : "Choose a folder"}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy}
+            onClick={() => files.current?.click()}
+          >
+            Or pick files
+          </button>
+        </div>
+
+        {/*
+          `webkitdirectory` is non-standard, unprefixed nowhere, and supported
+          everywhere. React does not know the attribute, hence the cast - and
+          the plain file input beside it is the fallback for anything that
+          ignores it, rather than a second-best offered for its own sake.
+        */}
         <input
-          ref={input}
+          ref={folder}
           type="file"
           multiple
-          accept=".csv,.tsv,.txt,.xlsx,.xlsm"
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
           className="hidden"
-          onChange={(event) => onFiles([...(event.target.files ?? [])])}
+          onChange={(event) => onFiles(keep([...(event.target.files ?? [])]))}
         />
-        {/*
-          The formats, named. A merchant whose bank gave them a workbook and
-          who reads "CSV" here converts the file before trying, or gives up -
-          and the workbook was always the more likely thing for them to have.
-        */}
-        <p className="mt-3 text-[11.5px] text-[var(--text-subtle)]">
-          CSV, TSV or Excel (.xlsx) — whatever your bank calls its columns. Nothing is reconciled
-          until you approve how they were read.
+        <input
+          ref={files}
+          type="file"
+          multiple
+          accept=".csv,.tsv,.txt,.xlsx,.xlsm,.pdf,.xls"
+          className="hidden"
+          onChange={(event) => onFiles(keep([...(event.target.files ?? [])]))}
+        />
+
+        <p className="mt-3 max-w-md text-[11.5px] leading-relaxed text-[var(--text-subtle)]">
+          CSV, TSV or Excel. If your bank only gave you a PDF, download the same statement as CSV
+          instead — it is on the same page.
         </p>
       </div>
     </div>
@@ -138,16 +213,25 @@ function Ask({
 
   return (
     <div className="border-t border-[var(--border)] px-5 py-4 first:border-t-0">
-      <div className="flex items-baseline gap-2">
-        <Badge tone={question.blocking ? "warn" : "neutral"}>
-          {question.blocking ? "needs you" : "optional"}
-        </Badge>
-        <span className="text-[12.5px] font-medium">
-          {question.subject === "record" ? question.file : question.subject}
+      {/*
+        A question, phrased as one. The engine states its own position -
+        "no header is named like credit", "Date, Value Dt could all be
+        value_date" - which is accurate and is not what the person clicking is
+        being asked. What they are being asked is always the same shape: which
+        column in this file holds this thing.
+
+        The engine's sentence stays underneath as the reason, with the file
+        name trimmed off its front because the heading already says it.
+      */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-[13px] font-semibold">
+          {askTitle(question.subject, question.file)}
         </span>
+        <span className="truncate text-[11.5px] text-[var(--text-subtle)]">{question.file}</span>
+        {!question.blocking && <Badge tone="neutral">optional</Badge>}
       </div>
-      <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--text-muted)]">
-        {question.asks}
+      <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-muted)]">
+        {askDetail(question.asks, question.file)}
       </p>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -182,50 +266,117 @@ function Ask({
   );
 }
 
-function FileCard({ file }: { file: StagedFile }) {
+/**
+ * One file, and what we made of it.
+ *
+ * The version this replaces led with `read as bank_credits`, followed by
+ * `100% of the required column names recognised, and 42% of the file\u2019s
+ * columns accounted for`, then a row of chips reading `value_date \u2190 Tran
+ * Date confirmed`. Every one of those is true and precise, and together they
+ * are unreadable by the person who owns the file \u2014 they are the engine
+ * describing itself.
+ *
+ * So the file leads with **what it turned out to be**, in the words the
+ * merchant knows it by, and the column detail is folded away. Somebody
+ * checking our work opens it; somebody who just wants to know whether we
+ * understood their folder does not have to.
+ *
+ * The percentages are gone from the surface entirely. `42% of the file\u2019s
+ * columns accounted for` sounds like a failing grade and means "your
+ * statement has a balance column and a branch code and we did not need
+ * them", which is not a problem and should not look like one.
+ */
+function FileCard({
+  file,
+  onIgnore,
+  busy,
+}: {
+  file: StagedFile;
+  onIgnore: (file: string) => void;
+  busy: boolean;
+}) {
   const mapped = file.resolutions.filter((row) => row.column !== null || row.derived);
+  const used = file.kind !== null;
   return (
-    <div className="border-t border-[var(--border)] px-5 py-3.5 first:border-t-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="chip font-mono text-[10.5px]">{file.file}</span>
-        <span className="text-[12px] text-[var(--text-muted)]">
-          {file.kind ? (
-            <>
-              read as <strong className="font-medium">{file.kind.replace(/_/g, " ")}</strong> ·{" "}
-              {file.rows.toLocaleString("en-IN")} rows
-            </>
-          ) : (
-            <span className="text-[var(--text-subtle)]">not used</span>
-          )}
+    <div className="group border-t border-[var(--border)] px-5 py-3 first:border-t-0">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span
+          aria-hidden
+          className="text-[13px]"
+          style={{ color: used ? "var(--good)" : "var(--text-disabled)" }}
+        >
+          {used ? "\u2713" : "\u2013"}
         </span>
+        <span className="text-[13px] font-semibold">
+          {used ? kindName(file.kind as string) : "Not used"}
+        </span>
+        <span className="truncate text-[12px] text-[var(--text-subtle)]">{file.file}</span>
+        {used && (
+          <span className="tnum ml-auto text-[12px] text-[var(--text-muted)]">
+            {file.rows.toLocaleString("en-IN")} rows
+          </span>
+        )}
       </div>
-      <p className="mt-1 text-[11.5px] leading-relaxed text-[var(--text-subtle)]">
-        {file.kind_reason}
+
+      {/*
+        Saying what an unrecognised file is has always been possible. Saying
+        that a recognised one is *not* what we think has not, and a purchase
+        ledger read as an orders export is exactly that case: a PO number, a
+        value and a raised-on date are what an order book needs, nothing in
+        the file rules it out, and only the person who owns it knows.
+      */}
+      {used && (
+        <button
+          type="button"
+          className="mt-1 text-[11.5px] text-[var(--text-subtle)] underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--warn)]"
+          disabled={busy}
+          onClick={() => onIgnore(file.file)}
+        >
+          That is not what this file is — leave it out
+        </button>
+      )}
+
+      <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-muted)]">
+        {used ? kindMeans(file.kind as string) : whyNotUsed(file.kind_reason)}
       </p>
 
       {mapped.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {mapped.map((row) => (
+        <details className="explain mt-1.5">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[11.5px] text-[var(--text-subtle)] hover:text-[var(--accent-strong)]">
             <span
-              key={row.field}
-              title={`${row.field} ← ${row.derived ? "derived" : row.column} — ${row.reason}`}
-              className="inline-flex items-center gap-1 rounded-[var(--r-chip)] border border-[var(--border)] bg-[var(--surface-sunken)] px-1.5 py-[2px] text-[11px]"
+              aria-hidden
+              className="grid h-[13px] w-[13px] place-items-center rounded-full border border-current text-[9px] leading-none font-semibold"
             >
-              <span className="text-[var(--text-muted)]">{row.field}</span>
-              <span aria-hidden className="text-[var(--text-disabled)]">
-                ←
-              </span>
-              <span className="font-mono text-[10.5px]">
-                {row.derived ? "derived" : row.column}
-              </span>
-              <Badge tone={CERTAINTY[row.certainty] ?? "neutral"}>
-                {row.certainty === "unconfirmed" && row.proposed_by
-                  ? row.proposed_by
-                  : row.certainty}
-              </Badge>
+              ?
             </span>
-          ))}
-        </div>
+            Which column we read as what ({mapped.length})
+          </summary>
+          <div className="mt-2 space-y-1 border-l-2 border-[var(--border)] pl-3">
+            {mapped.map((row) => {
+              const words = CERTAINTY_WORDS[row.certainty];
+              return (
+                <div
+                  key={row.field}
+                  className="flex flex-wrap items-baseline gap-x-1.5 text-[12px]"
+                  title={`${row.field} \u2190 ${row.column ?? "derived"} \u2014 ${row.reason}`}
+                >
+                  <span className="font-mono text-[11px] font-medium">
+                    {row.derived ? "worked out from the other columns" : row.column}
+                  </span>
+                  <span aria-hidden className="text-[var(--text-disabled)]">
+                    is the
+                  </span>
+                  <span className="text-[var(--text-muted)]">{fieldName(row.field)}</span>
+                  <Badge tone={CERTAINTY[row.certainty] ?? "neutral"}>
+                    {row.certainty === "unconfirmed" && row.proposed_by
+                      ? `${row.proposed_by} suggested`
+                      : (words?.label ?? row.certainty)}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
+        </details>
       )}
     </div>
   );
@@ -244,6 +395,14 @@ export function ImportWizard({
   const [name, setName] = useState("");
 
   const staged = plan?.id ?? null;
+  /*
+    A structural blocker - no settlement report, or no bank statement - is a
+    different thing from an unanswered column, and it is the one a first
+    upload almost always hits. It has no question attached, so it is found by
+    looking for a blocker that no question accounts for.
+  */
+  const structural = plan?.blockers.find((line) => !line.includes(" is unanswered")) ?? null;
+  const missing = structural ? blockerHelp(structural) : null;
   const blocking = plan?.questions.filter((question) => question.blocking) ?? [];
   const suggested = blocking.filter((question) => question.suggested);
   const offers = plan?.questions.filter((question) => !question.blocking) ?? [];
@@ -285,10 +444,31 @@ export function ImportWizard({
     void run(() => uploadFiles(files), setPlan);
   };
 
+  /*
+    More files for the upload already open, rather than a new one.
+
+    `uploadFiles` opens a fresh staging area, which is right the first time
+    and destructive every time after: a merchant who picked their settlement
+    report, looked at the result and then picked their statement ended up with
+    the statement alone and their report silently gone.
+  */
+  const more = (files: File[]) => {
+    if (files.length === 0 || !staged) return;
+    void run(() => addFiles(staged, files), setPlan);
+  };
+
   const answer = (key: string, value: string) => {
     if (!staged) return;
     void run(() => answerImport(staged, { [key]: value }), setPlan);
   };
+
+  /*
+    `-` is the answer meaning "not in this file", and against the record
+    subject it means "this file is not one of mine to read". The engine keeps
+    it as a decision rather than as the absence of one, so the placement rules
+    do not simply run again and place it back.
+  */
+  const ignore = (file: string) => answer(`${file}:record`, "-");
 
   /*
     One deliberate act instead of fifteen identical ones.
@@ -309,7 +489,7 @@ export function ImportWizard({
     void run(() => answerImport(staged, answers), setPlan);
   };
 
-  const keep = () => {
+  const commit = () => {
     if (!staged) return;
     void run(
       () => commitImport(staged, name),
@@ -354,6 +534,30 @@ export function ImportWizard({
 
           {!plan && <Dropzone onFiles={upload} busy={busy} />}
 
+          {/*
+            The missing-file case, said where somebody can act on it.
+
+            This was one line of grey text beside a disabled button reading
+            "no settlement or recon report was found: there is nothing to
+            reconcile the bank against". Every word of that is true and none
+            of it tells a merchant what to do, which is: go back to your
+            gateway dashboard and download one more file.
+
+            It sits at the top rather than the bottom because it is the reason
+            nothing below it can run, and because a person who has just
+            uploaded one file and seen a dead button is looking for exactly
+            this.
+          */}
+          {plan && missing && (
+            <section className="border-b border-[var(--border)] bg-[var(--warn-wash)] px-5 py-3.5">
+              <h3 className="text-[13px] font-semibold text-[var(--warn)]">{missing.title}</h3>
+              <p className="mt-1 max-w-xl text-[12.5px] leading-relaxed text-[var(--text-muted)]">
+                {missing.what}
+              </p>
+              <Dropzone onFiles={more} busy={busy} adding />
+            </section>
+          )}
+
           {plan && (
             <>
               {/*
@@ -367,15 +571,16 @@ export function ImportWizard({
                 <section>
                   <div className="bg-[var(--warn-wash)] px-5 py-2.5 text-[12.5px] text-[var(--warn)]">
                     {blocking.length === 1
-                      ? "One thing the engine will not decide for you."
-                      : `${blocking.length} things the engine will not decide for you.`}{" "}
-                    Guessing here would change a balance.
+                      ? "One question before we can run this."
+                      : `${blocking.length} questions before we can run this.`}{" "}
+                    We could guess, but a wrong guess here changes what your books say.
                   </div>
                   {suggested.length > 2 && (
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-2.5">
                       <span className="text-[12.5px] text-[var(--text-muted)]">
-                        {plan.consulted} has a suggestion for {suggested.length} of them, and the
-                        values allow all {suggested.length}.
+                        {plan.consulted} has an answer for {suggested.length} of them, and nothing
+                        in those columns contradicts it. You can take them all and change any of
+                        them afterwards.
                       </span>
                       <button
                         type="button"
@@ -396,9 +601,10 @@ export function ImportWizard({
               {offers.length > 0 && (
                 <section>
                   <div className="border-b border-[var(--border)] bg-[var(--surface-sunken)] px-5 py-2.5 text-[12.5px] text-[var(--text-muted)]">
-                    {offers.length === 1 ? "One file was" : `${offers.length} files were`} not
-                    recognised. If you know what {offers.length === 1 ? "it is" : "they are"}, say
-                    so — otherwise they are left alone and nothing is read from them.
+                    We did not recognise {offers.length === 1 ? "one file" : `${offers.length} files`}.
+                    That is usually right — a books folder holds invoices and ledgers we have no
+                    use for. If we got it wrong, say what {offers.length === 1 ? "it is" : "they are"};
+                    otherwise nothing is read from {offers.length === 1 ? "it" : "them"}.
                   </div>
                   {offers.map((question) => (
                     <Ask key={question.key} question={question} onAnswer={answer} busy={busy} />
@@ -408,47 +614,92 @@ export function ImportWizard({
 
               <section>
                 {plan.files.map((file) => (
-                  <FileCard key={file.file} file={file} />
+                  <FileCard key={file.file} file={file} onIgnore={ignore} busy={busy} />
                 ))}
               </section>
 
-              {plan.rejections.length > 0 && (
-                <section className="border-t border-[var(--border)] px-5 py-3.5">
-                  <h3 className="text-[12px] font-semibold">Suggestions the values refused</h3>
+              {/*
+                Where your other files went.
+
+                This list reached the browser from the first day the upload
+                endpoint existed and was rendered nowhere, which is the worst
+                possible handling of it: a merchant who dropped six files and
+                sees four has no way to find out which two are missing or why.
+                It is shown rather than folded, and framed as an outcome
+                rather than an error, because for a real folder it usually is
+                one - the PDF you downloaded first, and the logo.
+              */}
+              {plan.unreadable.length > 0 && (
+                <section className="border-t border-[var(--border)] px-5 py-3">
+                  <h3 className="text-[12.5px] font-semibold">
+                    {plan.unreadable.length === 1
+                      ? "One file we could not read"
+                      : `${plan.unreadable.length} files we could not read`}
+                  </h3>
                   <p className="mt-0.5 text-[11.5px] text-[var(--text-subtle)]">
-                    {plan.consulted} proposed these columns. What is in them contradicted the claim,
-                    so they were thrown out rather than weighed.
+                    Everything else was staged as normal. Nothing below stops the reconciliation.
                   </p>
                   <ul className="mt-1.5 space-y-1">
-                    {plan.rejections.map((line) => (
-                      <li key={line} className="text-[12px] text-[var(--text-muted)]">
+                    {plan.unreadable.map((line) => (
+                      <li key={line} className="text-[12px] leading-relaxed text-[var(--text-muted)]">
                         {line}
                       </li>
                     ))}
                   </ul>
+                </section>
+              )}
+
+              {/*
+                Both of these used to be headed sections in the main flow,
+                which put "Suggestions the values refused" and "What this run
+                cannot check" between a merchant and the button they came for.
+                Neither needs an answer. Both are worth keeping - the first is
+                the verifier visibly working, the second is the honest list of
+                switched-off checks - so both are folded.
+              */}
+              {plan.rejections.length > 0 && (
+                <section className="border-t border-[var(--border)] px-5 py-3">
+                  <Explain
+                    question={
+                      plan.rejections.length === 1
+                        ? `We ignored 1 suggestion that did not add up`
+                        : `We ignored ${plan.rejections.length} suggestions that did not add up`
+                    }
+                  >
+                    <p>
+                      {plan.consulted} suggested these columns. We looked at what is actually in
+                      them, found it contradicted the suggestion, and threw it out rather than
+                      weighing it up.
+                    </p>
+                    <ul className="space-y-1">
+                      {plan.rejections.map((line) => (
+                        <li key={line} className="text-[var(--text-subtle)]">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  </Explain>
                 </section>
               )}
 
               {plan.limitations.length > 0 && (
-                <section className="border-t border-[var(--border)] px-5 py-3.5">
-                  <h3 className="text-[12px] font-semibold">What this run cannot check</h3>
-                  <ul className="mt-1.5 space-y-1">
-                    {plan.limitations.map((line) => (
-                      <li key={line} className="text-[12px] text-[var(--text-muted)]">
-                        {line}
-                      </li>
-                    ))}
-                  </ul>
+                <section className="border-t border-[var(--border)] px-5 py-3">
+                  <Explain question="What we will not be able to check">
+                    <p>
+                      Nothing here stops the reconciliation. These are checks this folder does not
+                      contain the files for, listed before the run rather than after, so a clean
+                      result is read for what it is.
+                    </p>
+                    <ul className="space-y-1">
+                      {plan.limitations.map((line) => (
+                        <li key={line} className="text-[var(--text-subtle)]">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  </Explain>
                 </section>
               )}
-
-              <section className="border-t border-[var(--border)] px-5 py-3 text-[11.5px] text-[var(--text-subtle)]">
-                {Object.entries(MEANS).map(([key, means]) => (
-                  <span key={key} className="mr-3 inline-flex items-center gap-1">
-                    <Badge tone={CERTAINTY[key] ?? "neutral"}>{key}</Badge> {means}
-                  </span>
-                ))}
-              </section>
             </>
           )}
         </div>
@@ -465,16 +716,27 @@ export function ImportWizard({
               />
             </label>
             <div className="flex items-center gap-3">
-              {!plan.ready && (
-                <span className="text-[12px] text-[var(--text-subtle)]">{plan.blockers[0]}</span>
+              {/*
+                What is still in the way, in a count rather than a sentence.
+                The sentence is now either the card at the top of the dialog
+                or the question itself, and repeating it down here made the
+                footer the third place saying the same thing.
+              */}
+              {!plan.ready && !missing && (
+                <span className="text-[12px] text-[var(--text-subtle)]">
+                  {blocking.length === 1
+                    ? "1 question left"
+                    : `${blocking.length} questions left`}
+                </span>
               )}
               <button
                 type="button"
                 className="btn btn-primary"
                 disabled={!plan.ready || busy}
-                onClick={keep}
+                onClick={commit}
+                title={plan.ready ? undefined : plan.blockers[0]}
               >
-                {busy ? "Reconciling…" : "Reconcile these files"}
+                {busy ? "Reconciling\u2026" : "Reconcile these files"}
               </button>
             </div>
           </footer>

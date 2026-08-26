@@ -53,13 +53,23 @@ month is about four megabytes of CSV, so this is generous rather than tight -
 but it is a number, and an upload endpoint without one is a way to fill a
 disk."""
 
-ALLOWED = workbook.READABLE
-"""Taken from the reader rather than restated here.
+ALLOWED = workbook.DISCOVERABLE
+"""What an upload will take in, which is wider than what can be read.
 
-These two lists were separate for a day and that was long enough for them to
-disagree: the reader learned to open workbooks and the upload endpoint went on
-refusing them at the door, so the browser could not send the format the
-merchant was most likely to have.
+Taken from the reader rather than restated here. These two lists were separate
+for a day and that was long enough for them to disagree.
+
+`DISCOVERABLE` rather than `READABLE`, and the difference is a bug this cost.
+A PDF, a legacy `.xls`, a JSON dump and a zip are all things somebody could
+reasonably believe they had just handed their books over in, and each has
+advice attached. Refusing them **at the door** meant a merchant who selected
+their whole folder - statement, report, and the PDF they downloaded first -
+had the entire upload rejected because of the PDF, with every good file in it
+thrown away. Six files in, one error out, nothing staged.
+
+So they come in, and the reader diagnoses them exactly as it does when the
+command line walks a folder: read what can be read, and report the rest with
+the sentence that gets the person unstuck.
 """
 
 STALE_SECONDS = 60 * 60
@@ -99,41 +109,43 @@ def safe_name(raw: str) -> str:
     if suffix not in ALLOWED:
         # Named rather than listed, where there is something useful to say.
         # "Allowed: .csv, .tsv, .txt, .xlsx" is a true sentence that leaves
-        # somebody holding a PDF bank statement no better off, and a PDF bank
-        # statement is the single most common thing to arrive here.
+        # somebody holding a PDF bank statement no better off.
         raise StagingError(f"{name}: {_why_not(suffix)}")
     return name
 
 
-_ADVICE: dict[str, str] = {
-    ".pdf": (
-        "a PDF has no columns to read, only ink in the shape of columns. "
-        "Every major Indian bank offers the same statement as CSV or Excel "
-        "next to the PDF - download that one."
-    ),
-    ".xls": (
-        "this is the Excel format from before 2007. Open it and use Save As "
-        "to write it as .xlsx or .csv, and it will read."
-    ),
-    ".json": (
-        "a JSON dump is not a table yet. Export the same data from your dashboard as CSV or Excel."
-    ),
-    ".zip": "unzip it and hand over the files inside.",
-}
+def _sort(files: list[tuple[str, bytes]]) -> tuple[list[tuple[str, bytes]], list[str]]:
+    """Split an upload into what can be staged and what cannot, with reasons.
+
+    Nothing here refuses the batch. A folder legitimately holds a logo, a
+    `.DS_Store` and last quarter's zip alongside the two files that matter,
+    and an upload endpoint that rejects all of it because of one of them is
+    an endpoint a merchant cannot use their own folder with.
+    """
+    kept: list[tuple[str, bytes]] = []
+    skipped: list[str] = []
+    for raw, body in files:
+        try:
+            kept.append((safe_name(raw), body))
+        except StagingError as refused:
+            skipped.append(str(refused))
+    return kept, skipped
 
 
 def _why_not(suffix: str) -> str:
-    """What to do about a file this reader does not take.
+    """What to do about a file this upload cannot take at all.
 
-    Advice where advice exists, and the plain list where it does not. The
-    refusal is not in question either way - the difference is whether the
-    person reading it knows what to do next.
+    Short, because almost nothing reaches it any more. The formats somebody
+    could plausibly mistake for their books - PDF, legacy `.xls`, a JSON dump,
+    a zip - are taken in and diagnosed by the reader, which is the one place
+    that decides those things and the one place whose advice is tested.
+
+    What is left is a logo, a `.DS_Store`, a spreadsheet macro: files nobody
+    expected us to read. They are named and set aside, and the folder they
+    came in is staged regardless.
     """
-    known = _ADVICE.get(suffix)
-    allowed = ", ".join(sorted(ALLOWED))
-    if known:
-        return f"{known} (this reader takes {allowed})"
-    return f"not a file this reader takes. It takes {allowed}"
+    allowed = ", ".join(sorted(workbook.READABLE))
+    return f"not read - {suffix or 'that'} is not a table. This takes {allowed}."
 
 
 @dataclass
@@ -145,6 +157,15 @@ class Staged:
     importer: Importer
     opened: float
     decisions: dict[str, Decisions] = field(default_factory=dict)
+    skipped: list[str] = field(default_factory=list)
+    """Files that never reached disk, and why.
+
+    A folder holds a logo, a `.DS_Store`, last quarter's zip. None of them is
+    an error and none of them can be staged, so they are set aside here and
+    reported beside the files that were read - the same way the reader reports
+    a PDF it cannot open. Silence would be worse: a merchant who selected
+    eight files and sees six has a right to know which two, and why.
+    """
 
     def answer(self, key: str, value: str) -> None:
         """Record one answer, addressed the way the question was: `file:subject`.
@@ -164,10 +185,16 @@ class Staged:
         current = self.decisions.get(file, Decisions())
         if subject == RECORD_SUBJECT:
             if value == ABSENT:
-                # "Do not use this file" is answered by having no answer. The
-                # file goes back to being one nothing could place, which is
-                # exactly the state the question was offered from.
-                self.decisions.pop(file, None)
+                # "Do not use this file", recorded as a decision rather than
+                # as the absence of one. Dropping the answer was right while
+                # this could only be said about a file nothing had placed -
+                # it went back to being unplaced, which is where it started.
+                #
+                # It is now offered on placed files too, and there dropping
+                # the answer means the placement rules run again and place it
+                # again. The merchant says "that is not my order book" and
+                # watches nothing happen.
+                self.decisions[file] = current.ignoring()
                 return
             try:
                 self.decisions[file] = current.with_kind(RecordKind(value))
@@ -215,23 +242,46 @@ class StagingArea:
         chosen = resolve(self._provider)
         return Importer(None if isinstance(chosen, NullProvider) else chosen)
 
-    def open(self, files: list[tuple[str, bytes]]) -> Staged:
-        """Write an upload to disk and read it. Raises on anything refused."""
+    def _accept(
+        self, files: list[tuple[str, bytes]], *, already: int = 0, bytes_already: int = 0
+    ) -> tuple[list[tuple[str, bytes]], list[str]]:
+        """Check an upload and return what to stage, plus what was skipped.
+
+        Shared by `open` and `add` so that a second batch of files is held to
+        the same limits as the first. Counting only the new batch would let
+        somebody past both caps by uploading twice, which is not an attack so
+        much as what a person does when their first attempt was incomplete.
+
+        The caps still raise, because they are about the request as a whole.
+        A file of the wrong sort does not: it is set aside with its reason, and
+        the rest of the folder is staged.
+        """
         if not files:
             raise StagingError("no files were uploaded")
-        if len(files) > MAX_FILES:
-            raise StagingError(f"{len(files)} files is more than this takes at once ({MAX_FILES})")
+        if len(files) + already > MAX_FILES:
+            raise StagingError(
+                f"{len(files) + already} files is more than this takes at once ({MAX_FILES})"
+            )
 
-        total = sum(len(body) for _, body in files)
+        total = sum(len(body) for _, body in files) + bytes_already
         if total > MAX_BYTES:
             raise StagingError(
                 f"{total / 1_048_576:.1f} MB is over the {MAX_BYTES // 1_048_576} MB limit"
             )
 
-        named = [(safe_name(name), body) for name, body in files]
+        named, skipped = _sort(files)
+        if not named:
+            # Every file was of a sort this cannot take. Now it is worth
+            # refusing, because there is nothing to stage - and the reasons
+            # are the useful part of the message.
+            raise StagingError("; ".join(skipped) or "nothing in that upload can be read")
         if len({name for name, _ in named}) != len(named):
             raise StagingError("two of those files have the same name")
+        return named, skipped
 
+    def open(self, files: list[tuple[str, bytes]]) -> Staged:
+        """Write an upload to disk and read it. Raises on anything refused."""
+        named, skipped = self._accept(files)
         self.sweep()
         staged_id = secrets.token_hex(8)
         directory = self._root / staged_id
@@ -244,6 +294,7 @@ class StagingArea:
             root=directory,
             importer=self._importer(),
             opened=time.monotonic(),
+            skipped=skipped,
         )
         try:
             plan = staged.plan()
@@ -262,6 +313,48 @@ class StagingArea:
             raise StagingError(why or "none of those files is a table this reader can read")
 
         self._open[staged_id] = staged
+        return staged
+
+    def add(self, staged_id: str, files: list[tuple[str, bytes]]) -> Staged:
+        """Put more files into an upload that is already open.
+
+        The fix for a quiet and expensive bug. Every upload used to create a
+        fresh staging area, so a merchant who picked their settlement report,
+        looked at the result, and then picked their bank statement did not end
+        up with two files - they ended up with the bank statement and a plan
+        that said no settlement report was found. Nothing anywhere said the
+        first file had been dropped.
+
+        Answers already given are kept. They are keyed by file name, and the
+        files they refer to have not moved, so re-planning after new files
+        arrive settles the new ones and leaves the old decisions standing.
+        """
+        staged = self.get(staged_id)
+        existing = {path.name for path in staged.root.iterdir() if path.is_file()}
+        named, skipped = self._accept(
+            files,
+            already=len(existing),
+            bytes_already=sum(path.stat().st_size for path in staged.root.iterdir()),
+        )
+
+        clashes = sorted(name for name, _ in named if name in existing)
+        if clashes:
+            raise StagingError(
+                f"{', '.join(clashes)} is already in this upload. "
+                "Rename it, or start again if you meant to replace it."
+                if len(clashes) == 1
+                else f"{', '.join(clashes)} are already in this upload."
+            )
+
+        for name, body in named:
+            (staged.root / name).write_bytes(body)
+
+        # The importer caches what it has read, keyed on the folder it read.
+        # A new one is the honest way to make it look again - re-reading three
+        # CSVs costs milliseconds, and a stale cache here would show a plan
+        # that does not mention the file somebody just added.
+        staged.importer = self._importer()
+        staged.skipped = [*staged.skipped, *skipped]
         return staged
 
     def get(self, staged_id: str) -> Staged:

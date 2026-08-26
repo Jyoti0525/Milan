@@ -271,10 +271,11 @@ class TestAFilenameIsDataAndNotAPath:
         assert "\\" not in safe_name(hostile)
         assert not safe_name(hostile).startswith("..")
 
-    @pytest.mark.parametrize("refused", ["", "   ", ".hidden.csv", "run.sh", "statement.pdf"])
+    @pytest.mark.parametrize("refused", ["", "   ", ".hidden.csv", "run.sh", "logo.png"])
     def test_a_name_that_is_not_usable_is_refused_rather_than_corrected(self, refused: str) -> None:
         """Silently renaming a merchant's file is how the wrong file gets
-        reconciled."""
+        reconciled. Refusing the *name* is not refusing the upload - see
+        `TestOneBadFileDoesNotRefuseTheFolderItArrivedIn`."""
         with pytest.raises(StagingError):
             safe_name(refused)
 
@@ -285,21 +286,17 @@ class TestAFilenameIsDataAndNotAPath:
         the browser could not accept the most likely file in the folder."""
         assert safe_name(taken) == taken
 
-    @pytest.mark.parametrize(
-        ("refused", "phrase"),
-        [
-            ("statement.pdf", "no columns to read"),
-            ("statement.xls", "before 2007"),
-            ("export.json", "not a table yet"),
-            ("books.zip", "unzip it"),
-        ],
-    )
-    def test_a_refusal_says_what_to_do_about_it(self, refused: str, phrase: str) -> None:
-        """A PDF bank statement is the single most likely thing to arrive here
-        and be unreadable, and "unsupported format" leaves that person stuck
-        beside a download page that also offers CSV."""
-        with pytest.raises(StagingError, match=phrase):
-            safe_name(refused)
+    @pytest.mark.parametrize("taken", ["statement.pdf", "old.xls", "dump.json", "books.zip"])
+    def test_a_file_we_have_advice_about_comes_in_rather_than_bouncing(self, taken: str) -> None:
+        """These four are what somebody wrongly believes their books are, and
+        each has a sentence attached telling them what to do instead. That
+        sentence lives in the reader, which is where the folder path gets it
+        too - so they are staged and diagnosed rather than turned away at the
+        door on a filename.
+
+        Turning them away here is what made one PDF in a folder reject the
+        whole upload."""
+        assert safe_name(taken) == taken
 
     def test_an_upload_of_too_many_files_is_refused(self, client: TestClient) -> None:
         response = client.post(
@@ -336,3 +333,303 @@ class TestTheUploadPathIsNotAWayIntoStoredRuns:
         assert client.post("/api/runs", json={}).status_code == 405
         assert client.post("/api/runs/adversarial/42", json={}).status_code == 405
         assert client.delete("/api/imports/anything").status_code == 405
+
+
+class TestFilesCanJoinAnUploadInsteadOfReplacingIt:
+    """The bug this closes was quiet and expensive.
+
+    Every upload used to create a fresh staging area. A merchant who picked
+    their settlement report, looked at what came back, and then picked their
+    bank statement did not end up with two files - they ended up with the
+    statement alone and a plan saying no settlement report was found. The
+    first file was gone and nothing anywhere said so.
+    """
+
+    def test_a_second_file_joins_the_first(self, client: TestClient, dataset: Dataset) -> None:
+        first = upload(client, settlement__csv=settlement_csv(dataset))
+        response = client.post(
+            f"/api/uploads/{first['id']}/files",
+            files=[("files", ("bank.csv", bank_csv(dataset), "text/csv"))],
+        )
+        assert response.status_code == 200, response.text
+        plan = response.json()
+        assert {file["file"] for file in plan["files"]} == {"settlement.csv", "bank.csv"}
+
+    def test_the_upload_keeps_its_identity(self, client: TestClient, dataset: Dataset) -> None:
+        """A new id would orphan the staging directory the first file is in."""
+        first = upload(client, settlement__csv=settlement_csv(dataset))
+        response = client.post(
+            f"/api/uploads/{first['id']}/files",
+            files=[("files", ("bank.csv", bank_csv(dataset), "text/csv"))],
+        )
+        assert response.json()["id"] == first["id"]
+
+    def test_adding_the_bank_statement_makes_the_plan_ready(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """A settlement report on its own cannot be reconciled against
+        anything, and the blocker says so. Adding the statement clears it."""
+        first = upload(client, settlement__csv=settlement_csv(dataset))
+        assert first["ready"] is False
+        assert any("bank statement" in line for line in first["blockers"])
+
+        response = client.post(
+            f"/api/uploads/{first['id']}/files",
+            files=[("files", ("bank.csv", bank_csv(dataset), "text/csv"))],
+        )
+        assert response.json()["ready"] is True
+
+    def test_an_answer_already_given_survives_the_addition(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """Answers are keyed by file name and the files have not moved. Losing
+        them would mean every added file cost the merchant their earlier
+        decisions, which is its own reason not to add one."""
+        first = upload(
+            client,
+            settlement__csv=settlement_csv(dataset),
+            bank__csv=bank_csv(dataset, two_dates=True),
+        )
+        asked = next(q for q in first["questions"] if q["subject"] == "value_date")
+        answered = client.post(
+            f"/api/uploads/{first['id']}/answers",
+            json={"answers": {asked["key"]: "Value Date"}},
+        )
+        assert answered.status_code == 200, answered.text
+
+        added = client.post(
+            f"/api/uploads/{first['id']}/files",
+            files=[
+                ("files", ("payments.csv", b"payment_id,order_id\npay_1,order_1\n", "text/csv"))
+            ],
+        )
+        assert added.status_code == 200, added.text
+        bank = next(f for f in added.json()["files"] if f["file"] == "bank.csv")
+        chosen = next(r for r in bank["resolutions"] if r["field"] == "value_date")
+        assert chosen["column"] == "Value Date"
+        assert chosen["certainty"] == "answered"
+
+    def test_a_duplicate_name_is_refused_rather_than_overwriting(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """Silently replacing a merchant's file is how the wrong month gets
+        reconciled."""
+        first = upload(client, settlement__csv=settlement_csv(dataset))
+        response = client.post(
+            f"/api/uploads/{first['id']}/files",
+            files=[("files", ("settlement.csv", settlement_csv(dataset), "text/csv"))],
+        )
+        assert response.status_code == 422
+        assert "already in this upload" in response.json()["detail"]
+
+    def test_the_file_cap_counts_what_is_already_there(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """Counting only the new batch would let two uploads past a cap that
+        one cannot pass."""
+        first = upload(client, settlement__csv=settlement_csv(dataset))
+        response = client.post(
+            f"/api/uploads/{first['id']}/files",
+            files=[
+                ("files", (f"extra{n}.csv", b"a,b\n1,2\n", "text/csv")) for n in range(MAX_FILES)
+            ],
+        )
+        assert response.status_code == 422
+        assert "more than this takes" in response.json()["detail"]
+
+    def test_adding_to_an_upload_that_expired_says_so(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/uploads/deadbeefdeadbeef/files",
+            files=[("files", ("bank.csv", b"a,b\n1,2\n", "text/csv"))],
+        )
+        assert response.status_code == 404
+
+
+class TestOneBadFileDoesNotRefuseTheFolderItArrivedIn:
+    """The bug a merchant hits on their first real attempt.
+
+    They select their whole folder - statement, settlement report, and the PDF
+    they downloaded before realising we wanted a table. Every file was refused
+    because of the PDF: six files in, one error out, nothing staged, and no
+    way to tell which file caused it without trying them one at a time.
+
+    A folder legitimately holds things we cannot read. Reading what we can and
+    saying what we could not is the only behaviour that survives contact with
+    somebody's actual downloads directory.
+    """
+
+    def test_a_pdf_in_the_folder_does_not_stop_the_rest(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        response = client.post(
+            "/api/uploads",
+            files=[
+                ("files", ("settlement.csv", settlement_csv(dataset), "text/csv")),
+                ("files", ("bank.csv", bank_csv(dataset), "text/csv")),
+                ("files", ("statement.pdf", b"%PDF-1.7\ntrailer\n", "application/pdf")),
+            ],
+        )
+        assert response.status_code == 200, response.text
+        plan = response.json()
+        assert {file["file"] for file in plan["files"]} == {"settlement.csv", "bank.csv"}
+        assert plan["ready"] is True
+
+    def test_the_pdf_is_reported_with_advice_rather_than_dropped(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """Silence is the worse failure. A merchant who handed over their bank
+        statement as a PDF and sees a run covering a month with no bank side
+        needs to be told which file we could not use."""
+        response = client.post(
+            "/api/uploads",
+            files=[
+                ("files", ("settlement.csv", settlement_csv(dataset), "text/csv")),
+                ("files", ("bank.csv", bank_csv(dataset), "text/csv")),
+                ("files", ("statement.pdf", b"%PDF-1.7\ntrailer\n", "application/pdf")),
+            ],
+        )
+        unreadable = " ".join(response.json()["unreadable"])
+        assert "statement.pdf" in unreadable
+        assert "no columns to read" in unreadable
+
+    def test_a_file_of_a_sort_we_cannot_advise_on_is_set_aside_quietly(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """A logo in the folder is not an error and not advice-worthy. It is
+        named in the not-read list and costs nothing else."""
+        response = client.post(
+            "/api/uploads",
+            files=[
+                ("files", ("settlement.csv", settlement_csv(dataset), "text/csv")),
+                ("files", ("bank.csv", bank_csv(dataset), "text/csv")),
+                ("files", ("logo.png", b"\x89PNG\r\n\x1a\n", "image/png")),
+            ],
+        )
+        assert response.status_code == 200, response.text
+        plan = response.json()
+        assert plan["ready"] is True
+        assert any("logo.png" in line for line in plan["unreadable"])
+
+    def test_an_upload_of_nothing_usable_is_still_refused(self, client: TestClient) -> None:
+        """Reading none of it is different from reading most of it. There is
+        nothing to stage, and holding an empty plan helps nobody."""
+        response = client.post(
+            "/api/uploads",
+            files=[("files", ("statement.pdf", b"%PDF-1.7\ntrailer\n", "application/pdf"))],
+        )
+        assert response.status_code == 422
+        assert "no columns to read" in response.json()["detail"]
+
+    def test_a_skipped_file_survives_a_later_answer(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """The plan is rebuilt from scratch on every answer. A skipped file
+        recorded only at upload time would vanish from the list the moment
+        somebody answered their first question."""
+        response = client.post(
+            "/api/uploads",
+            files=[
+                ("files", ("settlement.csv", settlement_csv(dataset), "text/csv")),
+                ("files", ("bank.csv", bank_csv(dataset, two_dates=True), "text/csv")),
+                ("files", ("statement.pdf", b"%PDF-1.7\ntrailer\n", "application/pdf")),
+            ],
+        )
+        plan = response.json()
+        asked = next(q for q in plan["questions"] if q["subject"] == "value_date")
+        answered = client.post(
+            f"/api/uploads/{plan['id']}/answers",
+            json={"answers": {asked["key"]: "Value Date"}},
+        )
+        assert any("statement.pdf" in line for line in answered.json()["unreadable"])
+
+
+class TestSayingAFileIsNotWhatWeThink:
+    """The escape hatch in the other direction, over HTTP.
+
+    A purchase ledger placed as an orders export is the case: a PO number, a
+    value and a raised-on date are exactly what an order book needs, nothing
+    in the file rules it out, and only the person who owns it knows. Before
+    this, the wizard offered no way to say so - a file the rules had placed
+    stayed placed.
+    """
+
+    LEDGER = b"PO Number,Vendor,Raised On,Value\nPO-0001,Acme,04-Jul-2026,1200.00\n"
+
+    def test_a_placed_file_can_be_left_out(self, client: TestClient, dataset: Dataset) -> None:
+        plan = upload(
+            client,
+            settlement__csv=settlement_csv(dataset),
+            bank__csv=bank_csv(dataset),
+            ledger__csv=self.LEDGER,
+        )
+        answered = client.post(
+            f"/api/uploads/{plan['id']}/answers",
+            json={"answers": {"ledger.csv:record": "-"}},
+        )
+        assert answered.status_code == 200, answered.text
+        ledger = next(f for f in answered.json()["files"] if f["file"] == "ledger.csv")
+        assert ledger["kind"] is None
+
+    def test_the_decision_survives_the_next_replan(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """The plan is rebuilt from scratch after every answer, on the same
+        column names that placed the file the first time. Recording this as
+        the absence of a decision meant the rules ran again and put the file
+        straight back - the merchant says "not that" and watches nothing
+        happen."""
+        plan = upload(
+            client,
+            settlement__csv=settlement_csv(dataset),
+            bank__csv=bank_csv(dataset, two_dates=True),
+            ledger__csv=self.LEDGER,
+        )
+        client.post(
+            f"/api/uploads/{plan['id']}/answers",
+            json={"answers": {"ledger.csv:record": "-"}},
+        )
+        asked = next(q for q in plan["questions"] if q["subject"] == "value_date")
+        after = client.post(
+            f"/api/uploads/{plan['id']}/answers",
+            json={"answers": {asked["key"]: "Value Date"}},
+        )
+        ledger = next(f for f in after.json()["files"] if f["file"] == "ledger.csv")
+        assert ledger["kind"] is None
+
+    def test_it_says_you_left_it_out_rather_than_that_we_did_not_recognise_it(
+        self, client: TestClient, dataset: Dataset
+    ) -> None:
+        """Telling somebody we did not recognise a file they have just told us
+        to leave out reads as a system that forgot."""
+        plan = upload(
+            client,
+            settlement__csv=settlement_csv(dataset),
+            bank__csv=bank_csv(dataset),
+            ledger__csv=self.LEDGER,
+        )
+        answered = client.post(
+            f"/api/uploads/{plan['id']}/answers",
+            json={"answers": {"ledger.csv:record": "-"}},
+        ).json()
+        offer = next(q for q in answered["questions"] if q["file"] == "ledger.csv")
+        assert "You left" in offer["asks"]
+        assert offer["blocking"] is False
+
+    def test_it_can_be_taken_back(self, client: TestClient, dataset: Dataset) -> None:
+        """Somebody who leaves out the wrong file has to be able to undo it."""
+        plan = upload(
+            client,
+            settlement__csv=settlement_csv(dataset),
+            bank__csv=bank_csv(dataset),
+            ledger__csv=self.LEDGER,
+        )
+        client.post(
+            f"/api/uploads/{plan['id']}/answers",
+            json={"answers": {"ledger.csv:record": "-"}},
+        )
+        back = client.post(
+            f"/api/uploads/{plan['id']}/answers",
+            json={"answers": {"ledger.csv:record": "orders"}},
+        ).json()
+        ledger = next(f for f in back["files"] if f["file"] == "ledger.csv")
+        assert ledger["kind"] == "orders"

@@ -412,6 +412,21 @@ export function uploadFiles(files: File[]): Promise<Plan> {
   return send<Plan>("/api/uploads", { method: "POST", body });
 }
 
+/**
+ * More files for an upload that is already open, keeping the answers given.
+ *
+ * The distinction from `uploadFiles` is the whole point. Posting to
+ * `/api/uploads` again opens a *new* staging area, so picking a settlement
+ * report and then picking a bank statement produced a plan holding the
+ * statement alone — the report silently gone, and an error underneath saying
+ * there was nothing to reconcile against.
+ */
+export function addFiles(id: string, files: File[]): Promise<Plan> {
+  const body = new FormData();
+  for (const file of files) body.append("files", file, file.name);
+  return send<Plan>(`/api/uploads/${id}/files`, { method: "POST", body });
+}
+
 export const answerImport = (id: string, answers: Record<string, string>) =>
   send<Plan>(`/api/uploads/${id}/answers`, {
     method: "POST",

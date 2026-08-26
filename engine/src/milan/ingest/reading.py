@@ -59,7 +59,15 @@ SAMPLE_ROWS = 8
 
 
 class UnreadableFileError(RuntimeError):
-    """The file is not a table this reader can find a header in."""
+    """The file is not a table this reader can find a header in.
+
+    The message never names the file. Every caller already knows which file it
+    asked about and prefixes it - `Unreadable` carries the path, the CLI has a
+    File column, the wizard has a heading - so a name in here came out twice:
+    `August Statement.pdf: August Statement.pdf: this is a PDF...`
+
+    So these read as the second half of a sentence whose subject is the file.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +126,7 @@ def _decode(path: Path) -> tuple[str, str]:
             return path.read_text(encoding=encoding), encoding
         except UnicodeDecodeError:
             continue
-    raise UnreadableFileError(f"{path.name} is not text in any encoding this reader knows")
+    raise UnreadableFileError("is not text in any encoding this reader knows")
 
 
 def _delimiter(sample: str) -> str:
@@ -279,7 +287,7 @@ def read_text(path: Path) -> SourceFile:
     """Read one delimited text file into rows keyed by column name."""
     text, encoding = _decode(path)
     if not text.strip():
-        raise UnreadableFileError(f"{path.name} is empty")
+        raise UnreadableFileError("is empty")
 
     delimiter = _delimiter(text[:4096])
     # Parsed from a stream rather than from `splitlines`, so that a quoted
@@ -311,9 +319,7 @@ def read_workbook(path: Path) -> tuple[SourceFile, ...]:
         except UnreadableFileError as failure:
             failures.append(f"{title}: {failure}")
     if not found:
-        raise UnreadableFileError(
-            f"{path.name} has no sheet that looks like a table ({'; '.join(failures)})"
-        )
+        raise UnreadableFileError(f"has no sheet that looks like a table ({'; '.join(failures)})")
     return tuple(found)
 
 
@@ -327,7 +333,7 @@ def read_all(path: Path) -> tuple[SourceFile, ...]:
     """
     reason = workbook.diagnose(path)
     if reason:
-        raise UnreadableFileError(f"{path.name}: {reason}")
+        raise UnreadableFileError(reason)
     if path.suffix.lower() in workbook.WORKBOOK_SUFFIXES:
         try:
             return read_workbook(path)

@@ -969,3 +969,58 @@ If a decision is not here, it is not settled.
      than asserted. It does not earn the top of the sidebar once there is
      anything real in it. A `<details>` rather than a flag, so it is one click
      back and nothing is deleted.
+213. **One bad file may not refuse the folder it arrived in.** A merchant
+     selects their whole folder - statement, settlement report, and the PDF
+     they downloaded before realising we wanted a table - and the entire
+     upload was rejected because of the PDF. Six files in, one error out,
+     nothing staged, and no way to find the culprit except by trying them one
+     at a time. The upload now takes in everything it has advice about, stages
+     what it can read, and reports the rest. It refuses only when *nothing* is
+     readable, because then there is genuinely nothing to hold.
+214. **Files join an upload instead of replacing it.** Every upload opened a
+     fresh staging area, so picking a settlement report, looking at the
+     result, and then picking a bank statement produced a plan holding the
+     statement alone - the report silently gone, with an error underneath
+     saying there was nothing to reconcile against. `POST
+     /api/uploads/{id}/files` adds to an upload already open, and the answers
+     already given survive because they are keyed by file name.
+215. **A folder is what a merchant has, so a folder is what the dialog takes.**
+     `webkitdirectory` for the picker, and `webkitGetAsEntry` recursion for a
+     drop. Both filter: a real folder holds a `.DS_Store`, a logo and Excel's
+     lock files, and sending those to be refused one at a time would turn a
+     working folder into a screen of errors about files nobody meant to hand
+     over. The four formats we have advice about are sent deliberately.
+216. **The not-read list was reaching the browser and rendered nowhere.** The
+     worst possible handling: a merchant who dropped six files and sees four
+     has no way to learn which two are missing or why. It is now shown rather
+     than folded, and framed as an outcome rather than an error, because for a
+     real folder it usually is one.
+217. **The screen says what things are; the engine keeps its own names.**
+     `settlement_rows`, `value_date`, `utr` are correct inside the engine and
+     are somebody else's vocabulary in a dialog a merchant opened to hand over
+     a bank statement. `lib/words.ts` translates for display and keeps the
+     engine's name in a `title` - a translation table is reversible and a
+     rename is not.
+218. **A question is phrased as a question.** The engine stated its own
+     position - "no header is named like credit", "Date, Value Dt could all be
+     value_date" - which is accurate and is not what the person clicking is
+     being asked. They are always being asked the same thing: which column in
+     this file holds this. The engine's sentence stays underneath as the
+     reason, and its wording was rewritten to be about the merchant's file
+     rather than about our schema.
+219. **`42% of the file's columns accounted for` is not a grade.** It sounds
+     like one and it means "your statement has a balance column and a branch
+     code and we did not need them". Gone from the surface; the column detail
+     is folded behind "Which column we read as what".
+220. **A reason never names its own file.** `Unreadable` carries the path, the
+     CLI has a File column and the wizard has a heading, so every one of them
+     prefixed a message that already began with the name:
+     `August Statement.pdf: August Statement.pdf: this is a PDF...`
+221. **A merchant can say a file is not what we think it is.** Saying what an
+     unrecognised file *is* has existed since the wizard did; the other
+     direction had not, and a purchase ledger placed as an orders export is
+     exactly that case - a PO number, a value and a raised-on date are what an
+     order book needs, nothing in the file rules it out, and only the person
+     who owns it knows. Recorded as a decision rather than as the absence of
+     one, because the column names that placed it have not changed and would
+     place it again on the next re-plan.

@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"utr\": \"Chq No\", \"debit\": \"Debit\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.3283804999991844,
+  "prompt_tokens": 557,
+  "completion_tokens": 19
+}

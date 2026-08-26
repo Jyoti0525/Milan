@@ -456,3 +456,40 @@ class TestOneColumnCannotBeTwoFieldsWhoeverSaysSo:
         mapping = importer.plan(root, decisions).of(RecordKind.SETTLEMENT_ROWS)
         assert mapping is not None
         assert mapping.columns.get("credit") == "in_amt"
+
+
+class TestAMerchantCanSayAFileIsNotTheirs:
+    """The escape hatch in the other direction.
+
+    Saying what an unrecognised file *is* has existed since the wizard did.
+    Saying that a recognised file is **not** what we think has not, and the
+    gap has a concrete shape: a purchase ledger four columns wide, which a
+    model places as an orders export because a PO number, a value and a
+    raised-on date are exactly what an order book needs. Nothing in the file
+    rules it out. Only the person who owns it knows.
+    """
+
+    def test_ignoring_a_file_unplaces_it(self) -> None:
+        decisions = Decisions().ignoring()
+        assert decisions.ignored is True
+        assert decisions.kind is None
+
+    def test_it_outranks_a_kind_already_chosen(self) -> None:
+        """Otherwise the file is placed, ignored, and placed again on the next
+        plan, because the column names have not changed."""
+        decisions = Decisions().with_kind(RecordKind.ORDERS).ignoring()
+        assert decisions.ignored is True
+        assert decisions.kind is None
+
+    def test_choosing_a_kind_afterwards_takes_it_back(self) -> None:
+        """A person who ignores the wrong file has to be able to undo it."""
+        decisions = Decisions().ignoring().with_kind(RecordKind.ORDERS)
+        assert decisions.ignored is False
+        assert decisions.kind is RecordKind.ORDERS
+
+    def test_column_answers_survive_being_ignored(self) -> None:
+        """Ignoring is about the file, not about the work already done on it.
+        Somebody who ignores a file and changes their mind should not have to
+        answer its columns again."""
+        decisions = Decisions().with_answer("amount", "Value", is_format=False).ignoring()
+        assert decisions.columns == {"amount": "Value"}

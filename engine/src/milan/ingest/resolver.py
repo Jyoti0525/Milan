@@ -110,6 +110,20 @@ class Decisions:
     """Answers already given about one file, and where each came from."""
 
     kind: RecordKind | None = None
+    ignored: bool = False
+    """Whether the merchant has said this file is not to be used.
+
+    Distinct from `kind is None`, which means nothing has been decided yet.
+    This is a decision, and it has to outrank the placement rules - otherwise
+    saying "that is not an order book" changes nothing, because the column
+    names that placed the file are still there and still say the same thing.
+
+    The case that made this necessary: a purchase ledger, four columns wide,
+    which a model placed as an orders export because a PO number, a value and
+    a raised-on date are exactly what an order book needs. Nothing about the
+    file rules it out. Only the person who owns it knows.
+    """
+
     columns: dict[str, str] = dataclass_field(default_factory=dict)
     patterns: dict[str, str] = dataclass_field(default_factory=dict)
     prior: dict[str, tuple[str, str]] = dataclass_field(default_factory=dict)
@@ -144,7 +158,11 @@ class Decisions:
         """
         if is_format:
             return Decisions(
-                self.kind, dict(self.columns), {**self.patterns, subject: value}, dict(self.prior)
+                self.kind,
+                self.ignored,
+                dict(self.columns),
+                {**self.patterns, subject: value},
+                dict(self.prior),
             )
 
         taken = value not in {ABSENT, DERIVE}
@@ -159,10 +177,16 @@ class Decisions:
             for field, entry in self.prior.items()
             if field != subject and field not in displaced
         }
-        return Decisions(self.kind, {**columns, subject: value}, dict(self.patterns), remaining)
+        return Decisions(
+            self.kind, self.ignored, {**columns, subject: value}, dict(self.patterns), remaining
+        )
 
     def with_kind(self, kind: RecordKind) -> Decisions:
-        return Decisions(kind, dict(self.columns), dict(self.patterns), dict(self.prior))
+        return Decisions(kind, False, dict(self.columns), dict(self.patterns), dict(self.prior))
+
+    def ignoring(self) -> Decisions:
+        """This file is not to be read, whatever its columns suggest."""
+        return Decisions(None, True, dict(self.columns), dict(self.patterns), dict(self.prior))
 
 
 # ------------------------------------------------------------ record kinds
@@ -332,7 +356,9 @@ def _unplaced(best: RecordKind, required: float, why: str) -> tuple[RecordKind |
     return None, why, False
 
 
-def _placeable(source: SourceFile, profiles: dict[str, ColumnProfile]) -> tuple[Question, ...]:
+def _placeable(
+    source: SourceFile, profiles: dict[str, ColumnProfile], *, ignored: bool = False
+) -> tuple[Question, ...]:
     """Offer to be told what an unplaced file is, when it could be anything.
 
     The escape hatch, made visible. A merchant knows which of their exports is
@@ -355,8 +381,15 @@ def _placeable(source: SourceFile, profiles: dict[str, ColumnProfile]) -> tuple[
             file=source.name,
             subject="record",
             asks=(
-                f"{source.name} was not recognised. If you know what it is, say so - "
-                f"otherwise it is left alone."
+                # Two different situations, and telling somebody we did not
+                # recognise a file they have just told us to leave out reads
+                # as a system that forgot.
+                f"You left {source.name} out. Say what it is if you want it read."
+                if ignored
+                else (
+                    f"{source.name} was not recognised. If you know what it is, "
+                    f"say so - otherwise it is left alone."
+                )
             ),
             choices=(
                 *(
@@ -521,8 +554,9 @@ def _resolve_field(
             _ask(
                 target,
                 (column, proposed),
-                f"{file}: the header name points at {column!r}, "
-                f"but {proposer_name} proposed {proposed!r} for {target.name}.",
+                f"{file}: the column named {column!r} looks right, but "
+                f"{proposer_name} thinks {proposed!r} is the one. They cannot "
+                f"both be, and picking wrong changes the totals.",
                 file,
                 suggested=column,
             ),
@@ -562,7 +596,9 @@ def _resolve_field(
             _ask(
                 target,
                 named,
-                f"{file}: {', '.join(named)} could all be {target.name}.",
+                f"{file}: {len(named)} columns could be it - "
+                f"{', '.join(repr(name) for name in named)}. Their names are "
+                f"equally good and their contents do not settle it.",
                 file,
             ),
             rejection,
@@ -608,8 +644,9 @@ def _resolve_field(
             _ask(
                 target,
                 (proposed, *(name for name in candidates if name != proposed)),
-                f"{file}: no header is named like {target.name}. "
-                f"{proposer_name} proposed {proposed!r}.",
+                f"{file}: no column here is named anything we recognise for "
+                f"this. {proposer_name} suggests {proposed!r}, and nothing in "
+                f"that column contradicts it.",
                 file,
                 suggested=proposed,
             ),
@@ -627,7 +664,8 @@ def _resolve_field(
             _ask(
                 target,
                 candidates,
-                f"{file}: nothing here is named like {target.name} ({target.describes}).",
+                f"{file}: no column here is named anything we recognise for "
+                f"this. It holds {target.describes}.",
                 file,
             ),
             rejection,
@@ -659,8 +697,9 @@ def _date_question(
         file=file,
         subject=f"{target.name}.format",
         asks=(
-            f"{file}: {profile.name} could be read more than one way. "
-            f"{example!r} is a different day under each."
+            f"{file}: dates in {profile.name!r} are ambiguous. "
+            f"{example!r} is a different day depending on which way round it "
+            f"is read, and every payout would move with it."
         ),
         choices=tuple(
             Choice(value=pattern, label=_label(pattern, example)) for pattern in patterns
@@ -827,6 +866,15 @@ class Importer:
 
         kind: RecordKind | None
         weak = False
+        if decisions.ignored:
+            # Said outright, so nothing here re-argues it. The column names
+            # that placed this file have not changed and would place it again.
+            return FileMapping(
+                source=source,
+                kind=None,
+                kind_reason="you said this file is not one of yours to read",
+                questions=_placeable(source, profiles, ignored=True),
+            )
         if decisions.kind is not None:
             # A person saying what a file is settles it. Their answer is never
             # weak evidence, whatever the column names scored.

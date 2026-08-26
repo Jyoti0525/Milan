@@ -142,6 +142,17 @@ def diagnose(path: Path) -> str:
             )
         return reason
 
+    stripped = head.lstrip()
+    if stripped[:1] in (b"{", b"["):
+        # A JSON dump reaches the header finder as one very long line and is
+        # refused there as "no header row found", which is true and tells
+        # nobody anything. It is a table's worth of data in a shape that is
+        # not a table yet, and the fix is an export rather than a parser.
+        return (
+            "this is a JSON dump rather than a table. Export the same data "
+            "from your dashboard as CSV or Excel and it will read."
+        )
+
     lowered = head[:512].lower().lstrip()
     if any(lowered.startswith(marker) for marker in _HTML_MARKERS):
         return (
@@ -245,11 +256,9 @@ def sheets(path: Path) -> tuple[tuple[str, list[list[str]]], ...]:
         # and is far better than importing the literal string `=D2*0.02`.
         book = load_workbook(path, read_only=True, data_only=True)
     except InvalidFileException as failure:
-        raise FormatError(
-            f"{path.name} is not a workbook openpyxl can read: {failure}"
-        ) from failure
+        raise FormatError(f"is not a workbook openpyxl can read: {failure}") from failure
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as failure:
-        raise FormatError(f"{path.name} could not be opened as a workbook: {failure}") from failure
+        raise FormatError(f"could not be opened as a workbook: {failure}") from failure
 
     found: list[tuple[str, list[list[str]]]] = []
     try:
@@ -267,7 +276,7 @@ def sheets(path: Path) -> tuple[tuple[str, list[list[str]]], ...]:
         book.close()
 
     if not found:
-        raise FormatError(f"{path.name} has no sheet with anything in it")
+        raise FormatError("has no sheet with anything in it")
     return tuple(found)
 
 

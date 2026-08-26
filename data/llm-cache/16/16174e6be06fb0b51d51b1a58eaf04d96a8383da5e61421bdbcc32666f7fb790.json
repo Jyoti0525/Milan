@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"amount\": \"Amount\", \"value_date\": \"Date\", \"narration\": \"Against Payment\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.47534709999672486,
+  "prompt_tokens": 439,
+  "completion_tokens": 26
+}

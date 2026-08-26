@@ -634,6 +634,10 @@ class Service:
     def stage(self, files: list[tuple[str, bytes]]) -> PlanView:
         return _plan_view(self._staging.open(files))
 
+    def add_to(self, staged_id: str, files: list[tuple[str, bytes]]) -> PlanView:
+        """More files for an upload already open, keeping the answers given."""
+        return _plan_view(self._staging.add(staged_id, files))
+
     def staged(self, staged_id: str) -> PlanView:
         return _plan_view(self._staging.get(staged_id))
 
@@ -981,7 +985,14 @@ def _plan_view(staged: Staged) -> PlanView:
         limitations=plan.limitations(),
         blockers=plan.blockers(),
         ready=plan.ready,
-        unreadable=tuple(f"{item.path.name}: {item.reason}" for item in plan.unreadable),
+        # Two sources, one list. The reader reports a PDF it opened and could
+        # not parse; the staging area reports a file it never wrote to disk at
+        # all. To the person who dropped a folder they are the same fact -
+        # "this one was not read, and here is why".
+        unreadable=(
+            *(f"{item.path.name}: {item.reason}" for item in plan.unreadable),
+            *staged.skipped,
+        ),
     )
 
 

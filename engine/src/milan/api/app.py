@@ -171,6 +171,24 @@ def create_app(root: Path | None = None) -> FastAPI:
             # refused, and the message says what would make it acceptable.
             raise HTTPException(status_code=422, detail=str(refused)) from refused
 
+    @app.post("/api/uploads/{staged_id}/files")
+    async def add_files(staged_id: str, files: UploadedFiles) -> PlanView:
+        """Add more files to an upload that is already open.
+
+        The route that stops a merchant losing their first file. Without it,
+        picking a settlement report and then picking a bank statement produced
+        a plan holding the statement alone, with the report silently gone and
+        an error saying there was nothing to reconcile against.
+        """
+        try:
+            return service.add_to(
+                staged_id, [(item.filename or "", await item.read()) for item in files]
+            )
+        except UnknownStagingError as gone:
+            raise HTTPException(status_code=404, detail=str(gone)) from gone
+        except StagingError as refused:
+            raise HTTPException(status_code=422, detail=str(refused)) from refused
+
     @app.get("/api/uploads/{staged_id}")
     def staged(staged_id: str) -> PlanView:
         try:

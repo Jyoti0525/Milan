@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"amount\": \"Deposit Amt.\", \"value_date\": \"Value Dt\", \"narration\": \"Narration\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.9084459000005154,
+  "prompt_tokens": 561,
+  "completion_tokens": 29
+}

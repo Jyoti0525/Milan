@@ -30,7 +30,7 @@ from milan.evaluation.sweep import sweep
 from milan.evaluation.twice import run_twice
 from milan.ingest import archive, build
 from milan.ingest.build import Imported
-from milan.ingest.plan import IngestPlan, Question, to_saved
+from milan.ingest.plan import ABSENT, IngestPlan, Question, to_saved
 from milan.ingest.reading import UnreadableFileError
 from milan.ingest.resolver import Decisions, Importer, decisions_from
 from milan.ingest.schema import RecordKind
@@ -408,6 +408,11 @@ def _apply_answers(
 
 def _record_answer(current: Decisions, subject: str, value: str) -> Decisions:
     if subject == "record":
+        if value == ABSENT:
+            # `--map "purchase orders.csv:record=-"`. The escape hatch in the
+            # other direction: a file the rules placed, that the person who
+            # owns it knows is not theirs to read.
+            return current.ignoring()
         try:
             return current.with_kind(RecordKind(value))
         except ValueError as failure:

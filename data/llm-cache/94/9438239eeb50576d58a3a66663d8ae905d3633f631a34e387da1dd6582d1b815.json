@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"order_receipt\": \"Against Payment\", \"currency\": \"\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.3254073999996763,
+  "prompt_tokens": 432,
+  "completion_tokens": 17
+}

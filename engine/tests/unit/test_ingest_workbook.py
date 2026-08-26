@@ -183,3 +183,25 @@ class TestAFileThatOnlyLooksLikeATable:
         path.write_bytes(b"PK\x03\x04" + b"\x00" * 64)
         with pytest.raises(FormatError):
             sheets(path)
+
+
+class TestAJsonDumpIsNotATableYet:
+    def test_it_is_named_rather_than_failing_at_the_header(self, tmp_path: Path) -> None:
+        """A JSON dump reaches the header finder as one very long line and is
+        refused there as "no header row found" - true, and it tells nobody
+        that what they need is a different export."""
+        path = tmp_path / "settlements.json"
+        path.write_text('[{"id": "setl_1", "amount": 100}]', encoding="utf-8")
+        assert "JSON dump" in diagnose(path)
+
+    def test_an_object_at_the_top_level_counts_too(self, tmp_path: Path) -> None:
+        path = tmp_path / "export.json"
+        path.write_text('  {"items": []}', encoding="utf-8")
+        assert "JSON dump" in diagnose(path)
+
+    def test_a_csv_starting_with_a_brace_is_not_mistaken_for_one(self, tmp_path: Path) -> None:
+        """Guarding the guard. A column header can begin with a brace, and a
+        statement refused as JSON would be worse than one read as a table."""
+        path = tmp_path / "odd.csv"
+        path.write_text("date,narration\n2026-07-04,PAID\n", encoding="utf-8")
+        assert diagnose(path) == ""

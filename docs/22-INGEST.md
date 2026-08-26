@@ -326,6 +326,50 @@ the paisa.
 
 ---
 
+## The browser takes a folder
+
+A merchant's books are a folder, and for a while the dialog took files one at
+a time — so five files meant five trips through a picker, and each trip opened
+a **new** upload. Picking the settlement report, looking at the result, and
+then picking the statement produced a plan holding the statement alone, with
+the report silently gone.
+
+Three ways in now: drop the folder, choose a folder, or pick files. A drop is
+walked with `webkitGetAsEntry`; the picker uses `webkitdirectory`. Both filter
+out what nobody meant to hand over — a `.DS_Store`, a logo, Excel's `~$` lock
+files — and deliberately keep the four formats we have advice about, so the
+engine can say what to do with them.
+
+`POST /api/uploads/{id}/files` adds to an upload already open, keeping every
+answer already given.
+
+### One bad file does not refuse the folder
+
+This was the sharpest edge in the whole feature. A merchant selects their
+folder — statement, report, and the PDF they downloaded before realising we
+wanted a table — and the **entire upload was rejected because of the PDF**.
+Six files in, one error out, nothing staged, and no way to find the culprit
+except by trying them one at a time.
+
+Now the readable files are staged and the rest are reported. The upload is
+refused only when nothing at all can be read, because then there is genuinely
+nothing to hold.
+
+### Saying a file is not what we think it is
+
+Telling Milan what an *unrecognised* file is has always been possible. The
+other direction had not been, and it has a concrete shape: a purchase ledger,
+four columns wide, that a model places as an orders export because a PO
+number, a value and a raised-on date are exactly what an order book needs.
+Nothing in the file rules it out. Only the person who owns it knows.
+
+**Leave it out** on any placed file records that as a decision — not as the
+absence of one, because the column names that placed it are still there and
+would place it again on the next re-plan. On the command line:
+`--map "purchase orders.csv:record=-"`.
+
+---
+
 ## Answering on the command line
 
 The browser is clicks. The command line takes `--map`:
