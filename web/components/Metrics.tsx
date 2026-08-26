@@ -15,7 +15,7 @@
  * number that says how often it answered — not three columns further right.
  */
 
-import type { RunSummary } from "@/lib/api";
+import type { ImportSummary, RunSummary } from "@/lib/api";
 import { percent } from "@/lib/money";
 import { Amount, Figure } from "./Amount";
 
@@ -72,11 +72,73 @@ export function Metrics({ summary }: { summary: RunSummary }) {
         )}
       </Card>
 
-      <Card
-        label="Rounding drift"
-        hint={`gross, across ${summary.proofs_with_drift} proofs`}
-      >
+      <Card label="Rounding drift" hint={`gross, across ${summary.proofs_with_drift} proofs`}>
         <Amount paise={summary.drift_gross} size="lg" />
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * The four figures an imported run can honestly report.
+ *
+ * Three of the generated screen's cards are missing and one is new, and the
+ * swap is the whole point. Precision and refusal rate are measured against an
+ * answer key; a merchant's own files come with none, so a card in their place
+ * would be a number nothing on disk could make true.
+ *
+ * What replaces them is what the run *can* say about itself. Rounding drift
+ * survives because it needs no answer key at all - a credit that reconstructs
+ * to zero has proved itself, and nothing external had to agree. And the last
+ * card says where the schema came from, which is the one question a person
+ * looking at somebody else's CSVs actually wants answered.
+ */
+export function ImportMetrics({
+  summary,
+  consulted,
+  columnsProposed,
+}: {
+  summary: ImportSummary;
+  consulted: string;
+  columnsProposed: number;
+}) {
+  const model = consulted !== "none";
+  return (
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <Card
+        label="Proved to the paisa"
+        hint={`${summary.records_processed.toLocaleString("en-IN")} records reconciled`}
+      >
+        <Figure value={`${summary.proofs_balanced}/${summary.credits_total}`} tone="var(--good)" />
+      </Card>
+
+      <Card label="Exceptions raised" hint="credits the engine would not claim">
+        <Figure value={String(summary.exceptions_total)} />
+      </Card>
+
+      <Card label="Rounding drift" hint={`gross, across ${summary.proofs_with_drift} proofs`}>
+        <Amount paise={summary.drift_gross} size="lg" />
+      </Card>
+
+      {/*
+        Where the schema came from, in the same place the generated screen puts
+        its refusal rate. Both cards answer "how much of this did you decide,
+        and on what evidence" - the generated one against an answer key, this
+        one against the merchant's own column names.
+      */}
+      <Card
+        label="Columns read by a model"
+        hint={
+          model
+            ? `proposed by ${consulted}, checked against the values`
+            : "read from the column names alone"
+        }
+      >
+        {model ? (
+          <Figure value={String(columnsProposed)} />
+        ) : (
+          <Figure value="—" tone="var(--text-disabled)" />
+        )}
       </Card>
     </div>
   );

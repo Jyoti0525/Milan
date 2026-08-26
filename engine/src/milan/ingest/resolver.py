@@ -107,19 +107,38 @@ and disagrees with its own signs is a thing worth finding out about.
 
 @dataclass(frozen=True, slots=True)
 class Decisions:
-    """Answers a person has given about one file."""
+    """Answers already given about one file, and where each came from."""
 
     kind: RecordKind | None = None
     columns: dict[str, str] = dataclass_field(default_factory=dict)
     patterns: dict[str, str] = dataclass_field(default_factory=dict)
+    prior: dict[str, tuple[str, str]] = dataclass_field(default_factory=dict)
+    """Field to the certainty and provider a previous import recorded for it.
+
+    Only ever populated when replaying a saved mapping. Without it a replay
+    reports every column as `answered` by a person - which is a different
+    account of the same import, and the wrong one. The saved mapping is the
+    record of *how each column was decided*, and re-reading it must not
+    overwrite that with how it was re-read.
+
+    The published count of columns a model contributed is computed from this
+    field, so flattening it would report zero AI involvement on every import
+    after the first.
+    """
 
     def with_answer(self, subject: str, value: str, *, is_format: bool) -> Decisions:
+        """A fresh answer from a person. It replaces whatever was recorded."""
         if is_format:
-            return Decisions(self.kind, dict(self.columns), {**self.patterns, subject: value})
-        return Decisions(self.kind, {**self.columns, subject: value}, dict(self.patterns))
+            return Decisions(
+                self.kind, dict(self.columns), {**self.patterns, subject: value}, dict(self.prior)
+            )
+        remaining = {field: entry for field, entry in self.prior.items() if field != subject}
+        return Decisions(
+            self.kind, {**self.columns, subject: value}, dict(self.patterns), remaining
+        )
 
     def with_kind(self, kind: RecordKind) -> Decisions:
-        return Decisions(kind, dict(self.columns), dict(self.patterns))
+        return Decisions(kind, dict(self.columns), dict(self.patterns), dict(self.prior))
 
 
 # ------------------------------------------------------------ record kinds
@@ -304,21 +323,44 @@ def _ask(target: TargetField, names: tuple[str, ...], asks: str, file: str) -> Q
 
 
 def _forced(
-    target: TargetField, chosen: str, profiles: dict[str, ColumnProfile], file: str
+    target: TargetField,
+    chosen: str,
+    profiles: dict[str, ColumnProfile],
+    file: str,
+    prior: tuple[str, str] | None = None,
 ) -> tuple[FieldResolution, Question | None]:
-    """Apply an answer a person already gave."""
+    """Apply a decision already made, keeping the account of who made it.
+
+    `prior` carries the certainty and provider a saved mapping recorded. A
+    replay that discarded it would relabel a model's suggestion as a person's
+    answer - the one relabelling on this screen that could actually mislead
+    somebody, since `answered` is the label that means a human looked.
+    """
+    recorded, by = prior if prior is not None else ("", "")
+
+    def certainty(default: Certainty) -> tuple[Certainty, str]:
+        if not recorded:
+            return default, "answered"
+        try:
+            kept = Certainty(recorded)
+        except ValueError:
+            return default, "answered"
+        return kept, f"carried forward from the saved mapping ({kept.value})"
+
     if chosen == ABSENT:
         return (
             FieldResolution(target=target, certainty=Certainty.ABSENT, reason="answered: absent"),
             None,
         )
     if chosen == DERIVE:
+        kept, why = certainty(Certainty.ANSWERED)
         return (
             FieldResolution(
                 target=target,
-                certainty=Certainty.ANSWERED,
+                certainty=kept,
                 derived=True,
-                reason="answered: derive from the row type and the signed amount",
+                proposed_by=by,
+                reason=f"{why}: derive from the row type and the signed amount",
             ),
             None,
         )
@@ -332,12 +374,14 @@ def _forced(
             ),
             _ask(target, tuple(profiles), f"{chosen!r} is not a column in {file}.", file),
         )
+    kept, why = certainty(Certainty.ANSWERED)
     return (
         FieldResolution(
             target=target,
-            certainty=Certainty.ANSWERED,
+            certainty=kept,
             column=chosen,
-            reason="answered",
+            proposed_by=by,
+            reason=why,
         ),
         None,
     )
@@ -717,7 +761,9 @@ class Importer:
         for target in fields_of(kind):
             forced = decisions.columns.get(target.name)
             if forced is not None:
-                resolution, question = _forced(target, forced, profiles, source.name)
+                resolution, question = _forced(
+                    target, forced, profiles, source.name, decisions.prior.get(target.name)
+                )
                 rejection = None
             else:
                 resolution, question, rejection = _resolve_field(
@@ -769,5 +815,8 @@ def decisions_from(saved: SavedMapping) -> dict[str, Decisions]:
             kind=kind,
             columns={field: value for field, value in columns.items() if value is not None},
             patterns={column.field: column.pattern for column in entry.columns if column.pattern},
+            prior={
+                column.field: (column.certainty, column.proposed_by) for column in entry.columns
+            },
         )
     return found

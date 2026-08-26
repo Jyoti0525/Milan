@@ -21,33 +21,74 @@
  * selected run rather than stored, which removes the two ways this goes wrong:
  * a spinner left on after a failure, and a slow response for the run you just
  * navigated away from arriving last and winning.
+ *
+ * Two kinds of run reach this screen and they are not interchangeable. A
+ * **generated** run is a pure function of a seed and is scored against the
+ * answer key generated with it. An **imported** run is a folder of the
+ * merchant's own CSVs, has no answer key, and never will — so it gets a
+ * different set of metric cards and an audit tab, and the shared union type
+ * is what stops one being rendered with the other's claims.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ApiError, listRuns, loadRun, type RunRef, type RunView } from "@/lib/api";
+import {
+  ApiError,
+  listImports,
+  listRuns,
+  loadImport,
+  loadRun,
+  type ImportRef,
+  type ImportView,
+  type RunRef,
+  type RunView,
+} from "@/lib/api";
 import { ExceptionPanel } from "@/components/ExceptionPanel";
-import { Metrics } from "@/components/Metrics";
+import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { ProofPanel } from "@/components/ProofPanel";
 import { LeakList, LeakPanel } from "@/components/Leaks";
+import { MappingTables, ProvenancePanel } from "@/components/Provenance";
 import { ProofList, QueueList, sortQueue } from "@/components/Queue";
 import { Sidebar, type Tab } from "@/components/Sidebar";
 import type { Selection } from "@/components/Table";
 
+/**
+ * Which run is open, and which sort it is.
+ *
+ * A union rather than two nullable fields, because "a generated run and an
+ * imported run are both selected" is not a state this screen has, and a shape
+ * that can express it is a shape somebody eventually produces.
+ */
+type Source = { kind: "run"; run: RunRef } | { kind: "import"; ref: ImportRef };
+
 /** A loaded run, tagged with which run it is. */
 interface Loaded {
   key: string;
-  view: RunView | null;
+  view: RunView | ImportView | null;
   failure: ApiError | null;
 }
 
-const keyOf = (run: RunRef | null) => (run ? `${run.difficulty}:${run.seed}` : "");
+const keyOf = (source: Source | null) =>
+  source === null
+    ? ""
+    : source.kind === "run"
+      ? `run:${source.run.difficulty}:${source.run.seed}`
+      : `import:${source.ref.slug}`;
+
+/** Whether a loaded view is the imported sort. Narrows the union for TypeScript. */
+const isImport = (view: RunView | ImportView | null): view is ImportView =>
+  view !== null && "provenance" in view;
 
 /** Which sort of selection each list makes. */
 const KIND: Record<Tab, Selection["kind"]> = {
   queue: "exception",
   proved: "proof",
   leaks: "leak",
+  // The audit tab holds one document rather than a list of cases, so there is
+  // nothing to select in it. Mapped anyway so the record stays total - a
+  // lookup that can miss is a lookup that returns undefined at the worst
+  // possible moment.
+  provenance: "leak",
 };
 
 /**
@@ -58,6 +99,12 @@ const KIND: Record<Tab, Selection["kind"]> = {
  * one branch saying something slightly different from the others.
  */
 const HEADINGS: Record<Tab, { title: string; blurb: string; empty: string; absent: string }> = {
+  provenance: {
+    title: "Column mapping",
+    blurb: "What every column in these files was read as, and who decided.",
+    empty: "",
+    absent: "",
+  },
   queue: {
     title: "Exception queue",
     blurb: "Everything the engine would not claim, worst first.",
@@ -100,26 +147,43 @@ function Notice({ title, body, command }: { title: string; body: string; command
 
 export default function Workspace() {
   const [runs, setRuns] = useState<RunRef[] | null>(null);
+  const [imports, setImports] = useState<ImportRef[]>([]);
   const [listFailure, setListFailure] = useState<ApiError | null>(null);
-  const [current, setCurrent] = useState<RunRef | null>(null);
+  const [current, setCurrent] = useState<Source | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [tab, setTab] = useState<Tab>("queue");
-  const [picked, setPicked] = useState<{ key: string; selection: Selection } | null>(null);
+  const [chosen, setTab] = useState<Tab>("queue");
+  const [picked, setPicked] = useState<{
+    key: string;
+    selection: Selection;
+  } | null>(null);
 
   const key = keyOf(current);
 
   useEffect(() => {
     let cancelled = false;
-    listRuns()
-      .then((found) => {
+    /*
+      Both lists, and the imports are allowed to fail on their own.
+
+      An engine too old to know the route answers 404, and a picker that took
+      the whole screen down over a missing section would be worse than one
+      that shows no imports. The generated runs are what the screen is for;
+      the imports are an addition to it.
+    */
+    Promise.all([listRuns(), listImports().catch((): ImportRef[] => [])])
+      .then(([found, imported]) => {
         if (cancelled) return;
         setRuns(found);
+        setImports(imported);
         // Prefer a run that will actually open, and the adversarial tier among
         // those — it is the one with something in the queue worth looking at.
         const usable = found.filter((run) => !run.stale);
-        setCurrent(
-          usable.find((run) => run.difficulty === "adversarial") ?? usable[0] ?? found[0] ?? null,
-        );
+        const run =
+          usable.find((candidate) => candidate.difficulty === "adversarial") ??
+          usable[0] ??
+          found[0] ??
+          null;
+        if (run) setCurrent({ kind: "run", run });
+        else if (imported.length > 0) setCurrent({ kind: "import", ref: imported[0] });
       })
       .catch((failure: ApiError) => {
         if (!cancelled) setListFailure(failure);
@@ -132,12 +196,17 @@ export default function Workspace() {
   useEffect(() => {
     if (!current) return;
     let cancelled = false;
-    loadRun(current.difficulty, current.seed)
-      .then((view) => {
-        if (!cancelled) setLoaded({ key: keyOf(current), view, failure: null });
+    const key = keyOf(current);
+    const pending =
+      current.kind === "run"
+        ? loadRun(current.run.difficulty, current.run.seed)
+        : loadImport(current.ref.slug);
+    pending
+      .then((view: RunView | ImportView) => {
+        if (!cancelled) setLoaded({ key, view, failure: null });
       })
       .catch((failure: ApiError) => {
-        if (!cancelled) setLoaded({ key: keyOf(current), view: null, failure });
+        if (!cancelled) setLoaded({ key, view: null, failure });
       });
     return () => {
       cancelled = true;
@@ -146,6 +215,20 @@ export default function Workspace() {
 
   const fresh = loaded?.key === key ? loaded : null;
   const view = fresh?.view ?? null;
+  const provenance = isImport(view) ? view.provenance : null;
+
+  /*
+    The audit tab exists only for an imported run, so leaving it selected
+    across a switch to a generated one left the heading over two empty cards -
+    a screen with nothing on it and no way to tell that from a failed load.
+
+    Derived from the selection rather than reset in a handler, and keyed on
+    which *sort* of run is open rather than on whether the provenance has
+    arrived. Keying on the data would bounce the tab back to the queue for as
+    long as an imported run took to load, and then not return.
+  */
+  const audited = current?.kind === "import";
+  const tab: Tab = chosen === "provenance" && !audited ? "queue" : chosen;
   const failure = listFailure ?? fresh?.failure ?? null;
   const loading = current !== null && fresh === null && listFailure === null;
   /*
@@ -176,9 +259,9 @@ export default function Workspace() {
   */
   const fallback = useMemo((): Selection | null => {
     if (!view) return null;
+    if (tab === "provenance") return null;
     if (tab === "proved") return view.proofs.length > 0 ? { kind: "proof", index: 0 } : null;
-    if (tab === "leaks")
-      return view.leaks.findings.length > 0 ? { kind: "leak", index: 0 } : null;
+    if (tab === "leaks") return view.leaks.findings.length > 0 ? { kind: "leak", index: 0 } : null;
     const first = sortQueue(view.queue)[0];
     return first ? { kind: "exception", index: first.index } : null;
   }, [view, tab]);
@@ -186,6 +269,9 @@ export default function Workspace() {
   const shown = selected ?? fallback;
 
   const detail = useMemo(() => {
+    if (tab === "provenance") {
+      return provenance ? <ProvenancePanel provenance={provenance} /> : null;
+    }
     if (!view || !shown) return null;
     if (shown.kind === "proof") {
       const proof = view.proofs[shown.index];
@@ -202,7 +288,7 @@ export default function Workspace() {
     // proof is offered when one exists rather than assumed not to.
     const proof = view.proofs.find((candidate) => candidate.credit_id === item.subject.id);
     return proof ? <ProofPanel proof={proof} /> : <ExceptionPanel item={item} />;
-  }, [view, shown]);
+  }, [view, shown, tab, provenance]);
 
   // Keyed by tab name, so the navigation counts and the empty-state copy
   // read the same number.
@@ -213,6 +299,11 @@ export default function Workspace() {
     // nobody reads; the one pattern behind them is the thing somebody picks
     // up, and the count in the navigation should be a count of those.
     leaks: view?.leaks.findings.length ?? 0,
+    // Things somebody has to read, not facts on file. A refused proposal and
+    // a switched-off check both need a person; the file list and the column
+    // counts do not, so counting those here would put a permanent number
+    // beside a tab that usually has nothing to say.
+    provenance: provenance ? provenance.rejections.length + provenance.limitations.length : 0,
   };
 
   const body = (() => {
@@ -244,12 +335,16 @@ export default function Workspace() {
       );
     }
 
-    if (runs !== null && runs.length === 0) {
+    if (runs !== null && runs.length === 0 && imports.length === 0) {
       return (
         <Notice
           title="Nothing generated yet"
-          body="A dataset is a pure function of its seed, so nothing is stored in the repository. Generate one and it will appear here."
-          command={"cd engine\nuv run milan generate --seed 42 --difficulty adversarial --orders 600"}
+          body="A dataset is a pure function of its seed, so nothing is stored in the repository. Generate one and it will appear here — or point Milan at a folder of your own CSVs and it will read those instead."
+          command={
+            "cd engine\n" +
+            "uv run milan generate --seed 42 --difficulty adversarial --orders 600\n" +
+            "uv run milan import --from /path/to/your/csvs"
+          }
         />
       );
     }
@@ -257,7 +352,15 @@ export default function Workspace() {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 px-5 pt-4">
-          {view && <Metrics summary={view.summary} />}
+          {isImport(view) ? (
+            <ImportMetrics
+              summary={view.summary}
+              consulted={view.provenance.consulted}
+              columnsProposed={view.provenance.columns_proposed}
+            />
+          ) : (
+            view && <Metrics summary={view.summary} />
+          )}
         </div>
 
         <div className="flex min-h-0 flex-1 gap-4 p-5">
@@ -265,13 +368,19 @@ export default function Workspace() {
             <div className="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
               <div>
                 <h1 className="text-[14px] font-semibold">{HEADINGS[tab].title}</h1>
-                <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                  {HEADINGS[tab].blurb}
-                </p>
+                <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">{HEADINGS[tab].blurb}</p>
               </div>
-              {current && (
+              {current?.kind === "run" && (
                 <span className="chip shrink-0 capitalize">
-                  {current.difficulty} · seed {current.seed}
+                  {current.run.difficulty} · seed {current.run.seed}
+                </span>
+              )}
+              {/* The folder, not a tier and a seed. An imported run has no
+                  seed to name it by, and the thing a person recognises is
+                  where the files came from. */}
+              {current?.kind === "import" && (
+                <span className="chip shrink-0" title={current.ref.source_root}>
+                  {current.ref.slug} · {current.ref.files.length} files
                 </span>
               )}
             </div>
@@ -291,6 +400,7 @@ export default function Workspace() {
               {view && tab === "leaks" && (
                 <LeakList leaks={view.leaks} selected={shown} onSelect={pick} />
               )}
+              {provenance && tab === "provenance" && <MappingTables files={provenance.mappings} />}
             </div>
           </section>
 
@@ -319,9 +429,16 @@ export default function Workspace() {
     <div className="flex h-full">
       <Sidebar
         runs={runs ?? []}
+        imports={imports}
         current={current}
-        onPick={setCurrent}
+        onPick={(run) => setCurrent({ kind: "run", run })}
+        onPickImport={(ref) => setCurrent({ kind: "import", ref })}
         tab={tab}
+        /*
+          Leaving the audit tab open after switching to a generated run would
+          show a tab the sidebar no longer offers, with nothing in it. The
+          selection follows what the run can actually answer.
+        */
         onTab={(next) => setTab(next)}
         counts={counts}
       />

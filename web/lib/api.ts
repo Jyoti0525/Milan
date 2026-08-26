@@ -136,8 +136,103 @@ export interface RunView {
   leaks: LeakFindings;
 }
 
-export const API =
-  process.env.NEXT_PUBLIC_MILAN_API?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
+/**
+ * A folder of the merchant's own files, as the picker sees it.
+ *
+ * `consulted` is the field worth reading. `"none"` means the import ran on
+ * column names and value shapes alone, which is the configuration every claim
+ * about this path should be checked in — and a picker that hid it would let a
+ * reader assume a model was involved when none was.
+ */
+export interface ImportRef {
+  slug: string;
+  source_root: string;
+  files: string[];
+  records: number;
+  credits: number;
+  consulted: string;
+  columns_proposed: number;
+}
+
+/**
+ * Where an imported run's numbers came from.
+ *
+ * This is what stands in place of a scorecard. A generated run is scored
+ * against an answer key generated alongside it; a merchant's own files come
+ * with none, and inventing a number that looks like accuracy would be the
+ * single most dishonest thing this screen could show.
+ */
+/** One field, and the column an import decided to read it from. */
+export interface MappedColumn {
+  field: string;
+  column: string | null;
+  pattern: string;
+  /**
+   * `confirmed`, `answered`, `unconfirmed` or `absent`.
+   *
+   * The most important string on this screen. "Your header said so" and "a
+   * model thought so" produce identical-looking rows in a mapping table, and
+   * the difference is the whole question of whether these numbers can be
+   * trusted without opening the file.
+   */
+  certainty: string;
+  proposed_by: string;
+  derived: boolean;
+}
+
+export interface MappedFile {
+  file: string;
+  kind: string;
+  columns: MappedColumn[];
+}
+
+export interface ImportProvenance {
+  source_root: string;
+  files: string[];
+  consulted: string;
+  columns_proposed: number;
+  /** Column proposals the values refused. One line each, already written. */
+  rejections: string[];
+  /** Checks this run could not perform, and what each absence costs. */
+  limitations: string[];
+  dropped: number;
+  withdrawals: number;
+  counts: Record<string, number>;
+  /** Every column decision, as it was saved — not recomputed on read. */
+  mappings: MappedFile[];
+}
+
+/**
+ * The headline for an imported run.
+ *
+ * Deliberately shorter than `RunSummary`. Every field that one carries and
+ * this one does not — match rate, precision, refusal rate, explained rate —
+ * is measured against ground truth, and there is none here. The screen says
+ * so in words rather than printing a zero that would read as a measurement.
+ */
+export interface ImportSummary {
+  slug: string;
+  records_processed: number;
+  duration_seconds: number;
+  credits_total: number;
+  proofs_balanced: number;
+  exceptions_total: number;
+  exceptions_by_code: Record<string, number>;
+  rules_share: number;
+  drift_gross: Paise;
+  drift_net: Paise;
+  proofs_with_drift: number;
+}
+
+export interface ImportView {
+  summary: ImportSummary;
+  provenance: ImportProvenance;
+  queue: QueueItem[];
+  proofs: Proof[];
+  leaks: LeakFindings;
+}
+
+export const API = process.env.NEXT_PUBLIC_MILAN_API?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
 
 /**
  * An error the interface can act on.
@@ -171,10 +266,7 @@ async function get<T>(path: string): Promise<T> {
   try {
     response = await fetch(`${API}${path}`, { cache: "no-store" });
   } catch {
-    throw new ApiError(
-      0,
-      `Cannot reach the engine at ${API}. Start it with: uv run milan serve`,
-    );
+    throw new ApiError(0, `Cannot reach the engine at ${API}. Start it with: uv run milan serve`);
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -187,3 +279,7 @@ export const listRuns = () => get<RunRef[]>("/api/runs");
 
 export const loadRun = (difficulty: string, seed: number) =>
   get<RunView>(`/api/runs/${difficulty}/${seed}`);
+
+export const listImports = () => get<ImportRef[]>("/api/imports");
+
+export const loadImport = (slug: string) => get<ImportView>(`/api/imports/${slug}`);

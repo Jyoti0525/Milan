@@ -15,6 +15,7 @@ evaluation package on its own route, computed rather than peeked at.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 
@@ -28,10 +29,12 @@ from milan.domain.records import BankCredit
 from milan.domain.results import Proof, ReconException, ReconReport
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.metrics import Scorecard
+from milan.ingest import archive
 from milan.leaks.clusters import LeakCluster, LeakReport, summarise
 from milan.persistence import store
 from milan.persistence.store import StaleDatasetError
 from milan.recon.batches import GatewayBatch, rebuild_batches
+from milan.recon.inputs import ReconInput
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
 
@@ -245,6 +248,125 @@ class RunView(BaseModel):
     or the only evidence of a working detector is the runs where it fired."""
 
 
+class ImportRef(BaseModel):
+    """An imported folder, as the picker sees it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    source_root: str
+    files: tuple[str, ...]
+    records: int
+    credits: int
+    consulted: str
+    """Which provider proposed column mappings. `none` means the import ran
+    on column names and value shapes alone, which is the configuration every
+    claim about the ingest path should be checked in."""
+
+    columns_proposed: int
+
+
+class MappedColumn(BaseModel):
+    """One field, and the column an import decided to read it from."""
+
+    model_config = ConfigDict(frozen=True)
+
+    field: str
+    column: str | None
+    pattern: str
+    certainty: str
+    """`confirmed`, `answered`, `unconfirmed` or `absent`.
+
+    The most important string on the import screen. "Your header said so" and
+    "a model thought so" produce identical-looking rows in a mapping table,
+    and the difference is the entire question of whether these numbers can be
+    trusted without checking the file.
+    """
+
+    proposed_by: str
+    derived: bool
+
+
+class MappedFile(BaseModel):
+    """One of the merchant's files, and what every column in it was read as."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file: str
+    kind: str
+    columns: tuple[MappedColumn, ...]
+
+
+class ImportProvenance(BaseModel):
+    """Where an imported run's numbers came from.
+
+    This is what stands in place of a scorecard. A generated run can be
+    scored because its answer key was generated alongside it; a merchant's
+    own files cannot, and inventing a number that looks like accuracy would
+    be the single most dishonest thing this project could put on a screen.
+
+    So the screen shows the audit trail instead: which files were read, which
+    model was asked about the columns, how many columns it contributed, what
+    it proposed that the values refused, and which checks were switched off
+    for want of a file.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    source_root: str
+    files: tuple[str, ...]
+    consulted: str
+    columns_proposed: int
+    rejections: tuple[str, ...]
+    limitations: tuple[str, ...]
+    dropped: int
+    withdrawals: int
+    counts: dict[str, int]
+    mappings: tuple[MappedFile, ...]
+    """Every column decision, exactly as it was saved.
+
+    Read from the mapping the import wrote rather than recomputed. Recomputing
+    would consult the column names again, and possibly a model again, and
+    could then show a different answer from the one the run on this screen was
+    actually produced with."""
+
+
+class ImportSummary(BaseModel):
+    """The headline for an imported run.
+
+    Deliberately shorter than `RunSummary`. Every field that one carries and
+    this one does not - match rate, precision, refusal rate, explained rate -
+    is measured against ground truth, and there is none here. An omission
+    that the screen explains is honest; a zero in its place would not be.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    records_processed: int
+    duration_seconds: float
+    credits_total: int
+    proofs_balanced: int
+    exceptions_total: int
+    exceptions_by_code: dict[str, int]
+    rules_share: float
+    drift_gross: Paise
+    drift_net: Paise
+    proofs_with_drift: int
+
+
+class ImportView(BaseModel):
+    """One imported run, on the same terms as a generated one minus the score."""
+
+    model_config = ConfigDict(frozen=True)
+
+    summary: ImportSummary
+    provenance: ImportProvenance
+    queue: tuple[QueueItem, ...]
+    proofs: tuple[ProofView, ...]
+    leaks: LeakFindings
+
+
 class RunNotFoundError(LookupError):
     """No such run on disk."""
 
@@ -324,25 +446,123 @@ class Service:
 
     def _build(self, difficulty: str, seed: int) -> RunView:
         dataset = self._dataset(difficulty, seed)
+        data = to_recon_input(dataset)
         report = ReconciliationPipeline().run(
-            to_recon_input(dataset),
-            RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty),
+            data, RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
         )
-        credits = {credit.credit_id: credit for credit in dataset.bank_credits}
-        batches = {batch.settlement_id: batch for batch in rebuild_batches(dataset.settlement_rows)}
+        credits, batches = _index(data)
 
         return RunView(
             summary=self._summary(dataset, report),
-            queue=tuple(
-                self._queue_item(exception, dataset, credits, batches)
-                for exception in report.exceptions
+            queue=self._queue(report, data, credits, batches),
+            proofs=self._proofs(report, credits),
+            leaks=self._leaks(data, report),
+        )
+
+    def _queue(
+        self,
+        report: ReconReport,
+        data: ReconInput,
+        credits: dict[str, BankCredit],
+        batches: dict[str, GatewayBatch],
+    ) -> tuple[QueueItem, ...]:
+        return tuple(
+            self._queue_item(exception, data, credits, batches) for exception in report.exceptions
+        )
+
+    def _proofs(self, report: ReconReport, credits: dict[str, BankCredit]) -> tuple[ProofView, ...]:
+        return tuple(
+            self._proof_view(proof, credits[proof.credit_id])
+            for proof in report.proofs
+            if proof.credit_id in credits
+        )
+
+    # ------------------------------------------------------------- imports
+
+    def imports(self) -> tuple[ImportRef, ...]:
+        """Every folder that has been imported, in name order."""
+        found: list[ImportRef] = []
+        for slug in archive.imports(self._root):
+            record = archive.load_record(self._root, slug)
+            report = archive.load_report(self._root, slug)
+            if record is None or report is None:
+                continue
+            found.append(
+                ImportRef(
+                    slug=slug,
+                    source_root=record.source_root,
+                    files=record.files,
+                    records=report.records_processed,
+                    credits=record.counts.get("bank_credits", 0),
+                    consulted=record.consulted,
+                    columns_proposed=record.columns_proposed,
+                )
+            )
+        return tuple(found)
+
+    def _mappings(self, slug: str) -> tuple[MappedFile, ...]:
+        saved = archive.load_mapping(self._root, slug)
+        if saved is None:
+            return ()
+        return tuple(
+            MappedFile(
+                file=entry.file,
+                kind=entry.kind,
+                columns=tuple(
+                    MappedColumn(
+                        field=column.field,
+                        column=column.column,
+                        pattern=column.pattern,
+                        certainty=column.certainty,
+                        proposed_by=column.proposed_by,
+                        derived=column.derived,
+                    )
+                    for column in entry.columns
+                ),
+            )
+            for entry in saved.files
+        )
+
+    def import_view(self, slug: str) -> ImportView:
+        """One imported run, with no scorecard and a provenance instead.
+
+        The absent scorecard is the honest part. A generated run is scored
+        against an answer key; a merchant's own files come with no answer
+        key and never will, so every accuracy figure on the other screen is
+        unavailable here. Rather than compute something that looks like one,
+        this returns where the numbers came from - which files, which
+        columns, which model, what it refused, and what the run could not
+        check for want of a file.
+        """
+        record = archive.load_record(self._root, slug)
+        report = archive.load_report(self._root, slug)
+        data = archive.load_input(self._root, slug)
+        # Loaded before the guard below rather than inside it, so a mapping
+        # file that has gone missing is a mapping table with nothing in it
+        # rather than a 404 on a run that is otherwise perfectly readable.
+        if record is None or report is None or data is None:
+            raise RunNotFoundError(
+                f"no import called {slug!r}. Import a folder first: milan import --from <folder>"
+            )
+
+        credits, batches = _index(data)
+        return ImportView(
+            summary=_import_summary(slug, record, report),
+            provenance=ImportProvenance(
+                source_root=record.source_root,
+                files=record.files,
+                consulted=record.consulted,
+                columns_proposed=record.columns_proposed,
+                rejections=record.rejections,
+                limitations=record.limitations,
+                dropped=record.dropped,
+                withdrawals=record.withdrawals,
+                counts=record.counts,
+                mappings=self._mappings(slug),
             ),
-            proofs=tuple(
-                self._proof_view(proof, credits[proof.credit_id])
-                for proof in report.proofs
-                if proof.credit_id in credits
-            ),
-            leaks=self._leaks(dataset, report),
+            queue=self._queue(report, data, credits, batches),
+            proofs=self._proofs(report, credits),
+            leaks=self._leaks(data, report),
         )
 
     def _summary(self, dataset: Dataset, report: ReconReport) -> RunSummary:
@@ -373,7 +593,7 @@ class Service:
     def _queue_item(
         self,
         exception: ReconException,
-        dataset: Dataset,
+        data: ReconInput,
         credits: dict[str, BankCredit],
         batches: dict[str, GatewayBatch],
     ) -> QueueItem:
@@ -383,17 +603,22 @@ class Service:
             amount=exception.amount,
             evidence=exception.evidence,
             categorised_by=exception.categorised_by,
-            subject=self._subject(exception.subject_id, dataset, credits, batches),
+            subject=self._subject(exception.subject_id, data, credits, batches),
         )
 
     def _subject(
         self,
         subject_id: str,
-        dataset: Dataset,
+        data: ReconInput,
         credits: dict[str, BankCredit],
         batches: dict[str, GatewayBatch],
     ) -> Subject:
         """Join an id back to the thing it names.
+
+        Takes the merchant-side inputs rather than the dataset, because that
+        is all it ever read. Narrowing the parameter is what lets an imported
+        run - which has no answer key and never will - reuse this screen
+        instead of getting a second, quietly divergent one.
 
         Three kinds reach the queue, and they are genuinely different cases:
         a bank credit that arrived and could not be explained, a settlement
@@ -421,7 +646,7 @@ class Service:
                 occurred_on=batch.settled_on,
             )
 
-        for payment in dataset.payments:
+        for payment in data.payments:
             if payment.payment_id == subject_id:
                 return Subject(
                     kind="payment",
@@ -432,7 +657,7 @@ class Service:
         return Subject(kind="unknown", id=subject_id)
 
     @staticmethod
-    def _leaks(dataset: Dataset, report: ReconReport) -> LeakFindings:
+    def _leaks(data: ReconInput, report: ReconReport) -> LeakFindings:
         """Group what the pipeline already detected.
 
         The detection ran inside the pipeline, so this reads `report.leaks`
@@ -441,7 +666,7 @@ class Service:
         screen would then disagree with the score for reasons nobody could
         see.
         """
-        examined = sum(1 for row in dataset.settlement_rows if row.type is EntityType.PAYMENT)
+        examined = sum(1 for row in data.settlement_rows if row.type is EntityType.PAYMENT)
         grouped: LeakReport = summarise(report.leaks, examined)
         return LeakFindings(
             headline=grouped.headline(),
@@ -495,6 +720,42 @@ def _finding(group: LeakCluster) -> LeakFinding:
         last_seen=group.last_seen,
         networks=group.networks,
         payment_ids=group.payment_ids,
+    )
+
+
+def _index(
+    data: ReconInput,
+) -> tuple[dict[str, BankCredit], dict[str, GatewayBatch]]:
+    """The two lookups every screen needs, built once."""
+    return (
+        {credit.credit_id: credit for credit in data.bank_credits},
+        {batch.settlement_id: batch for batch in rebuild_batches(data.settlement_rows)},
+    )
+
+
+def _import_summary(slug: str, record: archive.ImportRecord, report: ReconReport) -> ImportSummary:
+    """Everything an imported run can honestly say about itself.
+
+    Every figure here is read off the report. Nothing is scored, because
+    nothing can be - and the drift totals in particular are worth keeping,
+    since they are the one accuracy-shaped number that needs no answer key:
+    a credit that reconstructs to zero has proved itself.
+    """
+    balanced = [proof for proof in report.proofs if proof.balances]
+    categorised = Counter(exception.categorised_by for exception in report.exceptions)
+    total = sum(categorised.values())
+    return ImportSummary(
+        slug=slug,
+        records_processed=report.records_processed,
+        duration_seconds=report.duration_seconds,
+        credits_total=record.counts.get("bank_credits", 0),
+        proofs_balanced=len(balanced),
+        exceptions_total=len(report.exceptions),
+        exceptions_by_code=dict(Counter(e.code.value for e in report.exceptions)),
+        rules_share=(categorised.get("rules", 0) / total) if total else 0.0,
+        drift_gross=Paise(sum(abs(proof.drift) for proof in balanced)),
+        drift_net=Paise(sum(proof.drift for proof in balanced)),
+        proofs_with_drift=sum(1 for proof in balanced if proof.drift),
     )
 
 

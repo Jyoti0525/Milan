@@ -13,12 +13,19 @@
  * could not be resolved, and what could. **Recover** is about rows that
  * reconciled perfectly and were still charged too much, which is somebody
  * else's morning entirely.
+ *
+ * The run picker at the bottom has two halves for the same reason. A
+ * generated run is scored against an answer key; an imported one is a folder
+ * of the merchant's own CSVs and has none. Listing them together under one
+ * heading would let somebody read a figure from one as if it came from the
+ * other, so they are two lists with two headings and the difference is said
+ * in the footer.
  */
 
-import type { RunRef } from "@/lib/api";
+import type { ImportRef, RunRef } from "@/lib/api";
 import { Badge } from "./Badge";
 
-export type Tab = "queue" | "proved" | "leaks";
+export type Tab = "queue" | "proved" | "leaks" | "provenance";
 
 const TIER_ORDER = ["clean", "realistic", "messy", "adversarial"];
 
@@ -53,19 +60,24 @@ function Item({
 
 export function Sidebar({
   runs,
+  imports,
   current,
   onPick,
+  onPickImport,
   tab,
   onTab,
   counts,
 }: {
   runs: RunRef[];
-  current: RunRef | null;
+  imports: ImportRef[];
+  current: { kind: "run"; run: RunRef } | { kind: "import"; ref: ImportRef } | null;
   onPick: (run: RunRef) => void;
+  onPickImport: (ref: ImportRef) => void;
   tab: Tab;
   onTab: (tab: Tab) => void;
-  counts: { queue: number; proved: number; leaks: number };
+  counts: { queue: number; proved: number; leaks: number; provenance: number };
 }) {
+  const imported = current?.kind === "import";
   const ordered = [...runs].sort(
     (a, b) =>
       TIER_ORDER.indexOf(a.difficulty) - TIER_ORDER.indexOf(b.difficulty) || a.seed - b.seed,
@@ -133,6 +145,32 @@ export function Sidebar({
         </div>
       </div>
 
+      {/*
+        Only on an imported run, because only an imported run has one.
+
+        A generated run's provenance is its seed - it is a pure function of an
+        integer, and there is nothing to audit. A merchant's folder was read,
+        and every decision made while reading it is a decision somebody may
+        want to check. Showing this tab on both would mean writing a version
+        of it that says "generated" and nothing else.
+      */}
+      {imported && (
+        <div className="px-3 pb-3">
+          <div className="mb-1.5 px-1 text-[11px] font-medium tracking-wide text-[var(--text-subtle)] uppercase">
+            Audit
+          </div>
+          <div className="space-y-0.5">
+            <Item
+              label="How this was read"
+              count={counts.provenance}
+              active={tab === "provenance"}
+              onClick={() => onTab("provenance")}
+              hint="which columns, which model, what was refused"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-auto border-t border-[var(--border)] px-3 py-3">
         <div className="mb-1.5 px-1 text-[11px] font-medium tracking-wide text-[var(--text-subtle)] uppercase">
           Runs
@@ -140,7 +178,9 @@ export function Sidebar({
         <div className="space-y-0.5">
           {ordered.map((run) => {
             const active =
-              current?.difficulty === run.difficulty && current?.seed === run.seed;
+              current?.kind === "run" &&
+              current.run.difficulty === run.difficulty &&
+              current.run.seed === run.seed;
             return (
               <button
                 key={`${run.difficulty}:${run.seed}`}
@@ -171,11 +211,51 @@ export function Sidebar({
             <div className="px-1 text-[12px] text-[var(--text-subtle)]">none generated</div>
           )}
         </div>
+
+        <div className="mt-4 mb-1.5 px-1 text-[11px] font-medium tracking-wide text-[var(--text-subtle)] uppercase">
+          Imported
+        </div>
+        <div className="space-y-0.5">
+          {imports.map((ref) => {
+            const active = current?.kind === "import" && current.ref.slug === ref.slug;
+            return (
+              <button
+                key={ref.slug}
+                onClick={() => onPickImport(ref)}
+                className="flex w-full items-center gap-2 rounded-[var(--r-control)] px-2.5 py-1.5 text-left"
+                style={{
+                  background: active ? "var(--surface-selected)" : undefined,
+                  color: active ? "var(--accent-strong)" : "var(--text-muted)",
+                }}
+                title={ref.source_root}
+              >
+                <span className="flex-1 truncate text-[13px]">{ref.slug}</span>
+                {/* Which model read the columns, or nothing at all. The badge
+                    appears only when one was consulted, so its absence is the
+                    statement that none was. */}
+                {ref.consulted !== "none" && <Badge tone="accent">{ref.consulted}</Badge>}
+              </button>
+            );
+          })}
+          {imports.length === 0 && (
+            <div className="px-1 text-[12px] leading-relaxed text-[var(--text-subtle)]">
+              none yet — point Milan at a folder with{" "}
+              <span className="font-mono text-[11px]">milan import</span>
+            </div>
+          )}
+        </div>
       </div>
 
+      {/*
+        Two sentences, because the picker above now holds two kinds of run and
+        only one of them can be scored. A footer that claimed an answer key
+        for both would be the exact misreading the split headings exist to
+        prevent.
+      */}
       <div className="border-t border-[var(--border)] px-4 py-3 text-[11px] leading-relaxed text-[var(--text-subtle)]">
-        Every figure here is measured against a generated answer key, never
-        estimated.
+        {imported
+          ? "These are the merchant's own files. There is no answer key, so nothing here is scored — the audit tab says how it was read."
+          : "Every figure here is measured against a generated answer key, never estimated."}
       </div>
     </aside>
   );

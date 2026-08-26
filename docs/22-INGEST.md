@@ -247,6 +247,41 @@ evidence a tool has left files in is worth less.
 
 ---
 
+## On screen
+
+`milan serve` lists imported folders beside the generated runs, under their own
+heading. Opening one gives the same exception queue, the same proof panel and
+the same leak view — and a different set of metric cards, because a different
+set of things can honestly be said about it.
+
+| Generated run | Imported run |
+|---|---|
+| Proved to the paisa | Proved to the paisa |
+| **Precision** — against the answer key | **Exceptions raised** |
+| **Refused** — against the answer key | Rounding drift |
+| Rounding drift | **Columns read by a model** |
+
+Precision and the refusal rate are gone because there is no answer key to
+measure them against, and a zero in their place would read as a measurement
+rather than as an absence. Rounding drift stays, because it is the one
+accuracy-shaped number that needs no answer key at all: a credit that
+reconstructs to zero has proved itself.
+
+In their place is an **audit tab** that a generated run does not have, because a
+generated run does not need one — it is a pure function of a seed. It shows:
+
+- the **column mapping** for every file, each row labelled `confirmed`,
+  `answered`, `unconfirmed` or `absent`, with the date format printed beside
+  the column it was pinned for;
+- what a model contributed, as a count of columns;
+- **every proposal the values refused**, in full;
+- what the run could not check, and what each absence costs.
+
+The `unconfirmed` rows are the ones to read. They are where a model proposed a
+column, the values permitted it, and nothing else agreed.
+
+---
+
 ## Where the code is
 
 | Module | Job |
@@ -260,6 +295,8 @@ evidence a tool has left files in is worth less.
 | `ingest/build.py` | Confirmed mapping → `ReconInput` |
 | `ingest/archive.py` | Keep the mapping so the second import asks nothing |
 | `cli/ingest_render.py` | Show a merchant what we think their files are, before we touch them |
+| `api/service.py` | `/api/imports` and `/api/imports/{slug}` — a separate route, because an imported run has no scorecard |
+| `web/components/Provenance.tsx` | The audit view: the mapping table, and what was refused |
 
 ---
 

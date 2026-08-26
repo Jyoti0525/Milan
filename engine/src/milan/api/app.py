@@ -18,7 +18,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from milan.api.service import RunNotFoundError, RunRef, RunView, Service
+from milan.api.service import (
+    ImportRef,
+    ImportView,
+    RunNotFoundError,
+    RunRef,
+    RunView,
+    Service,
+)
 from milan.persistence.store import StaleDatasetError
 
 DEV_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
@@ -83,6 +90,24 @@ def create_app(root: Path | None = None) -> FastAPI:
             # on disk is from a different version of the generator, and the
             # message says which command fixes it.
             raise HTTPException(status_code=409, detail=str(stale)) from stale
+
+    @app.get("/api/imports")
+    def imports() -> list[ImportRef]:
+        """Every folder of the merchant's own files that has been imported.
+
+        A separate route from `/api/runs` rather than a flag on it. An
+        imported run has no answer key and so no scorecard, and a single
+        endpoint returning two shapes would push that difference into the
+        browser to be handled by a conditional nobody maintains.
+        """
+        return list(service.imports())
+
+    @app.get("/api/imports/{slug}")
+    def imported(slug: str) -> ImportView:
+        try:
+            return service.import_view(slug)
+        except RunNotFoundError as missing:
+            raise HTTPException(status_code=404, detail=str(missing)) from missing
 
     return app
 

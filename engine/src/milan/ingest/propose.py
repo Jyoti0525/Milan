@@ -109,10 +109,19 @@ def coherent(columns: dict[str, str]) -> tuple[dict[str, str], tuple[Refused, ..
         if len(targets) == 1:
             kept[targets[0]] = column
             continue
-        named = ", ".join(sorted(targets))
+        ordered = sorted(targets)
+        named = (
+            " and ".join((", ".join(ordered[:-1]), ordered[-1]))
+            if len(ordered) > 2
+            else (" and ".join(ordered))
+        )
         clashes.extend(
-            Refused(target=target, column=column, reason=f"one column cannot be {named} at once")
-            for target in sorted(targets)
+            Refused(
+                target=target,
+                column=column,
+                reason=f"offered as both {named}, and one column cannot be two fields",
+            )
+            for target in ordered
         )
     return kept, tuple(clashes)
 

@@ -118,6 +118,13 @@ def load_input(data_root: Path, slug: str) -> ReconInput | None:
     return ReconInput.model_validate_json(path.read_text(encoding="utf-8"))
 
 
+def load_report(data_root: Path, slug: str) -> ReconReport | None:
+    path = directory(data_root, slug) / REPORT_FILE
+    if not path.exists():
+        return None
+    return ReconReport.model_validate_json(path.read_text(encoding="utf-8"))
+
+
 def imports(data_root: Path) -> tuple[str, ...]:
     """Every import stored under this data root, in name order."""
     root = data_root / IMPORTS
