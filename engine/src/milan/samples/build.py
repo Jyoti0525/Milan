@@ -262,10 +262,16 @@ def handover_folder(data: Dataset, root: Path) -> Folder:
             "opaque identifiers, both plausible for the settlement id, and the "
             "values cannot separate them - so a model proposes and you "
             "confirm, which is this whole design in one column.\n\n"
-            "Three files are left alone and **none of that is an error**: the "
-            "GST register has no settlement date, the purchase ledger is "
-            "somebody's payables, and the PDF is refused with the sentence "
-            "that tells you to download the CSV your bank already offers."
+            "Two files are left alone and **neither is an error**: the GST "
+            "register has no settlement date, and the PDF is refused with the "
+            "sentence that tells you to download the CSV your bank offers.\n\n"
+            "The purchase ledger is the interesting one. Without a model it is "
+            "left alone too; with one it gets read as an **orders export**, "
+            "because a PO number, a value and a raised-on date are exactly what "
+            "an order book needs. Nothing in the file rules it out - only you "
+            "know it is your payables.\n\n"
+            "That is what **leave it out** on a file is for, and this folder is "
+            "here partly so you can try it."
         ),
         files=(
             "Settlement Report Aug 2026.xlsx",

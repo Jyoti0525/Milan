@@ -305,11 +305,15 @@ class TestARealHandover:
         asked = {q.subject for q in plan.questions if q.blocking}
         assert {"credit", "debit"} <= asked
 
-    def test_three_files_are_left_alone_and_none_of_it_is_an_error(self, samples: Path) -> None:
+    def test_two_files_are_left_alone_and_neither_is_an_error(self, samples: Path) -> None:
+        """The purchase ledger is not asserted here, and that is deliberate:
+        without a model it is left alone, and with one it is read as an orders
+        export, because a PO number, a value and a raised-on date are exactly
+        what an order book needs. Nothing in the file rules it out - which is
+        the case `leave it out` exists for, covered in the upload tests."""
         plan = self.answered(samples)
         unplaced = {mapping.name for mapping in plan.unplaced}  # type: ignore[attr-defined]
         assert "GSTR1_Aug_2026.csv" in unplaced
-        assert "purchase orders.csv" in unplaced
         pdf = next(
             item
             for item in plan.unreadable  # type: ignore[attr-defined]
