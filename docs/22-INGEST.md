@@ -291,6 +291,7 @@ README that says what should happen.
 | `2-names-we-do-not` | `Txn Ref No`, `Amount Credited`, `Service Tax (GST)` | Six questions with no model, far fewer with one |
 | `3-one-excel-workbook` | One `.xlsx`, four sheets | Three tables; the cover sheet skipped; not a paisa lost to Excel's floats |
 | `4-a-real-folder` | A statement, a report, a GST register, a hand-kept refund log, a PDF, an Excel lock file | Six outcomes and **none of them an error** |
+| `5-a-real-handover` | A gateway workbook in someone else's vocabulary, **two bank accounts at two banks**, a GST register, a purchase ledger, a PDF | All of the above at once. The folder to try first |
 
 **Nothing is written to Milan's schema, and that is the only reason they are
 worth having.** Test data invented by whoever wrote the reader drifts toward the
@@ -308,6 +309,47 @@ Writing them found three defects, which is what they are for: a file placed on
 half its column names could block the whole import on a question about our own
 guess; a PDF in the folder was skipped in silence; and `*** End of Statement ***`
 was being read as a transaction.
+
+### More than one file per kind
+
+Nothing here assumes one settlement report and one bank statement. A merchant
+with current accounts at two banks hands over two statements, in two formats,
+and the reconciliation is over both — `plan.all_of(kind)` is plural everywhere
+it is used, and `build` iterates it.
+
+This is worth stating because the failure is invisible. An engine that took the
+first bank file would reconcile the credits in it to the paisa, foot every
+proof, raise a plausible exception list, and describe half a month. Every
+downstream check would pass. `5-a-real-handover` splits one generated month
+across an HDFC statement and an Axis statement, and asserts the merged total to
+the paisa.
+
+---
+
+## Answering on the command line
+
+The browser is clicks. The command line takes `--map`:
+
+```
+milan import --from ./books --map "bank.csv:value_date=Value Dt"
+```
+
+**The file may be abbreviated to anything that names one file uniquely.** That
+is not a convenience. A sheet inside a workbook is identified as
+`Settlement Report Aug 2026.xlsx · Payouts` — which is the right name, because
+everything downstream is keyed on it and two sheets answering to one key would
+be two halves of a month overwriting each other. It is also a string containing
+a middle dot, which nobody types and most Windows terminals render as `?`. The
+import was printing exactly that as the suggested answer, so the suggestion was
+useless precisely on the file format a merchant is most likely to hand over.
+
+```
+--map "Payouts:credit=Amount Paid In"
+```
+
+An abbreviation matching two files is refused, not resolved to the first —
+guessing which of two files somebody meant is how the wrong column gets mapped
+in silence.
 
 ---
 

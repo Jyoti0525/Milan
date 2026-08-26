@@ -942,3 +942,30 @@ If a decision is not here, it is not settled.
      is 21 of 21 resolvable. A rate without its population invites exactly one
      misreading and it is the flattering one, which is the lesson decision 187
      already learned about the refusal rate and this screen had not.
+210. **More than one file per record kind, and a sample that proves it.** A
+     merchant with current accounts at two banks hands over two statements in
+     two formats, and the reconciliation is over both. The code was already
+     plural - `all_of(kind)` everywhere, `build` iterating it - but nothing
+     exercised it, and this is the failure that hides best: an engine taking
+     the first bank file reconciles its credits to the paisa, foots every
+     proof, raises a plausible exception list, and describes half a month with
+     every downstream check passing. `5-a-real-handover` splits one generated
+     month across an HDFC and an Axis statement and asserts the merged total.
+211. **`--map` accepts an abbreviation, because the full name cannot be
+     typed.** A workbook sheet is identified as `book.xlsx · Payouts`, which is
+     the correct name - everything downstream is keyed on it, and two sheets
+     answering to one key would be two halves of a month overwriting each
+     other. It is also a string with a middle dot in it, which nobody types and
+     most Windows terminals render as `?`. The import was printing that exact
+     string as the suggested answer, so the suggestion failed precisely on the
+     format most likely to need it. Any unique substring now resolves; anything
+     matching two files is refused rather than resolved to the first.
+212. **The generated runs are folded shut, and your own books open first.**
+     Six sample months stacked above four real imports reads as a demo with the
+     customer's data filed underneath, and the landing state opened on a
+     generated adversarial run - putting somebody else's figures under a
+     headline that says "money that reached your account". Sample data earns
+     its place; it is what makes every accuracy claim here checkable rather
+     than asserted. It does not earn the top of the sidebar once there is
+     anything real in it. A `<details>` rather than a flag, so it is one click
+     back and nothing is deleted.

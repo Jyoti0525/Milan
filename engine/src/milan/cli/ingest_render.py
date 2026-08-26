@@ -21,6 +21,7 @@ from milan.domain.results import ReconReport
 from milan.ingest.archive import ImportRecord
 from milan.ingest.build import Dropped
 from milan.ingest.plan import Certainty, FileMapping, IngestPlan, Question
+from milan.ingest.reading import SHEET
 
 _NUMERIC = {"justify": "right", "no_wrap": True}
 
@@ -148,9 +149,33 @@ def show_blocked(plan: IngestPlan) -> None:
         return
     console.print()
     console.print("Answer them like this, or run without --non-interactive to be asked:")
+    names = tuple(mapping.name for mapping in plan.files)
     for question in plan.questions:
         first = question.choices[0].value if question.choices else "<column>"
-        console.print(f'  [dim]--map "{question.key}={first}"[/dim]')
+        console.print(f'  [dim]--map "{_addressable(question, names)}={first}"[/dim]')
+
+
+def _addressable(question: Question, names: tuple[str, ...]) -> str:
+    """The question's key, shortened to something a keyboard can produce.
+
+    A sheet inside a workbook is identified as
+    `Settlement Report Aug 2026.xlsx \u00b7 Payouts`. Printing that in a
+    command line to copy was printing a middle dot - a character most Windows
+    terminals render as a question mark and nobody types. The suggestion was
+    therefore useless exactly when it was most needed, which is on the file
+    format most likely to need answering.
+
+    `--map` resolves a file by unique substring, so the shortest unambiguous
+    tail of the name is offered instead. Falls back to the full key when
+    nothing shorter is unique, because a long line beats a wrong one.
+    """
+    for candidate in (question.file.rpartition(SHEET)[2].strip(), question.file):
+        if not candidate:
+            continue
+        folded = candidate.casefold()
+        if sum(1 for name in names if folded in name.casefold()) == 1:
+            return f"{candidate}:{question.subject}"
+    return question.key
 
 
 def result_summary(record: ImportRecord, report: ReconReport) -> None:

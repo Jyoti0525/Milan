@@ -239,16 +239,25 @@ export default function Workspace() {
         if (cancelled) return;
         setRuns(found);
         setImports(imported);
-        // Prefer a run that will actually open, and the adversarial tier among
-        // those — it is the one with something in the queue worth looking at.
+        /*
+          Your own books first, and generated data only when there are none.
+
+          This opened on a generated adversarial run for as long as it has
+          existed, which was right while generated runs were the only thing
+          there was. Once a merchant has imported their own files, opening
+          somebody else's sample month and putting its figures under a
+          headline that says "money that reached your account" is the wrong
+          first screen - the numbers are not theirs, and nothing about a
+          landing state says so loudly enough to matter.
+        */
         const usable = found.filter((run) => !run.stale);
-        const run =
+        const sample =
           usable.find((candidate) => candidate.difficulty === "adversarial") ??
           usable[0] ??
           found[0] ??
           null;
-        if (run) setCurrent({ kind: "run", run });
-        else if (imported.length > 0) setCurrent({ kind: "import", ref: imported[0] });
+        if (imported.length > 0) setCurrent({ kind: "import", ref: imported[0] });
+        else if (sample) setCurrent({ kind: "run", run: sample });
       })
       .catch((failure: ApiError) => {
         if (!cancelled) setListFailure(failure);

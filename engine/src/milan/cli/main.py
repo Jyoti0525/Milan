@@ -295,7 +295,13 @@ def import_command(
                 f"({archive.directory(data_root, slug) / archive.MAPPING_FILE})[/dim]"
             )
     try:
-        decisions = _apply_answers(decisions, answers or [])
+        # The files have to be read before an answer can be addressed to one,
+        # because `--map` now accepts an abbreviation and an abbreviation can
+        # only be resolved against the real names.
+        importer.load(source)
+        decisions = _apply_answers(
+            decisions, answers or [], tuple(item.name for item in importer.sources)
+        )
         plan = importer.plan(source, decisions)
     except (UnreadableFileError, ValueError) as failure:
         console.print(f"[red]{failure}[/red]")
@@ -346,22 +352,56 @@ def _at_a_keyboard() -> bool:
     return sys.stdin.isatty()
 
 
-def _apply_answers(decisions: dict[str, Decisions], answers: list[str]) -> dict[str, Decisions]:
+def _resolve_file(named: str, known: tuple[str, ...]) -> str:
+    """Which file an answer is addressed to, given what the merchant typed.
+
+    Exact first, then a unique case-insensitive substring. The abbreviation is
+    not a convenience: a sheet inside a workbook is identified as
+    `Settlement Report Aug 2026.xlsx \u00b7 Payouts`, and this command was
+    printing that string in a `--map` line as the suggested way to answer -
+    a line containing a middle dot, which nobody can type and most terminals
+    render as a question mark.
+
+    So `--map Payouts:credit=...` works, and only while `Payouts` picks out
+    one file. Ambiguity is refused here for the same reason it is refused
+    everywhere else in this package: guessing which of two files a merchant
+    meant is how the wrong column is mapped in silence.
+    """
+    if named in known:
+        return named
+    folded = named.strip().casefold()
+    matches = [name for name in known if folded in name.casefold()]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        offered = "\n  ".join(known)
+        raise ValueError(f"no file here is called {named!r}. These were read:\n  {offered}")
+    offered = "\n  ".join(matches)
+    raise ValueError(f"{named!r} matches more than one file:\n  {offered}")
+
+
+def _apply_answers(
+    decisions: dict[str, Decisions], answers: list[str], known: tuple[str, ...] = ()
+) -> dict[str, Decisions]:
     """Read `--map file.csv:field=Column` into decisions.
 
     `record` is accepted in place of a field name, to place a file the column
     names could not. That is the escape hatch for a folder we read as
     unusable: the merchant knows which file is their settlement report, and
     they should be able to say so without renaming anything.
+
+    The file may be abbreviated to anything that names one file uniquely -
+    see `_resolve_file`.
     """
     found = dict(decisions)
     for raw in answers:
         key, separator, value = raw.partition("=")
         if not separator:
             raise ValueError(f'--map needs "file:field=value", got {raw!r}')
-        file, colon, subject = key.partition(":")
+        named, colon, subject = key.partition(":")
         if not colon:
             raise ValueError(f'--map needs "file:field=value", got {raw!r}')
+        file = _resolve_file(named, known) if known else named
         found[file] = _record_answer(found.get(file, Decisions()), subject.strip(), value.strip())
     return found
 

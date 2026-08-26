@@ -402,12 +402,20 @@ assertion in those READMEs is a test, so they cannot quietly go stale.
 | `2-names-we-do-not` | Six questions without a model, far fewer with one |
 | `3-one-excel-workbook` | Three tables from one `.xlsx`, cover sheet skipped |
 | `4-a-real-folder` | A GST register left alone, a PDF refused, a lock file ignored — **six outcomes and none of them an error** |
+| `5-a-real-handover` | **Start here.** All of the above at once, plus a month that landed in **two bank accounts at two banks** |
 
 Nothing is written to Milan's own schema. Each writer imitates a specific real
 export — the trailing space inside ICICI's `Withdrawal Amount (INR )`, HDFC's
 `dd/mm/yy` and its `*** End of Statement ***`, Kotak's `Cr` suffix — because
 test data invented by whoever wrote the reader drifts toward the aliases the
 schema already knows, and the confidence that follows is circular.
+
+**Two bank accounts is not a footnote.** A merchant with current accounts at
+two banks hands over two statements in two formats, and the reconciliation is
+over both. An engine that quietly assumed one file per record kind would read
+one of them, reconcile its credits perfectly, and report a month that balances
+over half the money — with nothing anywhere saying so. `5-a-real-handover`
+exists to make that failure impossible to ship.
 
 ### And the read is proved, not asserted
 

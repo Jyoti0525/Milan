@@ -25,6 +25,11 @@
  * scored against an answer key and an imported one has none. Listing them
  * together would let somebody read a figure from one as if it came from the
  * other.
+ *
+ * The generated half is folded shut. It earns its place - it is what makes
+ * every accuracy claim here checkable - but six sample months stacked above a
+ * merchant's four real imports reads as a demo with the customer's data filed
+ * underneath it. One click reopens it, and nothing is deleted.
  */
 
 import type { ImportRef, RunRef } from "@/lib/api";
@@ -226,7 +231,28 @@ export function Sidebar({
           )}
         </Group>
 
-        <Group title="Sample data">
+        {/*
+          Folded away, and open only when somebody asks for it.
+
+          These are generated months. They are the reason every accuracy claim
+          in this project is checkable rather than asserted, and they have no
+          business being the first thing in a sidebar belonging to a merchant
+          with their own books in it - six sample runs above four real imports
+          reads as a demo with the customer's data filed underneath.
+
+          A `<details>` rather than a flag, so it is one click back rather
+          than a rebuild, and nothing is deleted. Closed by default; the
+          browser's own in-page search still finds what is inside it.
+        */}
+        <details className="explain px-3 pb-3">
+          <summary className="mb-1 flex cursor-pointer list-none items-center gap-1.5 px-1 text-[11px] font-medium tracking-wide text-[var(--text-subtle)] uppercase transition-colors hover:text-[var(--text-muted)]">
+            <span aria-hidden className="text-[9px] leading-none">
+              &#9656;
+            </span>
+            Sample data
+            <span className="tnum ml-auto text-[11px] normal-case">{ordered.length}</span>
+          </summary>
+          <div className="space-y-0.5">
           {ordered.map((run) => {
             const active =
               current?.kind === "run" &&
@@ -255,7 +281,8 @@ export function Sidebar({
           {ordered.length === 0 && (
             <div className="px-1 text-[11.5px] text-[var(--text-subtle)]">none generated</div>
           )}
-        </Group>
+          </div>
+        </details>
       </div>
     </aside>
   );

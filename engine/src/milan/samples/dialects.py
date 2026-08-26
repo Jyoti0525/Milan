@@ -91,8 +91,17 @@ def _write(
             handle.write(footer if footer.endswith("\n") else footer + "\n")
 
 
-def _credits(dataset: Dataset) -> list[BankCredit]:
-    return sorted(dataset.bank_credits, key=lambda credit: (credit.value_date, credit.credit_id))
+def _credits(dataset: Dataset, only: Sequence[BankCredit] | None = None) -> list[BankCredit]:
+    """The credits a statement covers, oldest first.
+
+    `only` exists so one generated month can be split across two accounts. A
+    merchant with two current accounts hands over two statements and expects
+    the reconciliation to be over both, and that is a case worth having a
+    sample for - it is also the case where an engine that assumed one file per
+    record kind reconciles half a month and reports nothing wrong.
+    """
+    found = dataset.bank_credits if only is None else only
+    return sorted(found, key=lambda credit: (credit.value_date, credit.credit_id))
 
 
 # ------------------------------------------------- gateway settlement reports
@@ -216,7 +225,9 @@ def unfamiliar_settlement(dataset: Dataset, path: Path) -> None:
 # ------------------------------------------------------------ bank statements
 
 
-def hdfc_statement(dataset: Dataset, path: Path) -> None:
+def hdfc_statement(
+    dataset: Dataset, path: Path, *, only: Sequence[BankCredit] | None = None
+) -> None:
     """HDFC net banking's CSV download, banner and closing line included.
 
     Four things about this file are the reason it is here. The account banner
@@ -228,7 +239,7 @@ def hdfc_statement(dataset: Dataset, path: Path) -> None:
     """
     balance = 8_00_000_00
     rows: list[list[str]] = []
-    for credit in _credits(dataset):
+    for credit in _credits(dataset, only):
         balance += int(credit.amount)
         rows.append(
             [
@@ -264,7 +275,9 @@ def hdfc_statement(dataset: Dataset, path: Path) -> None:
     )
 
 
-def icici_statement(dataset: Dataset, path: Path) -> None:
+def icici_statement(
+    dataset: Dataset, path: Path, *, only: Sequence[BankCredit] | None = None
+) -> None:
     """ICICI's transaction history export.
 
     The trailing space inside `Withdrawal Amount (INR )` is not a typo here -
@@ -279,7 +292,7 @@ def icici_statement(dataset: Dataset, path: Path) -> None:
     """
     balance = 8_00_000_00
     rows: list[list[str]] = []
-    for number, credit in enumerate(_credits(dataset), start=1):
+    for number, credit in enumerate(_credits(dataset, only), start=1):
         balance += int(credit.amount)
         rows.append(
             [
@@ -319,7 +332,9 @@ def icici_statement(dataset: Dataset, path: Path) -> None:
     )
 
 
-def kotak_statement(dataset: Dataset, path: Path) -> None:
+def kotak_statement(
+    dataset: Dataset, path: Path, *, only: Sequence[BankCredit] | None = None
+) -> None:
     """One signed amount with a Cr/Dr marker, the way Kotak writes it.
 
     A single column where the others have two, and the direction carried in a
@@ -328,7 +343,7 @@ def kotak_statement(dataset: Dataset, path: Path) -> None:
     right and every debit backwards.
     """
     rows: list[list[str]] = []
-    for credit in _credits(dataset):
+    for credit in _credits(dataset, only):
         rows.append(
             [
                 credit.value_date.strftime("%d-%b-%Y"),
@@ -597,3 +612,147 @@ def totals_row(paise: Paise, columns: int) -> list[str]:
 def statement_date_range(dataset: Dataset) -> tuple[date, date]:
     dates = [credit.value_date for credit in dataset.bank_credits]
     return (min(dates), max(dates)) if dates else (date.today(), date.today())
+
+
+def axis_statement(
+    dataset: Dataset, path: Path, *, only: Sequence[BankCredit] | None = None
+) -> None:
+    """Axis Bank's statement download.
+
+    A fourth bank shape, and the differences from the other three are the
+    reason it is here. `Tran Date` is a name no alias list writes down on its
+    own. `Init.Br` is a branch code that looks like an identifier and is not
+    one. And the date is `dd-mm-yyyy` where HDFC writes `dd/mm/yy`, which is
+    the same information in a form that has to be settled separately.
+    """
+    balance = 4_50_000_00
+    rows: list[list[str]] = []
+    for credit in _credits(dataset, only):
+        balance += int(credit.amount)
+        rows.append(
+            [
+                credit.value_date.strftime("%d-%m-%Y"),
+                "",
+                credit.narration,
+                "",
+                grouped(credit.amount),
+                grouped(Paise(balance)),
+                "KORAMANGALA",
+            ]
+        )
+    _write(
+        path,
+        ["Tran Date", "Chq No", "Particulars", "Debit", "Credit", "Balance", "Init.Br"],
+        rows,
+        banner=(
+            "AXIS BANK LTD\n"
+            "Statement of Account\n"
+            "Account Number,918020012345678\n"
+            "Customer Name,ACME RETAIL PRIVATE LIMITED\n"
+            "\n"
+        ),
+    )
+
+
+def gateway_workbook(dataset: Dataset, path: Path) -> None:
+    """A gateway export as a workbook, with names this schema has never met.
+
+    The combination that makes this the most realistic file in the pack, and
+    the one worth watching a model on: it is a workbook, so it exercises the
+    sheet reader, and its headers are a payment processor's own vocabulary
+    rather than ours, so nothing is settled by name alone.
+
+    `Settlement Ref` and `Payout UTR` are the interesting pair. Both are
+    identifiers, both plausible for the settlement id, and only one of them is
+    the bank reference. The values cannot separate them - they are both opaque
+    strings - so a model proposes and a person confirms, which is the entire
+    design of this package in one column.
+    """
+    from openpyxl import Workbook
+
+    book = Workbook()
+    del book[str(book.sheetnames[0])]
+
+    payouts = book.create_sheet("Payouts")
+    payouts.append(
+        [
+            "Record ID",
+            "Record Type",
+            "Gross Amount",
+            "Amount Paid In",
+            "Amount Taken Out",
+            "Processing Fee",
+            "GST On Fee",
+            "Booked On",
+            "Settlement Ref",
+            "Settled On",
+            "Payout UTR",
+            "Payment Ref",
+            "Order Ref",
+            "Mode",
+            "Card Class",
+            "Held",
+            "Paid",
+        ]
+    )
+    for row in dataset.settlement_rows:
+        payouts.append(
+            [
+                row.entity_id,
+                row.type.value,
+                rupees(row.amount),
+                rupees(row.credit),
+                rupees(row.debit),
+                rupees(row.fee),
+                rupees(row.tax),
+                row.created_at,
+                row.settlement_id or "",
+                row.settled_at,
+                row.settlement_utr or "",
+                row.payment_id or "",
+                row.order_id or "",
+                row.method.value if row.method else "",
+                row.card_type.value if row.card_type else "",
+                row.on_hold,
+                row.settled,
+            ]
+        )
+
+    transactions = book.create_sheet("Transactions")
+    transactions.append(["Payment Ref", "Order Ref", "Amount", "Mode", "Card Class", "Captured On"])
+    for payment in dataset.payments:
+        transactions.append(
+            [
+                payment.payment_id,
+                payment.order_id,
+                rupees(payment.amount),
+                payment.method.value,
+                payment.card_type.value if payment.card_type else "",
+                payment.captured_at,
+            ]
+        )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    book.save(path)
+
+
+def vendor_ledger(dataset: Dataset, path: Path) -> None:
+    """A purchase ledger somebody keeps in Excel. None of our business.
+
+    A second negative alongside the GST register, and a harder one: this has a
+    date, which the register does not, so it cannot be turned away on the same
+    structural grounds. What turns it away is that nothing in it reads as a
+    settlement or a bank credit once the columns are actually examined.
+    """
+    rows: list[list[str]] = []
+    for number, payment in enumerate(dataset.payments[:30], start=1):
+        rows.append(
+            [
+                f"PO-{number:04d}",
+                "Sundry vendor",
+                payment.captured_at.strftime("%d-%b-%Y"),
+                grouped(payment.amount),
+                "Paid" if number % 3 else "Pending",
+            ]
+        )
+    _write(path, ["PO Number", "Vendor", "Raised On", "Value", "Status"], rows)

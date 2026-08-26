@@ -236,3 +236,94 @@ class TestEveryFolderExplainsItself:
         told that in the first paragraph rather than to wonder."""
         index = (samples / "README.md").read_text(encoding="utf-8")
         assert "None of this is anybody's real money" in index
+
+
+class TestARealHandover:
+    """`5-a-real-handover`: everything at once, including two bank accounts."""
+
+    ROOT = "5-a-real-handover"
+    WB = "Settlement Report Aug 2026.xlsx"
+
+    def answered(self, samples: Path) -> object:
+        from milan.ingest.reading import SHEET
+        from milan.ingest.resolver import Decisions
+
+        answers = {
+            f"{self.WB}{SHEET}Payouts": {
+                "credit": "Amount Paid In",
+                "debit": "Amount Taken Out",
+                "created_at": "Booked On",
+            },
+            f"{self.WB}{SHEET}Transactions": {
+                "payment_id": "Payment Ref",
+                "order_id": "Order Ref",
+            },
+            "Acct Statement_XX1234.csv": {"value_date": "Value Dt"},
+        }
+        decisions: dict[str, Decisions] = {}
+        for file, columns in answers.items():
+            current = Decisions()
+            for field, column in columns.items():
+                current = current.with_answer(field, column, is_format=False)
+            decisions[file] = current
+        return Importer(None).plan(samples / self.ROOT, decisions)
+
+    def test_both_bank_statements_are_read(self, samples: Path) -> None:
+        """Two current accounts at two banks, in two different formats."""
+        plan = Importer(None).plan(samples / self.ROOT)
+        statements = plan.all_of(RecordKind.BANK_CREDITS)
+        assert len(statements) == 2
+        assert {mapping.name for mapping in statements} == {
+            "Acct Statement_XX1234.csv",
+            "axis_918020012345678_aug.csv",
+        }
+
+    def test_not_one_credit_is_lost_between_the_two_accounts(self, samples: Path) -> None:
+        """The failure this folder exists to catch. An engine that assumed one
+        file per record kind reconciles half the money perfectly and reports
+        nothing wrong - every downstream check passes over the half it read."""
+        plan = self.answered(samples)
+        assert plan.ready, plan.blockers()  # type: ignore[attr-defined]
+        result = build.build(plan)  # type: ignore[arg-type]
+        data = month(seed=42, orders=200)
+        assert len(result.data.bank_credits) == len(data.bank_credits)
+        assert sum(c.amount for c in result.data.bank_credits) == sum(
+            c.amount for c in data.bank_credits
+        )
+
+    def test_the_workbooks_two_sheets_are_both_placed(self, samples: Path) -> None:
+        plan = Importer(None).plan(samples / self.ROOT)
+        placed = {mapping.kind for mapping in plan.placed}
+        assert RecordKind.SETTLEMENT_ROWS in placed
+        assert RecordKind.PAYMENTS in placed
+
+    def test_the_unfamiliar_headers_are_asked_about_not_guessed(self, samples: Path) -> None:
+        """`Amount Paid In` and `Amount Taken Out` are a credit and a debit to
+        a person and nothing to an alias list. Getting them the wrong way round
+        balances every row to zero and inverts the month."""
+        plan = Importer(None).plan(samples / self.ROOT)
+        asked = {q.subject for q in plan.questions if q.blocking}
+        assert {"credit", "debit"} <= asked
+
+    def test_three_files_are_left_alone_and_none_of_it_is_an_error(self, samples: Path) -> None:
+        plan = self.answered(samples)
+        unplaced = {mapping.name for mapping in plan.unplaced}  # type: ignore[attr-defined]
+        assert "GSTR1_Aug_2026.csv" in unplaced
+        assert "purchase orders.csv" in unplaced
+        pdf = next(
+            item
+            for item in plan.unreadable  # type: ignore[attr-defined]
+            if item.path.suffix == ".pdf"
+        )
+        assert "no columns to read" in pdf.reason
+
+    def test_it_reconciles_over_both_accounts(self, samples: Path) -> None:
+        from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
+
+        plan = self.answered(samples)
+        report = ReconciliationPipeline().run(
+            build.build(plan).data,  # type: ignore[arg-type]
+            RunMetadata(seed=42, difficulty="realistic"),
+        )
+        assert report.proofs
+        assert all(proof.residual == 0 for proof in report.proofs if proof.balances)

@@ -42,6 +42,18 @@ MAX_PREAMBLE_LINES = 25
 """How far down a file the header is allowed to be. Statements with more
 banner than this are not statements."""
 
+SHEET = " · "
+"""What separates a workbook's file name from its sheet name.
+
+A middle dot rather than a slash or a colon, because this string is shown to
+a person, used as a dictionary key, and written into a saved mapping on disk -
+and the two obvious separators are both meaningful in a path and in the
+`file:field` form the command line answers questions with.
+
+Named rather than spelled inline, because the command line has to split a
+name back apart on it to offer an abbreviation somebody can type.
+"""
+
 SAMPLE_ROWS = 8
 """How many rows below a candidate header have to agree on field count."""
 
@@ -93,7 +105,7 @@ class SourceFile:
         are both meaningful in a path and in the `file:field` form the command
         line answers questions with.
         """
-        return f"{self.path.name} · {self.sheet}" if self.sheet else self.path.name
+        return f"{self.path.name}{SHEET}{self.sheet}" if self.sheet else self.path.name
 
     def column(self, header: str) -> tuple[str, ...]:
         """Every value in one column, in file order, blanks included."""

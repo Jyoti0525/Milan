@@ -16,6 +16,10 @@ each claim has an outcome somebody testing can check without reading any code:
      register that is none of our business, a refund log kept by hand, a PDF
      that cannot be read, and the lock file Excel leaves behind. The right
      outcome differs for every one of them and not one is an error.
+  5. **A real handover.** All of the above at once, plus the thing none of the
+     others has: a month that landed in **two bank accounts at two banks**. An
+     engine that assumed one file per record kind would reconcile half the
+     money perfectly and report nothing wrong. Start here.
 
 All four are built from the same generated month, so they reconcile to the
 same answer. A difference between two folders is a difference in the reader.
@@ -214,11 +218,74 @@ def messy_folder(data: Dataset, root: Path) -> Folder:
     return folder
 
 
+def handover_folder(data: Dataset, root: Path) -> Folder:
+    """The folder this pack exists to be judged on.
+
+    Everything before it isolates one problem. This one has all of them at
+    once, which is the only shape a real handover ever takes: a gateway export
+    in a format that is not CSV, with headers in somebody else's vocabulary,
+    covering a month that landed in **two different bank accounts** at two
+    different banks - plus the two files in every finance folder that are none
+    of our business, and the PDF somebody downloaded first.
+
+    The two accounts are the part worth pointing at. An engine that quietly
+    assumed one file per record kind would read one statement, reconcile the
+    credits in it perfectly, and report a month that balances over half the
+    money - with nothing anywhere saying so.
+    """
+    credits = sorted(data.bank_credits, key=lambda credit: credit.credit_id)
+    half = len(credits) // 2
+
+    dialects.gateway_workbook(data, root / "Settlement Report Aug 2026.xlsx")
+    dialects.hdfc_statement(data, root / "Acct Statement_XX1234.csv", only=credits[:half])
+    dialects.axis_statement(data, root / "axis_918020012345678_aug.csv", only=credits[half:])
+    dialects.vendor_ledger(data, root / "purchase orders.csv")
+    dialects.gst_register(data, root / "GSTR1_Aug_2026.csv")
+    dialects.pdf_statement(root / "August Statement.pdf")
+
+    folder = Folder(
+        name=root.name,
+        title="A real handover: two banks, one workbook, and three files that are not ours",
+        expect=(
+            "**Start here if you want to see the whole thing work.**\n\n"
+            "The month landed in two current accounts at two banks, so there "
+            "are two statements in different formats and the reconciliation is "
+            "over both. An engine that assumed one bank file would reconcile "
+            "half the money perfectly and report nothing wrong.\n\n"
+            "The gateway export is a workbook with two sheets, and its headers "
+            "are a payment processor's vocabulary rather than ours - "
+            "`Amount Paid In`, `GST On Fee`, `Booked On`. Expect to be asked "
+            "about them, and expect the suggestions to be good if the engine "
+            "is running with a model:\n\n"
+            "```\nuv run milan serve --provider ollama\n```\n\n"
+            "`Settlement Ref` and `Payout UTR` are the pair to watch. Both are "
+            "opaque identifiers, both plausible for the settlement id, and the "
+            "values cannot separate them - so a model proposes and you "
+            "confirm, which is this whole design in one column.\n\n"
+            "Three files are left alone and **none of that is an error**: the "
+            "GST register has no settlement date, the purchase ledger is "
+            "somebody's payables, and the PDF is refused with the sentence "
+            "that tells you to download the CSV your bank already offers."
+        ),
+        files=(
+            "Settlement Report Aug 2026.xlsx",
+            "Acct Statement_XX1234.csv",
+            "axis_918020012345678_aug.csv",
+            "purchase orders.csv",
+            "GSTR1_Aug_2026.csv",
+            "August Statement.pdf",
+        ),
+    )
+    _readme(root, folder)
+    return folder
+
+
 BUILDERS = (
     ("1-names-we-know", clean_folder),
     ("2-names-we-do-not", unfamiliar_folder),
     ("3-one-excel-workbook", workbook_folder),
     ("4-a-real-folder", messy_folder),
+    ("5-a-real-handover", handover_folder),
 )
 
 
