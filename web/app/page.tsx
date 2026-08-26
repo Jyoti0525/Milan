@@ -140,16 +140,16 @@ const HEADINGS: Record<Tab, { title: string; blurb: string; empty: string; absen
 function Welcome({ onImport }: { onImport: () => void }) {
   const steps = [
     {
-      title: "Bring your own books",
-      body: "Your settlement report and your bank statement, in whatever shape your gateway and bank wrote them. Column names are worked out, and anything ambiguous is asked about rather than guessed.",
+      title: "Hand over your books",
+      body: "Your settlement report and bank statement, in whatever shape they were exported. Anything ambiguous is asked about, not guessed.",
     },
     {
       title: "Every rupee proved, or named",
-      body: "Each credit is rebuilt from its settlement rows — gross, fee, GST, refunds netted — until it reconstructs to zero. What will not reconstruct is listed with the reason, never quietly matched.",
+      body: "Each credit is rebuilt from its settlement rows until it reconstructs to zero. What will not is listed with the reason.",
     },
     {
-      title: "Money that balanced and was still wrong",
-      body: "Rows charged above your contracted rate reconcile perfectly and are still money you should not have paid. They are reported separately, because nothing else would ever find them.",
+      title: "What balanced and was still wrong",
+      body: "Rows charged above your contracted rate reconcile perfectly. They are reported separately, because nothing else finds them.",
     },
   ];
 
@@ -160,8 +160,8 @@ function Welcome({ onImport }: { onImport: () => void }) {
           Reconcile a month of settlements, and see what does not add up.
         </h1>
         <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--text-muted)]">
-          Point Milan at your own CSV exports, or open one of the sample runs in the sidebar to see
-          what it does before you hand over anything.
+          Point Milan at your own exports, or open a sample run in the sidebar to see what it does
+          before you hand over anything.
         </p>
       </div>
 
@@ -182,7 +182,7 @@ function Welcome({ onImport }: { onImport: () => void }) {
           <span aria-hidden>↑</span> Import your files
         </button>
         <span className="text-[12px] text-[var(--text-subtle)]">
-          CSV or TSV. Nothing is reconciled until you approve how the columns were read.
+          CSV, TSV or Excel. Nothing is reconciled until you approve how the columns were read.
         </span>
       </div>
     </div>
@@ -452,11 +452,17 @@ export default function Workspace() {
 
         <div className="flex min-h-0 flex-1 gap-4 p-5">
           <section className="card flex min-w-0 flex-1 flex-col overflow-hidden 2xl:max-w-[58%]">
-            <div className="flex shrink-0 items-center justify-between gap-4 px-4 py-3">
-              <div>
-                <h1 className="text-[14px] font-semibold">{HEADINGS[tab].title}</h1>
-                <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">{HEADINGS[tab].blurb}</p>
-              </div>
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-4 py-2.5">
+              {/*
+                Title only. The blurb under it said what the list was, which is
+                what the sidebar item that opened it already said - and a
+                sentence repeated one click later is a sentence nobody reads
+                twice. It is now the empty state, where somebody who has not
+                selected anything is looking for exactly that.
+              */}
+              <h1 className="truncate text-[13.5px] font-semibold" title={HEADINGS[tab].blurb}>
+                {HEADINGS[tab].title}
+              </h1>
               {current?.kind === "run" && (
                 <span className="chip shrink-0 capitalize">
                   {current.run.difficulty} · seed {current.run.seed}
@@ -501,9 +507,14 @@ export default function Workspace() {
                   screen that failed to load rather than a run with nothing
                   wrong in it.
                 */}
-                <p className="max-w-xs text-[13px] leading-relaxed text-[var(--text-subtle)]">
-                  {counts[tab] === 0 ? HEADINGS[tab].absent : HEADINGS[tab].empty}
-                </p>
+                <div className="max-w-xs space-y-1.5">
+                  <p className="text-[13px] leading-relaxed text-[var(--text-muted)]">
+                    {HEADINGS[tab].blurb}
+                  </p>
+                  <p className="text-[12.5px] leading-relaxed text-[var(--text-subtle)]">
+                    {counts[tab] === 0 ? HEADINGS[tab].absent : HEADINGS[tab].empty}
+                  </p>
+                </div>
               </div>
             )}
           </section>

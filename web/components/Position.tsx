@@ -21,6 +21,7 @@
 
 import type { Paise } from "@/lib/money";
 import { Amount } from "./Amount";
+import { Explain } from "./Explain";
 
 function Dot({ tone }: { tone: string }) {
   return (
@@ -103,13 +104,13 @@ export function Position({
           tone="var(--good)"
           label="Proved to the paisa"
           paise={proved}
-          hint="rebuilt from its settlement rows, fee and GST included"
+          hint="rebuilt from its own settlement rows"
         />
         <Leg
           tone="var(--warn)"
           label="Still to explain"
           paise={unexplained}
-          hint="arrived, and the engine would not claim to know why"
+          hint="arrived, and we would not guess why"
         />
       </div>
 
@@ -117,10 +118,21 @@ export function Position({
         Below a rule and worded as a separate statement, because it is money
         in a different place. Everything above is in the account; this is not.
       */}
-      <div className="mt-3.5 border-t border-[var(--border)] pt-3 text-[12.5px] text-[var(--text-muted)]">
-        Separately, <Amount paise={awaited} size="sm" /> was reported as paid out and never reached
-        the bank, or was captured and never settled.{" "}
-        <span className="text-[var(--text-subtle)]">Not part of the total above.</span>
+      <div className="mt-3.5 space-y-2 border-t border-[var(--border)] pt-3">
+        <div className="text-[12.5px] text-[var(--text-muted)]">
+          Separately, <Amount paise={awaited} size="sm" /> never reached the bank at all.
+        </div>
+        <Explain question="Why is that figure kept apart?">
+          <p>
+            Because it is money in a different place. Everything above the line is money that is
+            in your account; this is money your gateway reported paying out, or captured and never
+            settled, and which the bank has no record of receiving.
+          </p>
+          <p>
+            Adding the two would produce a total you do not have. They are two populations and
+            they are never summed.
+          </p>
+        </Explain>
       </div>
     </section>
   );

@@ -228,6 +228,17 @@ class RunSummary(BaseModel):
     drift_net: Paise
     proofs_with_drift: int
     match_rate: float
+    resolvable_credits: int
+    """How many credits the match rate was measured over.
+
+    The denominator, carried beside its rate for the same reason the refusal
+    count is. `100.0%` against a run of thirty-seven credits reads as
+    thirty-seven credits resolved, and on the adversarial tier it means
+    twenty-one - the rest being impossible by construction and correctly
+    refused. A rate whose population is not on screen invites exactly that
+    reading, and it is the flattering one.
+    """
+
     precision: float
     refusal_rate: float
     refusals_expected: int
@@ -772,6 +783,7 @@ class Service:
             drift_net=card.drift_net,
             proofs_with_drift=card.proofs_with_drift,
             match_rate=card.match_rate,
+            resolvable_credits=card.matchable,
             precision=card.precision,
             refusal_rate=card.refusal_rate,
             refusals_expected=card.impossible,

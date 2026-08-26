@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"debit\": \"Withdrawal Amt.\", \"utr\": \"Ref No\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.3636197000014363,
+  "prompt_tokens": 510,
+  "completion_tokens": 20
+}

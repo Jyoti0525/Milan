@@ -73,7 +73,7 @@ function Dropzone({ onFiles, busy }: { onFiles: (files: File[]) => void; busy: b
           background: over ? "var(--accent-wash)" : "var(--surface-sunken)",
         }}
       >
-        <div className="text-[14px] font-semibold">Drop your CSV files here</div>
+        <div className="text-[14px] font-semibold">Drop your files here</div>
         <p className="mt-1.5 max-w-md text-[12.5px] leading-relaxed text-[var(--text-muted)]">
           Your settlement or recon report, and your bank statement. Add a payments export too and
           the run can also look for money that was captured and never settled.
@@ -90,13 +90,18 @@ function Dropzone({ onFiles, busy }: { onFiles: (files: File[]) => void; busy: b
           ref={input}
           type="file"
           multiple
-          accept=".csv,.tsv,.txt"
+          accept=".csv,.tsv,.txt,.xlsx,.xlsm"
           className="hidden"
           onChange={(event) => onFiles([...(event.target.files ?? [])])}
         />
+        {/*
+          The formats, named. A merchant whose bank gave them a workbook and
+          who reads "CSV" here converts the file before trying, or gives up -
+          and the workbook was always the more likely thing for them to have.
+        */}
         <p className="mt-3 text-[11.5px] text-[var(--text-subtle)]">
-          Whatever your bank calls its columns. Nothing is reconciled until you approve how they
-          were read.
+          CSV, TSV or Excel (.xlsx) — whatever your bank calls its columns. Nothing is reconciled
+          until you approve how they were read.
         </p>
       </div>
     </div>

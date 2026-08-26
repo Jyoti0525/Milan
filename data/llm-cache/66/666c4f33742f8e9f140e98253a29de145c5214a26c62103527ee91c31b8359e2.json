@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"entity_id\": \"pay_6ov3isy0x4knsf\", \"type\": \"payment\", \"amount\": \"4079\", \"credit\": \"3982.74\", \"debit\": \"0\", \"fee\": \"81.58\", \"tax\": \"14.68\", \"created_at\": \"2026-07-01 10:55:15\", \"settlement_id\": \"setl_2ionnxgcqa0hr2\", \"settled_at\": \"2026-07-03 11:00:00\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 12.140928799999529,
+  "prompt_tokens": 940,
+  "completion_tokens": 144
+}

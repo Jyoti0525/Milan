@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"value_date\": \"Transaction Date\", \"narration\": \"Description\", \"utr\": \"Reference No\", \"debit\": \"Amount\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.5328878000000259,
+  "prompt_tokens": 481,
+  "completion_tokens": 33
+}

@@ -143,9 +143,7 @@ class TestTheFolderWhoseNamesWeDoNot:
 class TestTheWorkbookFolder:
     """`3-one-excel-workbook`: one file, four sheets, three tables."""
 
-    def test_the_cover_sheet_is_skipped_and_the_other_three_are_read(
-        self, samples: Path
-    ) -> None:
+    def test_the_cover_sheet_is_skipped_and_the_other_three_are_read(self, samples: Path) -> None:
         plan = Importer(None).plan(samples / "3-one-excel-workbook")
         assert {mapping.kind for mapping in plan.placed} == {
             RecordKind.SETTLEMENT_ROWS,

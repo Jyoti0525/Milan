@@ -3,18 +3,18 @@
 /**
  * Where you are, and what there is to do — in the merchant's words.
  *
- * Modern Treasury's write-up on their reconciliation dashboard makes the case
- * for a side navigation organised around jobs rather than objects. This one
- * was organised around jobs and then labelled with our vocabulary: "Exception
- * queue", "Proved", "Charged above contract", each with a one-line
- * explanation that was `sr-only` and therefore invisible to everybody who
- * needed it.
+ * The labels are what a person came to do — **Needs you**, **Accounted for**,
+ * **Overcharged** — rather than what the engine calls those things. The
+ * precise terms are the headings of the panes those items open, where somebody
+ * who has already decided to look is reading carefully.
  *
- * So the labels are now what a person came to do — **Needs you**, **Accounted
- * for**, **Overcharged** — and the explanation is on screen underneath rather
- * than in the accessibility tree. The precise terms have not been abandoned;
- * they are the headings of the panes those items open, where somebody who has
- * already decided to look is reading carefully.
+ * Every item used to carry its explanation underneath, on screen, because
+ * before that the explanations were `sr-only` and therefore invisible to
+ * everybody who needed them. Both versions were wrong in the same way: three
+ * items and three sentences is six lines of navigation, and a person scanning
+ * for where to click reads the labels and nothing else. So the sentence is
+ * back to being a `title`, and the thing that carries urgency is the count —
+ * amber when the queue has something in it, quiet when it does not.
  *
  * Two groups because there are two jobs. **Review** is about credits: what
  * could not be resolved, and what could. **Recover** is about rows that
@@ -51,6 +51,7 @@ function Item({
   hint,
   count,
   amount,
+  tone,
   active,
   onClick,
 }: {
@@ -58,13 +59,17 @@ function Item({
   hint: string;
   count: number;
   amount?: Paise;
+  /** Colour for the count when there is something in it. */
+  tone?: string;
   active: boolean;
   onClick: () => void;
 }) {
+  const live = count > 0 && tone !== undefined;
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-[var(--r-control)] px-2.5 py-2 text-left transition-colors"
+      title={hint}
+      className="w-full rounded-[var(--r-control)] px-2.5 py-[7px] text-left transition-colors hover:bg-[var(--surface-hover)]"
       style={{
         background: active ? "var(--surface-selected)" : undefined,
         color: active ? "var(--accent-strong)" : "var(--text-muted)",
@@ -72,17 +77,31 @@ function Item({
     >
       <span className="flex items-center gap-2">
         <span className="flex-1 truncate text-[13px] font-medium">{label}</span>
-        <span className="tnum text-[12px] text-[var(--text-subtle)]">{count}</span>
+        {/*
+          The count carries the urgency the sentence underneath used to carry.
+          A pill when there is something to do and plain grey when there is
+          not, so a person scanning three items sees which one wants them
+          without reading a word.
+        */}
+        <span
+          className="tnum shrink-0 rounded-full px-1.5 text-[11.5px] leading-[18px] font-medium"
+          style={{
+            background: live ? `var(${tone}-wash)` : "transparent",
+            color: live ? `var(${tone})` : "var(--text-subtle)",
+          }}
+        >
+          {count}
+        </span>
       </span>
       {/*
-        On screen, not `sr-only`. These sentences are what tell somebody who
-        has never seen this what the item is, and hiding them from everyone
-        who can see the screen made the navigation four nouns and three
-        numbers.
+        The rupee figure stays, because it is a fact rather than a caption and
+        it is the thing that decides which item somebody opens first.
       */}
-      <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-subtle)]">
-        {amount !== undefined && amount > 0 ? `${inr(amount)} · ${hint}` : hint}
-      </span>
+      {amount !== undefined && amount > 0 && (
+        <span className="tnum mt-0.5 block text-[11px] leading-tight text-[var(--text-subtle)]">
+          {inr(amount)}
+        </span>
+      )}
     </button>
   );
 }
@@ -115,26 +134,27 @@ export function Sidebar({
   );
 
   return (
-    <aside className="hidden w-[236px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] lg:flex">
+    <aside className="hidden w-[228px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] lg:flex">
       <div className="pt-3">
         <Group title="Review">
           {/*
-            No rupee figure here, deliberately. This queue holds two different
-            populations - credits that arrived and would not reconstruct, and
-            payouts the bank never received - and one total across both is a
-            number the merchant does not have anywhere. The headline strip
-            splits them properly; a sidebar cannot, so it counts instead.
+            No rupee figure on this one, deliberately. The queue holds two
+            different populations - credits that arrived and would not
+            reconstruct, and payouts the bank never received - and one total
+            across both is a number the merchant does not have anywhere. The
+            headline strip splits them properly; a sidebar cannot, so it counts.
           */}
           <Item
             label="Needs you"
-            hint="we would not guess at these"
+            hint="Credits the engine would not claim, and the reason for each. Worst first."
             count={counts.queue}
+            tone="--warn"
             active={tab === "queue"}
             onClick={() => onTab("queue")}
           />
           <Item
             label="Accounted for"
-            hint="rebuilt to the paisa"
+            hint="Credits rebuilt from their settlement rows to the paisa — fee, GST and refunds included."
             count={counts.proved}
             amount={amounts.proved}
             active={tab === "proved"}
@@ -151,9 +171,10 @@ export function Sidebar({
         <Group title="Recover">
           <Item
             label="Overcharged"
-            hint="balanced, and still priced wrong"
+            hint="Rows that reconciled perfectly and were still charged above your contracted rate."
             count={counts.leaks}
             amount={amounts.leaks}
+            tone="--bad"
             active={tab === "leaks"}
             onClick={() => onTab("leaks")}
           />
@@ -167,7 +188,7 @@ export function Sidebar({
           <Group title="Audit">
             <Item
               label="How this was read"
-              hint="which columns, and who decided"
+              hint="Which column became which field, who decided, and what was refused."
               count={counts.provenance}
               active={tab === "provenance"}
               onClick={() => onTab("provenance")}
@@ -177,14 +198,14 @@ export function Sidebar({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto border-t border-[var(--border)] py-3">
-        <Group title="Your files">
+        <Group title="Your books">
           {imports.map((ref) => {
             const active = current?.kind === "import" && current.ref.slug === ref.slug;
             return (
               <button
                 key={ref.slug}
                 onClick={() => onPickImport(ref)}
-                className="flex w-full items-center gap-2 rounded-[var(--r-control)] px-2.5 py-1.5 text-left"
+                className="flex w-full items-center gap-2 rounded-[var(--r-control)] px-2.5 py-1.5 text-left hover:bg-[var(--surface-hover)]"
                 style={{
                   background: active ? "var(--surface-selected)" : undefined,
                   color: active ? "var(--accent-strong)" : "var(--text-muted)",
@@ -200,12 +221,12 @@ export function Sidebar({
           })}
           {imports.length === 0 && (
             <div className="px-1 text-[11.5px] leading-relaxed text-[var(--text-subtle)]">
-              None yet. Use <span className="font-medium">Import your files</span> above.
+              None yet — use <span className="font-medium">Import your files</span> above.
             </div>
           )}
         </Group>
 
-        <Group title="Sample runs">
+        <Group title="Sample data">
           {ordered.map((run) => {
             const active =
               current?.kind === "run" &&
@@ -215,11 +236,12 @@ export function Sidebar({
               <button
                 key={`${run.difficulty}:${run.seed}`}
                 onClick={() => onPick(run)}
-                className="flex w-full items-center gap-2 rounded-[var(--r-control)] px-2.5 py-1.5 text-left"
+                className="flex w-full items-center gap-2 rounded-[var(--r-control)] px-2.5 py-1.5 text-left hover:bg-[var(--surface-hover)]"
                 style={{
                   background: active ? "var(--surface-selected)" : undefined,
                   color: active ? "var(--accent-strong)" : "var(--text-muted)",
                 }}
+                title={`${run.orders} orders, generated from seed ${run.seed}`}
               >
                 <span className="flex-1 truncate text-[13px] capitalize">{run.difficulty}</span>
                 {run.stale && <Badge tone="warn">stale</Badge>}
@@ -234,12 +256,6 @@ export function Sidebar({
             <div className="px-1 text-[11.5px] text-[var(--text-subtle)]">none generated</div>
           )}
         </Group>
-      </div>
-
-      <div className="border-t border-[var(--border)] px-4 py-3 text-[11px] leading-relaxed text-[var(--text-subtle)]">
-        {imported
-          ? "These are your own files. There is no answer key, so nothing here is scored — the audit tab says how it was read."
-          : "Every figure here is measured against a generated answer key, never estimated."}
       </div>
     </aside>
   );

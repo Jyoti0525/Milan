@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"entity_id\": \"entity_id\", \"type\": \"type\", \"amount\": \"amount\", \"credit\": \"credit\", \"debit\": \"debit\", \"fee\": \"fee\", \"tax\": \"tax\", \"created_at\": \"created_at\", \"settlement_id\": \"settlement_id\", \"settled_at\": \"settled_at\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.5486674000003404,
+  "prompt_tokens": 965,
+  "completion_tokens": 76
+}

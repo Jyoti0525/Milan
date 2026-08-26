@@ -351,3 +351,38 @@ body {
     transition: none;
   }
 }
+
+/*
+  The disclosure used by `Explain`.
+
+  Every figure on this screen needs a sentence to be trustworthy - a match
+  rate measured against what, a refusal rate over which population, why your
+  own books have no score. Written where their figures were, all of them were
+  true and all of them were on screen at once, which is a wall a person reads
+  none of.
+
+  So the marker is removed on both engines (`list-none` alone does not do it
+  in Safari), the open state gets a hair of separation, and the summary is a
+  target the width of its own question rather than of the row.
+*/
+.explain > summary::-webkit-details-marker {
+  display: none;
+}
+
+.explain > summary::marker {
+  content: "";
+}
+
+.explain[open] > summary {
+  color: var(--accent-strong);
+}
+
+.explain > div {
+  animation: rise 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explain > div {
+    animation: none;
+  }
+}

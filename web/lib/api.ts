@@ -138,6 +138,8 @@ export interface RunSummary {
   drift_net: Paise;
   proofs_with_drift: number;
   match_rate: number;
+  /** The denominator of `match_rate`: credits that could be resolved at all. */
+  resolvable_credits: number;
   precision: number;
   refusal_rate: number;
   /** Credits impossible by construction. Zero means there was nothing to
