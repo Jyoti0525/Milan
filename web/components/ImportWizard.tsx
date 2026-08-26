@@ -152,6 +152,27 @@ function Dropzone({
         </div>
 
         {/*
+          The browser's own confirmation.
+
+          Picking a folder makes Chrome put up "Upload 4 files to this site?"
+          in its own chrome, and a page cannot restyle it, replace it or
+          suppress it - which is the point of it. What we can do is stop it
+          being a surprise, because an unexplained security prompt in the
+          middle of handing over bank statements is exactly where somebody
+          sensible stops.
+
+          It is only shown on the first screen: by the time you are adding a
+          second file you have already seen it once.
+        */}
+        {!adding && (
+          <p className="mt-2.5 max-w-md text-[11.5px] leading-relaxed text-[var(--text-subtle)]">
+            Your browser will ask you to confirm the folder before it hands anything over. That
+            prompt is your browser&apos;s, not ours - choose <strong className="font-medium">Upload</strong>.
+            Nothing is read until you approve the plan on the next screen.
+          </p>
+        )}
+
+        {/*
           `webkitdirectory` is non-standard, unprefixed nowhere, and supported
           everywhere. React does not know the attribute, hence the cast - and
           the plain file input beside it is the fallback for anything that
