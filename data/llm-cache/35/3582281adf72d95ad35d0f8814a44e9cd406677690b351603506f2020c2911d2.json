@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"order_id\": \"ord_id\", \"amount\": \"paid_amount\", \"created_at\": \"paid_on\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.560886999941431,
+  "prompt_tokens": 485,
+  "completion_tokens": 27
+}

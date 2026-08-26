@@ -121,7 +121,7 @@ If a decision is not here, it is not settled.
     different books" demo is the kill shot.
 54. **Root-cause clustering upgraded to LLM-assisted induction** — real
     reasoning, not narration.
-55. **Schema inference promoted** — our most legitimate AI use.
+55. **Schema inference promoted** — our most legitimate AI use. **SETTLED by 183-189: built.**
 56. **PDF bank statement parsing** (text-PDFs) as a Tier 3 stretch. Genuinely
     AI load-bearing; ground truth free because we render our own data to PDF.
 57. **Video leads with AI-judgment moments**, not the deterministic pipeline.
@@ -763,4 +763,55 @@ If a decision is not here, it is not settled.
      original "more rates, no new problem" was half wrong about Route - the
      split was a new shape. It is entirely right about these two: a virtual
      account and a QR code change what a payment costs, not how it settles.
-
+183. **Item 19 was skipped for four days, and that was the error.** Schema
+     inference was Tier 2 and decision 47 explicitly protected it — "the
+     watcher can be cut; schema inference stays" — while Tier 3's control
+     benchmark was pulled forward ahead of it. The consequence was a system
+     that could not read a merchant's own files at all: pointed at a folder of
+     real CSVs it reported "nothing generated yet". Recorded because the
+     failure was one of sequencing, not of design, and the plan had already
+     said what to do.
+184. **A model proposes the mapping; the values decide.** Same rule as
+     `llm/triage.py`, applied to schema instead of to money. Every column a
+     model names is profiled first, and a proposal whose values contradict it
+     is rejected and recorded rather than weighed. The rejections are printed:
+     a guard whose catches are never counted reports itself as never needed.
+185. **Ambiguity never resolves itself.** A field two columns could be, or one
+     only a model's guess supports, either stops the import (required) or is
+     dropped with its cost stated (optional). It is never quietly assigned,
+     because a wrong column here does not produce a wrong explanation, it
+     produces a wrong balance — and a wrong balance looks exactly like a right
+     one.
+186. **Asking a model what a file *is* was circular, and was removed.** The
+     first design asked "which of the four records is this?" and checked the
+     answer against the header aliases. But the aliases are exactly what had
+     just failed to place the file, so the check could only ever say no — and
+     it did, on a bank statement the model had called a settlement report.
+     Replaced by ranking the record kinds on how much of the file each one's
+     *proposed mapping* can actually fill, which is a claim the values can
+     verify independently.
+187. **A record type a file cannot supply is not a candidate for it.** The
+     question is not whether anything did map to each required field but
+     whether anything could — is there a column here, under any name, whose
+     values read as that kind. A GST invoice register has an id, an amount and
+     a reference, which satisfies three of the four fields a payments file
+     needs; what it has no column for is a date. That absence is checkable
+     without asking anybody, and it is what keeps junk out of the folder.
+188. **One column offered for two fields is not a mapping with a mistake in
+     it.** Qwen 2.5 3B answered `igst_rate` for the credit, the debit and the
+     tax of a GST register, and three plausible-looking assignments were enough
+     to clear the placement bar. Keeping any one of the three would be
+     picking. All of them are dropped and all of them are reported.
+189. **The date format is a question, not a default.** `06-07-2026` is the 6th
+     of July or the 7th of June, and only the column's own values can say —
+     whether any date in it has a day past the twelfth. When none does, the
+     import stops and shows both readings of a real value from the file. A
+     parser that picked one and moved on would not be slightly wrong; it would
+     be silently reporting a different month.
+190. **The imported run is checked against the native one.** An imported
+     reconciliation has no answer key, so one is manufactured: a generated
+     dataset is written out as CSV in the shapes real exports arrive in — a
+     bank's banner, `37,419.37 Cr`, `%d-%b-%Y` — read back through the full
+     import, and compared proof for proof and exception for exception against
+     the run the engine did from its own records. They match exactly. That is
+     a stronger claim than "the import ran".

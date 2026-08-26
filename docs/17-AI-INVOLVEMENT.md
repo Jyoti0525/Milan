@@ -10,14 +10,19 @@ this question will be asked.
 By volume of work, deterministic code dominates. Roughly **5-10% of the system
 is AI.**
 
-| Genuinely AI | Deterministic |
-|---|---|
-| Triage of ambiguous exceptions | Matching (exact, tolerance) |
-| **Rule induction** from human fixes | Subset-sum / N:1 solving |
-| **Schema inference** on unknown files | Fee, GST, TDS, waterfall |
-| **Root-cause induction** across clusters | Leak detection |
-| Q&A tool selection + narration | Cash calendar, metrics, categorisation |
-| Explanation writing | |
+| Genuinely AI | Built? | Deterministic |
+|---|---|---|
+| Triage of ambiguous exceptions | **yes** — `llm/triage.py` | Matching (exact, tolerance) |
+| **Schema inference** on unknown files | **yes** — `ingest/propose.py` | Subset-sum / N:1 solving |
+| Explanation writing | **yes** | Fee, GST, TDS, waterfall |
+| **Rule induction** from human fixes | no | Leak detection |
+| **Root-cause induction** across clusters | no | Cash calendar, metrics, categorisation |
+| Q&A tool selection + narration | no | Column profiling and the ingest verifier |
+
+The `Built?` column was added late and is the point of the table. Three of the
+five planned AI-judgment tasks exist; two do not. A doc that listed all five
+without saying which had been written would be describing an intention and
+calling it a system.
 
 If someone called this "a rules engine with an LLM alongside", they would not be
 wrong. **We say this out loud rather than hiding it.**
@@ -110,11 +115,18 @@ Being honest about what we are up against:
 | **Unstructured input** — scanned invoices, PDF statements, email threads | **The strongest.** AI is genuinely irreplaceable when the input has no schema |
 | **Code-writing agent** — writes Python to match two unknown files, runs it, iterates | Real agency, real 2026 pattern |
 | **NL-defined pipelines** — "reconcile Razorpay against Tally, ignore under Rs 10" | Impressive, genuinely useful |
-| **Semantic schema resolution** across different accounting systems | Hard problem AI actually solves |
+| **Semantic schema resolution** across different accounting systems | Hard problem AI actually solves — **and now ours.** `milan import` maps a stranger's columns onto our schema, and every proposal is checked against the values before it can move a rupee |
 
-**The honest reason we are not that:** we chose **structured inputs.** With a
-clean CSV, AI genuinely is not needed for most of the work. **A project's
-AI-heaviness is largely decided by how messy its input is.**
+**The honest reason we were not that:** we chose **structured inputs**, and
+with a clean CSV, AI genuinely is not needed for most of the work. **A
+project's AI-heaviness is largely decided by how messy its input is.**
+
+**Partly corrected.** The fourth row above is now ours. Structured does not
+mean *our* structure: a merchant's folder holds an HDFC statement with four
+lines of banner above the header, amounts written `37,419.37 Cr`, and a column
+called `Particulars`. Reading that is genuine judgment, and no alias list
+generalises to the next bank. What we kept is the boundary — the model maps
+columns, arithmetic still does the reconciling. See `docs/22-INGEST.md`.
 
 ## So should we become that? Partly — and cheaply
 
@@ -155,7 +167,8 @@ Make the **AI-judgment moments the most visible ones**:
 1. The **ablation** — "here's the AI-heavy version, run twice, two different answers"
 2. **Rule induction** — three examples in, a working rule out
 3. **Root-cause induction** — "43 of your 71 exceptions share one cause"
-4. **Schema inference** — unknown file in, correctly identified
+4. **Schema inference** — unknown file in, correctly identified, and one
+   proposal visibly refused because the values contradicted it
 
 Do not open on the deterministic pipeline. Open on the money question, then show
 judgment where judgment happens.

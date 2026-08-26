@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"order_id\": \"linked_order\", \"amount\": \"gross_value\", \"created_at\": \"booked_on\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.7453115000389516,
+  "prompt_tokens": 957,
+  "completion_tokens": 28
+}

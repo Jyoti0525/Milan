@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"payment_id\": \"txn_ref\", \"order_id\": \"linked_order\", \"amount\": \"gross_value\", \"captured_at\": \"booked_on\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.8719484999310225,
+  "prompt_tokens": 969,
+  "completion_tokens": 37
+}

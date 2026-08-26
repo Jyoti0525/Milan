@@ -16,7 +16,7 @@ Read the files in order. Each one covers one topic in plain language.
 | `08-TECH-STACK.md` | Tools we use and why |
 | `09-RISKS-AND-MITIGATIONS.md` | The four real risks and how each is controlled |
 | `10-LLM-CHOICE.md` | Which model, and the cost controls |
-| `11-AUTO-INGEST.md` | The watched-folder feature |
+| `11-AUTO-INGEST.md` | The watched-folder feature, as planned. The watcher was cut and the schema inference shipped - see `22-INGEST.md` |
 | `12-FREE-LLM-PLAN.md` | Running on free models only, and why that's a strength |
 | `13-PORTABILITY-AND-DEPLOYMENT.md` | Making it run on anyone's machine, and where to deploy |
 | `14-DECISIONS-LOG.md` | **Every settled decision in one place** — read this if unsure |
@@ -24,6 +24,7 @@ Read the files in order. Each one covers one topic in plain language.
 | `16-WHY-NOT-FINETUNE.md` | Why fine-tuning fails here, and the better HuggingFace artifact |
 | `17-AI-INVOLVEMENT.md` | **How much AI is really in this**, the ablation, and the competitor analysis |
 | `18-BUILD-LOG.md` | What broke each day, and how we got out. Written as it happens |
+| `22-INGEST.md` | **Reading a merchant's own files.** What `milan import` does, what it refuses to decide, and how the schema inference is checked |
 
 ## The basics
 

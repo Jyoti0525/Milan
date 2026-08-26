@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"payment_id\": \"pmt_id\", \"order_id\": \"ord_id\", \"amount\": \"paid_amount\", \"captured_at\": \"paid_on\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.7005875000031665,
+  "prompt_tokens": 497,
+  "completion_tokens": 37
+}

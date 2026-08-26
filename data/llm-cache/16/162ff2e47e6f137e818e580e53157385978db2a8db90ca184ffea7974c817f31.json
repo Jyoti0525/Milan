@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"settlement_utr\": \"bank_utr\", \"payment_id\": \"linked_payment\", \"order_id\": \"linked_order\", \"order_receipt\": \"merchant_ref\", \"method\": \"instrument\", \"card_type\": \"card_class\", \"card_network\": \"scheme_name\", \"card_issuer\": \"issuer_code\", \"dispute_id\": \"case_ref\", \"on_hold\": \"held_back\", \"settled\": \"paid_out_flag\", \"currency\": \"ccy\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.6376252999762073,
+  "prompt_tokens": 1212,
+  "completion_tokens": 103
+}

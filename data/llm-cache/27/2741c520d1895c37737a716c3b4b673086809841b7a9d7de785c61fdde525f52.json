@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"entity_id\": \"txn_ref\", \"type\": \"record_kind\", \"amount\": \"gross_value\", \"credit\": \"paid_out_flag\", \"debit\": \"paid_in\", \"fee\": \"commission\", \"tax\": \"gst_on_commission\", \"created_at\": \"booked_on\", \"settlement_id\": \"payout_batch\", \"settled_at\": \"payout_on\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.6128535000607371,
+  "prompt_tokens": 1088,
+  "completion_tokens": 85
+}

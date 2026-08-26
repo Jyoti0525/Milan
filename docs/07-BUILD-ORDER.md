@@ -57,7 +57,7 @@ then spend ten days making it excellent.
 | 16 | Q&A agent with the no-arithmetic rule |
 | 17 | Rule learning (human-approved) |
 | 18 | Cash calendar (deterministic, not ML) |
-| 19 | Auto-ingest (watched folder) + **schema inference** (promoted — genuine AI use) |
+| 19 | ~~Auto-ingest (watched folder)~~ + **schema inference** — **BUILT.** `milan import --from <folder>` reads a folder of the merchant's own CSVs, infers the schema, refuses what it cannot settle, and reconciles. The watcher itself is still uncut and still cuttable; the AI half is done |
 | 19b | **Root-cause induction, LLM-assisted** (upgraded from deterministic clustering) |
 | 20 | ITC / monthly tax invoice view |
 

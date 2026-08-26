@@ -30,9 +30,15 @@ The dedup logic IS the idempotency logic. The watcher is a thin layer on top.
 
 ## The genuinely interesting part: schema inference
 
-> **PROMOTED.** Schema inference is no longer a sub-feature of the watcher. It is
-> one of our **five genuine AI-judgment tasks** (see `04-THE-AGENTS.md` and
-> `17-AI-INVOLVEMENT.md`). **The watcher can be cut; schema inference stays.**
+> **PROMOTED, THEN BUILT.** Schema inference is no longer a sub-feature of the
+> watcher. It is one of our **five genuine AI-judgment tasks** (see
+> `04-THE-AGENTS.md` and `17-AI-INVOLVEMENT.md`). **The watcher can be cut;
+> schema inference stays.**
+>
+> It shipped as `milan import --from <folder>`, in `milan/ingest/`. The watcher
+> was not built and is not missed: a merchant points the command at a folder.
+> What follows described the intention; `docs/22-INGEST.md` describes what
+> exists.
 
 This is what makes the feature worth having.
 
@@ -85,4 +91,5 @@ If Tier 1 is not solid by day 7, **the folder watcher** is cut along with the
 rest of Tier 2. The manual path (point the engine at a file) must always work.
 
 **Schema inference is NOT cut with it** — it is a standalone AI-judgment feature
-and works on manually supplied files just as well.
+and works on manually supplied files just as well. This is what happened: the
+watcher was cut, the inference shipped, and the manual path is the only path.

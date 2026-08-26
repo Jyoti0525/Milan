@@ -8,6 +8,7 @@ the numbers impossible to compare.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -15,7 +16,7 @@ import typer
 
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
-from milan.cli import render
+from milan.cli import ingest_render, render
 from milan.cli.render import console
 from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType
@@ -26,8 +27,15 @@ from milan.evaluation.curve import curve
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.sweep import sweep
 from milan.evaluation.twice import run_twice
+from milan.ingest import archive, build
+from milan.ingest.build import Imported
+from milan.ingest.plan import IngestPlan, Question, to_saved
+from milan.ingest.reading import UnreadableFileError
+from milan.ingest.resolver import Decisions, Importer, decisions_from
+from milan.ingest.schema import RecordKind
 from milan.leaks.clusters import summarise
 from milan.leaks.detector import detect
+from milan.llm.provider import NullProvider
 from milan.llm.registry import available, direct, resolve, status, unpinned
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
@@ -199,6 +207,235 @@ def _report_no_proof(report: object, credit: str) -> None:
             console.print(f"  [dim]{key}[/dim] {value}")
     else:
         console.print(f"[red]No credit starting {credit} in this run.[/red]")
+
+
+IMPORTED_TIER = "imported"
+"""The tier name an imported run carries.
+
+Not one of the generated difficulties, and deliberately not pretending to be.
+A generated run's tier says which defects were injected on purpose; an
+imported run has whatever defects the merchant's month actually had, and
+there is no answer key to score it against.
+"""
+
+FORMAT_SUFFIX = ".format"
+
+MAX_QUESTIONS = 200
+"""A ceiling on the interactive loop.
+
+Every answer is meant to close the question it answers, and each round
+re-plans from scratch rather than patching the previous plan - which is the
+right design and also the one where a resolver bug turns into a prompt that
+never stops. This is the guard against that, not a limit anybody should hit.
+"""
+
+
+@app.command(name="import")
+def import_command(
+    source: Annotated[
+        Path, typer.Option("--from", help="A folder of the merchant's own CSV files.")
+    ],
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="Which model to ask about column names no alias covers. "
+            "Defaults to whatever MILAN_LLM_PROVIDER says, and to none.",
+        ),
+    ] = None,
+    answers: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--map",
+            help='Answer one question without being asked: --map "bank.csv:amount=Deposit Amt".',
+        ),
+    ] = None,
+    interactive: Annotated[
+        bool,
+        typer.Option(
+            "--interactive/--non-interactive",
+            help="Ask about anything the columns and the values could not settle.",
+        ),
+    ] = True,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Skip the final confirmation of the mapping.")
+    ] = False,
+    reuse: Annotated[
+        bool,
+        typer.Option(
+            "--reuse/--fresh",
+            help="Start from the mapping a previous import of this folder settled on.",
+        ),
+    ] = True,
+    root: RootOption = None,
+) -> None:
+    """Reconcile a folder of the merchant's own files, whatever shape they are in.
+
+    Reads every CSV in the folder, works out what each column means, and stops
+    to ask about anything it cannot settle from the header names and the
+    values. Nothing is guessed: a column that two fields could be, or that
+    only a model's suggestion supports, is either answered by a person or left
+    out.
+    """
+    data_root = _root(root)
+    slug = archive.slug_for(source)
+
+    chosen = resolve(provider)
+    model = None if isinstance(chosen, NullProvider) else chosen
+    importer = Importer(model)
+
+    decisions: dict[str, Decisions] = {}
+    if reuse:
+        saved = archive.load_mapping(data_root, slug)
+        if saved is not None:
+            decisions = decisions_from(saved)
+            console.print(
+                f"[dim]reusing the mapping settled on last time "
+                f"({archive.directory(data_root, slug) / archive.MAPPING_FILE})[/dim]"
+            )
+    try:
+        decisions = _apply_answers(decisions, answers or [])
+        plan = importer.plan(source, decisions)
+    except (UnreadableFileError, ValueError) as failure:
+        console.print(f"[red]{failure}[/red]")
+        raise typer.Exit(code=1) from failure
+
+    plan = _answer_interactively(importer, source, plan, decisions, interactive)
+    ingest_render.show_plan(plan)
+
+    if not plan.ready:
+        ingest_render.show_blocked(plan)
+        raise typer.Exit(code=2)
+
+    if (
+        not yes
+        and _at_a_keyboard()
+        and interactive
+        and not typer.confirm("\nRun the reconciliation on this mapping?", default=True)
+    ):
+        console.print("[dim]nothing was run and nothing was written.[/dim]")
+        raise typer.Exit(code=1)
+
+    imported = build.build(plan)
+    report = ReconciliationPipeline().run(
+        imported.data, RunMetadata(seed=0, difficulty=IMPORTED_TIER)
+    )
+    record = _import_record(slug, source, plan, imported)
+    written = archive.save(
+        data_root,
+        slug,
+        record=record,
+        mapping=to_saved(plan),
+        data=imported.data,
+        report=report,
+    )
+
+    console.print()
+    ingest_render.result_summary(record, report)
+    if imported.dropped:
+        console.print()
+        console.print(ingest_render.dropped_table(imported.dropped))
+    console.print()
+    render.report_summary(report)
+    console.print(f"\n[dim]{written}[/dim]")
+
+
+def _at_a_keyboard() -> bool:
+    """Whether anybody is there to answer. A pipe is not a person."""
+    return sys.stdin.isatty()
+
+
+def _apply_answers(decisions: dict[str, Decisions], answers: list[str]) -> dict[str, Decisions]:
+    """Read `--map file.csv:field=Column` into decisions.
+
+    `record` is accepted in place of a field name, to place a file the column
+    names could not. That is the escape hatch for a folder we read as
+    unusable: the merchant knows which file is their settlement report, and
+    they should be able to say so without renaming anything.
+    """
+    found = dict(decisions)
+    for raw in answers:
+        key, separator, value = raw.partition("=")
+        if not separator:
+            raise ValueError(f'--map needs "file:field=value", got {raw!r}')
+        file, colon, subject = key.partition(":")
+        if not colon:
+            raise ValueError(f'--map needs "file:field=value", got {raw!r}')
+        found[file] = _record_answer(found.get(file, Decisions()), subject.strip(), value.strip())
+    return found
+
+
+def _record_answer(current: Decisions, subject: str, value: str) -> Decisions:
+    if subject == "record":
+        try:
+            return current.with_kind(RecordKind(value))
+        except ValueError as failure:
+            named = ", ".join(kind.value for kind in RecordKind)
+            raise ValueError(f"{value!r} is not a record type. Try one of: {named}") from failure
+    if subject.endswith(FORMAT_SUFFIX):
+        return current.with_answer(subject[: -len(FORMAT_SUFFIX)], value, is_format=True)
+    return current.with_answer(subject, value, is_format=False)
+
+
+def _answer_interactively(
+    importer: Importer,
+    source: Path,
+    plan: IngestPlan,
+    decisions: dict[str, Decisions],
+    interactive: bool,
+) -> IngestPlan:
+    """Ask about each open question in turn, re-planning after every answer."""
+    if not interactive or not _at_a_keyboard():
+        return plan
+
+    asked = 0
+    while plan.questions and asked < MAX_QUESTIONS:
+        question = plan.questions[0]
+        ingest_render.show_question(question, asked + 1, len(plan.questions))
+        chosen = _read_choice(question)
+        decisions[question.file] = _record_answer(
+            decisions.get(question.file, Decisions()), question.subject, chosen
+        )
+        plan = importer.plan(source, decisions)
+        asked += 1
+    return plan
+
+
+def _read_choice(question: Question) -> str:
+    """Take an answer by number, and keep asking until it is one of the offered ones."""
+    while True:
+        raw = typer.prompt("  Which one", default="1")
+        try:
+            index = int(raw)
+        except ValueError:
+            console.print("  [red]Answer with the number beside the option.[/red]")
+            continue
+        if 1 <= index <= len(question.choices):
+            return question.choices[index - 1].value
+        console.print(f"  [red]Pick a number between 1 and {len(question.choices)}.[/red]")
+
+
+def _import_record(
+    slug: str, source: Path, plan: IngestPlan, imported: Imported
+) -> archive.ImportRecord:
+    proposed = sum(
+        1 for mapping in plan.placed for resolution in mapping.resolutions if resolution.proposed_by
+    )
+    return archive.ImportRecord(
+        slug=slug,
+        source_root=str(source.resolve()),
+        consulted=plan.consulted,
+        files=tuple(mapping.name for mapping in plan.placed),
+        counts=imported.counts,
+        dropped=len(imported.dropped),
+        withdrawals=imported.withdrawals,
+        limitations=plan.limitations(),
+        rejections=tuple(
+            f"{rejection.file}:{rejection.target} <- {rejection.column} ({rejection.reason})"
+            for rejection in plan.rejections
+        ),
+        columns_proposed=proposed,
+    )
 
 
 @app.command()

@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"amount\": \"Deposit Amount(INR)\", \"value_date\": \"Date\", \"narration\": \"Particulars\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 11.182005099952221,
+  "prompt_tokens": 559,
+  "completion_tokens": 30
+}
