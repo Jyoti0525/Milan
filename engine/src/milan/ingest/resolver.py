@@ -127,15 +127,39 @@ class Decisions:
     """
 
     def with_answer(self, subject: str, value: str, *, is_format: bool) -> Decisions:
-        """A fresh answer from a person. It replaces whatever was recorded."""
+        """A fresh answer from a person. It replaces whatever was recorded.
+
+        Answering a field with a column that is already answering another one
+        clears the other. One column cannot be two fields, and a person saying
+        `paid_in` is the credit has just said it is not the debit - so the
+        debit goes back to being a question rather than the two of them
+        quietly sharing a column.
+
+        This is the same rule `coherent` applies to a model's proposals, and
+        it was missing here for a while. The guard only policed the model,
+        which left the one path where somebody could break the invariant
+        deliberately: accept a suggestion that put `paid_in` on the debit,
+        then answer `paid_in` for the credit. Both stuck, every settlement row
+        came out with its debit equal to its credit, and nothing said a word.
+        """
         if is_format:
             return Decisions(
                 self.kind, dict(self.columns), {**self.patterns, subject: value}, dict(self.prior)
             )
-        remaining = {field: entry for field, entry in self.prior.items() if field != subject}
-        return Decisions(
-            self.kind, {**self.columns, subject: value}, dict(self.patterns), remaining
-        )
+
+        taken = value not in {ABSENT, DERIVE}
+        columns = {
+            field: chosen
+            for field, chosen in self.columns.items()
+            if field != subject and not (taken and chosen == value)
+        }
+        displaced = {field for field in self.columns if field not in columns and field != subject}
+        remaining = {
+            field: entry
+            for field, entry in self.prior.items()
+            if field != subject and field not in displaced
+        }
+        return Decisions(self.kind, {**columns, subject: value}, dict(self.patterns), remaining)
 
     def with_kind(self, kind: RecordKind) -> Decisions:
         return Decisions(kind, dict(self.columns), dict(self.patterns), dict(self.prior))
@@ -294,6 +318,44 @@ def _unplaced(best: RecordKind, required: float, why: str) -> tuple[RecordKind |
     return None, why
 
 
+def _placeable(source: SourceFile, profiles: dict[str, ColumnProfile]) -> tuple[Question, ...]:
+    """Offer to be told what an unplaced file is, when it could be anything.
+
+    The escape hatch, made visible. A merchant knows which of their exports is
+    the settlement report even when its columns are named nothing we have met,
+    and until this existed the only way to say so was a command-line flag -
+    which left the browser showing "not used" beside a file and no way at all
+    to disagree.
+
+    Only kinds the file could actually supply are offered, so a register of
+    GST invoices - which has no date column and therefore cannot be any of the
+    four - is not asked about at all. Being left alone is the right outcome
+    for that file, and a question about it would be noise.
+    """
+    possible = tuple(kind for kind, _ in _rank(profiles))
+    if not possible:
+        return ()
+    return (
+        Question(
+            kind=QuestionKind.RECORD_KIND,
+            file=source.name,
+            subject="record",
+            asks=(
+                f"{source.name} was not recognised. If you know what it is, say so - "
+                f"otherwise it is left alone."
+            ),
+            choices=(
+                *(
+                    Choice(value=kind.value, label=f"{kind.value} - {kind.describes}")
+                    for kind in possible
+                ),
+                Choice(value=ABSENT, label="do not use this file"),
+            ),
+            blocking=False,
+        ),
+    )
+
+
 # ------------------------------------------------------------------ fields
 
 
@@ -312,13 +374,20 @@ def _choices(names: tuple[str, ...], target: TargetField) -> tuple[Choice, ...]:
     return tuple(options)
 
 
-def _ask(target: TargetField, names: tuple[str, ...], asks: str, file: str) -> Question:
+def _ask(
+    target: TargetField,
+    names: tuple[str, ...],
+    asks: str,
+    file: str,
+    suggested: str = "",
+) -> Question:
     return Question(
         kind=QuestionKind.COLUMN,
         file=file,
         subject=target.name,
         asks=asks,
         choices=_choices(names, target),
+        suggested=suggested,
     )
 
 
@@ -441,6 +510,7 @@ def _resolve_field(
                 f"{file}: the header name points at {column!r}, "
                 f"but {proposer_name} proposed {proposed!r} for {target.name}.",
                 file,
+                suggested=column,
             ),
             rejection,
         )
@@ -527,6 +597,7 @@ def _resolve_field(
                 f"{file}: no header is named like {target.name}. "
                 f"{proposer_name} proposed {proposed!r}.",
                 file,
+                suggested=proposed,
             ),
             rejection,
         )
@@ -649,6 +720,11 @@ class Importer:
     def consulted(self) -> str:
         return self.proposer.name if self.proposer is not None else "none"
 
+    @property
+    def sources(self) -> tuple[SourceFile, ...]:
+        """The files this importer has read. Empty until `load`."""
+        return self._sources
+
     def load(self, root: Path) -> None:
         if self._loaded == root:
             return
@@ -742,7 +818,12 @@ class Importer:
                 lambda candidate: self._required_proposal(source, candidate).columns,
             )
         if kind is None:
-            return FileMapping(source=source, kind=None, kind_reason=reason)
+            return FileMapping(
+                source=source,
+                kind=None,
+                kind_reason=reason,
+                questions=_placeable(source, profiles),
+            )
 
         proposal = self._proposal(source, kind)
         rejections: list[Rejection] = [

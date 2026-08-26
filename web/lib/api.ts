@@ -115,6 +115,25 @@ export interface RunSummary {
   exceptions_total: number;
   exceptions_by_code: Record<string, number>;
   rules_share: number;
+  /**
+   * Every rupee that reached the bank account this run covers.
+   *
+   * The first number a merchant asks for. Counts of credits proved are how a
+   * reconciliation engine thinks; how much money arrived is how the person
+   * paying for it thinks.
+   */
+  credited: Paise;
+  /** How much of that reconstructs to zero against the settlement rows. */
+  proved_amount: Paise;
+  /**
+   * Money the gateway says it sent that has not arrived, plus captured
+   * payments the settlement report never mentions.
+   *
+   * Never added to the two above. Those are about money in the account; this
+   * is about money that is not, and a screen that summed them would report a
+   * total the merchant does not have.
+   */
+  awaited: Paise;
   drift_gross: Paise;
   drift_net: Paise;
   proofs_with_drift: number;
@@ -219,6 +238,25 @@ export interface ImportSummary {
   exceptions_total: number;
   exceptions_by_code: Record<string, number>;
   rules_share: number;
+  /**
+   * Every rupee that reached the bank account this run covers.
+   *
+   * The first number a merchant asks for. Counts of credits proved are how a
+   * reconciliation engine thinks; how much money arrived is how the person
+   * paying for it thinks.
+   */
+  credited: Paise;
+  /** How much of that reconstructs to zero against the settlement rows. */
+  proved_amount: Paise;
+  /**
+   * Money the gateway says it sent that has not arrived, plus captured
+   * payments the settlement report never mentions.
+   *
+   * Never added to the two above. Those are about money in the account; this
+   * is about money that is not, and a screen that summed them would report a
+   * total the merchant does not have.
+   */
+  awaited: Paise;
   drift_gross: Paise;
   drift_net: Paise;
   proofs_with_drift: number;
@@ -283,3 +321,109 @@ export const loadRun = (difficulty: string, seed: number) =>
 export const listImports = () => get<ImportRef[]>("/api/imports");
 
 export const loadImport = (slug: string) => get<ImportView>(`/api/imports/${slug}`);
+
+/* -------------------------------------------------------------- uploading */
+
+/** One field the import could not settle, and the answers it will take. */
+export interface Choice {
+  value: string;
+  label: string;
+}
+
+export interface Question {
+  key: string;
+  kind: string;
+  file: string;
+  subject: string;
+  asks: string;
+  choices: Choice[];
+  /** The answer a model proposed, when one did. Empty otherwise. */
+  suggested: string;
+  /**
+   * Whether the import refuses to proceed until this is answered.
+   *
+   * False only when being asked what an unrecognised file is. A merchant's
+   * folder legitimately holds an invoice register nobody needs, and demanding
+   * an answer about it would turn "we left your other file alone" into an
+   * error message.
+   */
+  blocking: boolean;
+}
+
+export interface Resolution {
+  field: string;
+  describes: string;
+  required: boolean;
+  column: string | null;
+  pattern: string;
+  certainty: string;
+  reason: string;
+  proposed_by: string;
+  derived: boolean;
+}
+
+export interface StagedFile {
+  file: string;
+  kind: string | null;
+  kind_reason: string;
+  rows: number;
+  headers: string[];
+  resolutions: Resolution[];
+}
+
+/**
+ * A reading of an upload, before anybody has agreed to it.
+ *
+ * The whole state rather than a delta. Every answer re-plans on the server,
+ * and a browser holding a patched-up copy of an older plan is a browser that
+ * can show somebody a mapping the engine is not going to use.
+ */
+export interface Plan {
+  id: string;
+  consulted: string;
+  files: StagedFile[];
+  questions: Question[];
+  rejections: string[];
+  limitations: string[];
+  blockers: string[];
+  ready: boolean;
+  unreadable: string[];
+}
+
+async function send<T>(path: string, init: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API}${path}`, init);
+  } catch {
+    throw new ApiError(0, `Cannot reach the engine at ${API}. Start it with: uv run milan serve`);
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(response.status, body.detail ?? response.statusText);
+  }
+  return (await response.json()) as T;
+}
+
+export function uploadFiles(files: File[]): Promise<Plan> {
+  const body = new FormData();
+  for (const file of files) body.append("files", file, file.name);
+  return send<Plan>("/api/uploads", { method: "POST", body });
+}
+
+export const answerImport = (id: string, answers: Record<string, string>) =>
+  send<Plan>(`/api/uploads/${id}/answers`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ answers }),
+  });
+
+export const commitImport = (id: string, name: string) =>
+  send<{ slug: string }>(`/api/uploads/${id}/commit`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
+/** Throw a staged upload away. Failure is ignored: the caller wanted it gone. */
+export const discardImport = (id: string) =>
+  fetch(`${API}/api/uploads/${id}`, { method: "DELETE" }).catch(() => undefined);

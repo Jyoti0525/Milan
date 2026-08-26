@@ -44,7 +44,10 @@ import {
   type RunView,
 } from "@/lib/api";
 import { ExceptionPanel } from "@/components/ExceptionPanel";
+import { ImportWizard } from "@/components/ImportWizard";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
+import { Position } from "@/components/Position";
+import { TopBar } from "@/components/TopBar";
 import { ProofPanel } from "@/components/ProofPanel";
 import { LeakList, LeakPanel } from "@/components/Leaks";
 import { MappingTables, ProvenancePanel } from "@/components/Provenance";
@@ -125,6 +128,67 @@ const HEADINGS: Record<Tab, { title: string; blurb: string; empty: string; absen
   },
 };
 
+/**
+ * The screen somebody sees before they have done anything.
+ *
+ * There was none. An engine with no runs showed a card headed "Nothing
+ * generated yet" and a shell command, which tells a merchant neither what
+ * this is nor that it will read their own files. This says the three things
+ * Milan does, in the order it does them, and puts the only action that
+ * matters where the eye lands.
+ */
+function Welcome({ onImport }: { onImport: () => void }) {
+  const steps = [
+    {
+      title: "Bring your own books",
+      body: "Your settlement report and your bank statement, in whatever shape your gateway and bank wrote them. Column names are worked out, and anything ambiguous is asked about rather than guessed.",
+    },
+    {
+      title: "Every rupee proved, or named",
+      body: "Each credit is rebuilt from its settlement rows — gross, fee, GST, refunds netted — until it reconstructs to zero. What will not reconstruct is listed with the reason, never quietly matched.",
+    },
+    {
+      title: "Money that balanced and was still wrong",
+      body: "Rows charged above your contracted rate reconcile perfectly and are still money you should not have paid. They are reported separately, because nothing else would ever find them.",
+    },
+  ];
+
+  return (
+    <div className="mx-auto flex h-full max-w-3xl flex-col justify-center gap-5 p-6">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-[-0.015em]">
+          Reconcile a month of settlements, and see what does not add up.
+        </h1>
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--text-muted)]">
+          Point Milan at your own CSV exports, or open one of the sample runs in the sidebar to see
+          what it does before you hand over anything.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {steps.map((step, index) => (
+          <div key={step.title} className="card px-4 py-3.5">
+            <div className="tnum text-[11px] font-medium text-[var(--text-subtle)]">
+              {String(index + 1).padStart(2, "0")}
+            </div>
+            <div className="mt-1 text-[13px] font-semibold">{step.title}</div>
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">{step.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className="btn btn-primary" onClick={onImport}>
+          <span aria-hidden>↑</span> Import your files
+        </button>
+        <span className="text-[12px] text-[var(--text-subtle)]">
+          CSV or TSV. Nothing is reconciled until you approve how the columns were read.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Notice({ title, body, command }: { title: string; body: string; command?: string }) {
   return (
     <div className="grid h-full place-items-center p-6">
@@ -152,6 +216,7 @@ export default function Workspace() {
   const [current, setCurrent] = useState<Source | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [chosen, setTab] = useState<Tab>("queue");
+  const [importing, setImporting] = useState(false);
   const [picked, setPicked] = useState<{
     key: string;
     selection: Selection;
@@ -245,6 +310,21 @@ export default function Workspace() {
   const pick = useCallback((selection: Selection) => setPicked({ key, selection }), [key]);
 
   /*
+    Re-list rather than push the new import onto the array we hold. The list
+    endpoint is where record counts and the provider name come from, and a
+    locally assembled row would be the one row on this screen that was not
+    read from the engine.
+  */
+  const imported = useCallback((slug: string) => {
+    setImporting(false);
+    void listImports().then((found) => {
+      setImports(found);
+      const opened = found.find((ref) => ref.slug === slug);
+      if (opened) setCurrent({ kind: "import", ref: opened });
+    });
+  }, []);
+
+  /*
     Open the first case rather than an empty pane.
 
     The detail pane is close to half the screen, and on arrival it held one
@@ -336,22 +416,26 @@ export default function Workspace() {
     }
 
     if (runs !== null && runs.length === 0 && imports.length === 0) {
-      return (
-        <Notice
-          title="Nothing generated yet"
-          body="A dataset is a pure function of its seed, so nothing is stored in the repository. Generate one and it will appear here — or point Milan at a folder of your own CSVs and it will read those instead."
-          command={
-            "cd engine\n" +
-            "uv run milan generate --seed 42 --difficulty adversarial --orders 600\n" +
-            "uv run milan import --from /path/to/your/csvs"
-          }
-        />
-      );
+      return <Welcome onImport={() => setImporting(true)} />;
     }
 
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 px-5 pt-4">
+        {/*
+          Keyed on the run so the strip remounts and its animation replays.
+          Switching run used to swap every figure with no sign that anything
+          had happened, which reads as a screen that did not respond.
+        */}
+        <div key={key} className="settle shrink-0 space-y-3 px-5 pt-4">
+          {view && (
+            <Position
+              credited={view.summary.credited}
+              proved={view.summary.proved_amount}
+              awaited={view.summary.awaited}
+              records={view.summary.records_processed}
+              seconds={view.summary.duration_seconds}
+            />
+          )}
           {isImport(view) ? (
             <ImportMetrics
               summary={view.summary}
@@ -360,6 +444,9 @@ export default function Workspace() {
             />
           ) : (
             view && <Metrics summary={view.summary} />
+          )}
+          {loading && (
+            <div className="card px-5 py-4 text-[13px] text-[var(--text-subtle)]">Reconciling…</div>
           )}
         </div>
 
@@ -425,24 +512,35 @@ export default function Workspace() {
     );
   })();
 
+  const amounts = {
+    queue: view?.queue.reduce((total, item) => total + item.amount, 0) ?? 0,
+    proved: view?.summary.proved_amount ?? 0,
+    leaks: view?.leaks.cash_impact ?? 0,
+  };
+
   return (
-    <div className="flex h-full">
-      <Sidebar
-        runs={runs ?? []}
-        imports={imports}
-        current={current}
-        onPick={(run) => setCurrent({ kind: "run", run })}
-        onPickImport={(ref) => setCurrent({ kind: "import", ref })}
-        tab={tab}
-        /*
+    <div className="flex h-full flex-col">
+      <TopBar source={current} onImport={() => setImporting(true)} busy={importing} />
+      {importing && <ImportWizard onClose={() => setImporting(false)} onImported={imported} />}
+      <div className="flex min-h-0 flex-1">
+        <Sidebar
+          runs={runs ?? []}
+          imports={imports}
+          current={current}
+          onPick={(run) => setCurrent({ kind: "run", run })}
+          onPickImport={(ref) => setCurrent({ kind: "import", ref })}
+          tab={tab}
+          /*
           Leaving the audit tab open after switching to a generated run would
           show a tab the sidebar no longer offers, with nothing in it. The
           selection follows what the run can actually answer.
         */
-        onTab={(next) => setTab(next)}
-        counts={counts}
-      />
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{body}</main>
+          onTab={(next) => setTab(next)}
+          counts={counts}
+          amounts={amounts}
+        />
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{body}</main>
+      </div>
     </div>
   );
 }

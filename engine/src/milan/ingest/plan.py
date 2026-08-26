@@ -85,6 +85,29 @@ class Question:
 
     asks: str
     choices: tuple[Choice, ...]
+    suggested: str = ""
+    """The answer a model proposed, when one did. Empty otherwise.
+
+    Carried as its own field rather than left as "the first choice", because
+    a caller cannot tell those apart and the difference is the whole point.
+    A person being asked fifteen questions needs to see which ones already
+    have a candidate and who put it there - fifteen identical lists of columns
+    is not more consent than one reviewed suggestion, it is less, because
+    nobody reads the fifteenth.
+    """
+
+    blocking: bool = True
+    """Whether the import refuses to proceed until this is answered.
+
+    Nearly every question here blocks, because nearly every question is about
+    a required field and guessing at one changes a balance. The exception is
+    being asked what an unplaced file is: a merchant's folder legitimately
+    holds an invoice register nobody needs, and demanding an answer about it
+    would turn "we left your other file alone" into an error message.
+
+    So that one is an offer rather than a demand - shown, answerable, and
+    ignored if the person moves on.
+    """
 
     @property
     def key(self) -> str:
@@ -268,7 +291,9 @@ class IngestPlan:
                 "settlement report against"
             )
         found.extend(
-            f"{question.file}: {question.subject} is unanswered" for question in self.questions
+            f"{question.file}: {question.subject} is unanswered"
+            for question in self.questions
+            if question.blocking
         )
         return tuple(found)
 

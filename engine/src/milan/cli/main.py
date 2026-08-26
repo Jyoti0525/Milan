@@ -8,6 +8,7 @@ the numbers impossible to compare.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -442,19 +443,37 @@ def _import_record(
 def serve(
     host: Annotated[str, typer.Option("--host", help="Interface to bind.")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", help="Port to bind.")] = 8000,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="Which model the import wizard may ask about unfamiliar column names.",
+        ),
+    ] = None,
     root: RootOption = None,
 ) -> None:
-    """Serve the reconciliation API for the exception queue.
+    """Serve the reconciliation API and the import wizard behind it.
 
     Binds to loopback unless told otherwise. This serves a merchant's
     settlement data and has no authentication, so the default has to be the
     one that is safe when nobody thought about it.
+
+    `--provider` sets the environment variable the staging area reads rather
+    than being threaded through the app. The registry is already the single
+    place that decides which model answers, and a second path into it would be
+    a second place for the two to disagree about what was consulted - on the
+    exact screen whose job is to report that honestly.
     """
     import uvicorn
 
     from milan.api.app import create_app
+    from milan.llm.registry import PROVIDER_ENV
+
+    if provider is not None:
+        os.environ[PROVIDER_ENV] = provider
 
     console.print(f"[dim]serving {_root(root)} on http://{host}:{port}[/dim]")
+    console.print(f"[dim]uploads may consult: {os.environ.get(PROVIDER_ENV, 'none')}[/dim]")
     uvicorn.run(create_app(_root(root)), host=host, port=port, log_level="warning")
 
 

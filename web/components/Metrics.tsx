@@ -40,11 +40,17 @@ function Card({
 export function Metrics({ summary }: { summary: RunSummary }) {
   return (
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {/*
+        Match rate, at last. It was computed, carried in the API payload and
+        rendered nowhere for six days - while the card in this slot repeated
+        the proved figure that the headline strip above now states in rupees.
+        Razorpay's brief asks for a match rate by name; this is it.
+      */}
       <Card
-        label="Proved to the paisa"
-        hint={`${summary.records_processed.toLocaleString("en-IN")} records reconciled`}
+        label="Match rate"
+        hint={`${summary.proofs_balanced} of ${summary.credits_total} credits resolvable`}
       >
-        <Figure value={`${summary.proofs_balanced}/${summary.credits_total}`} tone="var(--good)" />
+        <Figure value={percent(summary.match_rate)} tone="var(--good)" />
       </Card>
 
       <Card label="Precision" hint="of the settlements claimed, correct">
@@ -105,11 +111,13 @@ export function ImportMetrics({
   const model = consulted !== "none";
   return (
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Card
-        label="Proved to the paisa"
-        hint={`${summary.records_processed.toLocaleString("en-IN")} records reconciled`}
-      >
-        <Figure value={`${summary.proofs_balanced}/${summary.credits_total}`} tone="var(--good)" />
+      {/*
+        No match rate here and there cannot be one: it is measured against an
+        answer key. The count of credits resolved stands in its place, which
+        is a fact rather than a score.
+      */}
+      <Card label="Credits proved" hint={`of ${summary.credits_total} that reached the account`}>
+        <Figure value={String(summary.proofs_balanced)} tone="var(--good)" />
       </Card>
 
       <Card label="Exceptions raised" hint="credits the engine would not claim">

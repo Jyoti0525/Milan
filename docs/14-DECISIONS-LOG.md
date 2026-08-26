@@ -815,3 +815,48 @@ If a decision is not here, it is not settled.
      import, and compared proof for proof and exception for exception against
      the run the engine did from its own records. They match exactly. That is
      a stronger claim than "the import ran".
+191. **The engine has a POST, and the line is worth writing down.** Until the
+     import wizard, this API could only be read from - a page that got past
+     the origin check could learn a merchant's settlement figures and nothing
+     more. It can now stage an upload and delete a staged one. What it still
+     cannot do is touch a stored run: no route writes to `data/runs`, and
+     committing an import creates a new archive rather than modifying
+     anything. The origin list stays as narrow as it was, and that is the
+     control actually doing the work.
+192. **An upload is not an import.** Files landing on disk changes nothing.
+     A staged folder has a plan, that plan may have open questions, and until
+     they are answered nothing is reconciled and nothing is archived. Closing
+     the dialog deletes the upload, because a merchant who changed their mind
+     should not leave their books in a staging directory.
+193. **Fifteen identical clicks is not more consent than one reviewed batch.**
+     The first wizard rendered every candidate column as an identical button
+     and asked fifteen times. `Accept N suggestions` replaces that, and the
+     contract survives intact: nothing is applied without a person agreeing,
+     and what follows is the mapping table with every row marked `answered`
+     and open to being changed. By the eighth question nobody is reading, so
+     the long version was the less honest one.
+194. **The collision rule applies to people too.** `coherent` policed a
+     model's proposals and not a person's answers, which left the invariant
+     breakable in three clicks - accept `paid_in` for the debit, then answer
+     `paid_in` for the credit, and every settlement row comes out with its
+     debit equal to its credit. An answer now clears any other field holding
+     the same column, and that field goes back to being asked.
+195. **Money first, and the two populations stay apart.** The first figure on
+     this screen was `21/37` for six days. That is how a reconciliation engine
+     thinks about a month, not how the person paying for one does. The
+     headline is now what arrived, how much of it is proved, and - below a
+     rule and in its own sentence - what was reported and never arrived. The
+     second is never added to the first: a screen that summed them would show
+     a total the merchant does not have.
+196. **The navigation speaks the merchant's language and the panes keep ours.**
+     "Exception queue" and "Charged above contract" are precise and they are
+     our words, and their one-line explanations were `sr-only` - invisible to
+     everybody who needed them. The sidebar now reads "Needs you", "Accounted
+     for", "Overcharged", with the explanation on screen. The precise terms
+     are the headings of the panes those items open, where somebody who has
+     already decided to look is reading carefully.
+197. **Match rate is on screen at last.** It was computed, carried in the API
+     payload, and rendered nowhere for six days - while the card in that slot
+     repeated a figure the headline now states in rupees. Razorpay's brief
+     asks for a match rate by name.
+

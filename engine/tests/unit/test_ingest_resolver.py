@@ -372,3 +372,87 @@ class TestBuildingRefusesAnUnansweredPlan:
         plan = Importer(None).plan(folder(tmp_path, settlement__csv=SETTLEMENT))
         with pytest.raises(build.NotReadyError):
             build.build(plan)
+
+
+class TestOneColumnCannotBeTwoFieldsWhoeverSaysSo:
+    """The rule `coherent` enforces on a model, enforced on a person too.
+
+    It was missing here for a while, and the gap was reachable: accept a
+    suggestion that puts `paid_in` on the debit, then answer `paid_in` for the
+    credit. Both stuck. Every settlement row came out with its debit equal to
+    its credit, the reconciliation was nonsense, and nothing on screen said a
+    word about it.
+    """
+
+    SIGNED = (
+        "ref,kind,in_amt,charge_amt,gst_amt,made_on,batch,paid_on,utr_no\n"
+        "pay_a1,payment,11500.00,200.00,36.00,2026-07-06 10:00:00,setl_1,"
+        "2026-07-08 11:00:00,UTR0000000001\n"
+        "rfnd_a3,refund,500.00,0.00,0.00,2026-07-07 09:00:00,setl_1,"
+        "2026-07-08 11:00:00,UTR0000000001\n"
+    )
+
+    def _placed(self, root: Path) -> tuple[Importer, dict[str, Decisions]]:
+        importer = Importer(None)
+        importer.plan(root)
+        return importer, {"odd.csv": Decisions(kind=RecordKind.SETTLEMENT_ROWS)}
+
+    def test_answering_a_second_field_with_the_same_column_clears_the_first(
+        self, tmp_path: Path
+    ) -> None:
+        root = folder(tmp_path, odd__csv=self.SIGNED, bank__csv=BANK)
+        importer, decisions = self._placed(root)
+
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer("debit", "in_amt", is_format=False)
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer("credit", "in_amt", is_format=False)
+
+        mapping = importer.plan(root, decisions).of(RecordKind.SETTLEMENT_ROWS)
+        assert mapping is not None
+        assert mapping.columns.get("credit") == "in_amt"
+        assert mapping.columns.get("debit") != "in_amt"
+
+    def test_the_displaced_field_goes_back_to_being_asked(self, tmp_path: Path) -> None:
+        """Not silently dropped. The person said that column is the credit;
+        what the debit is has become an open question again."""
+        root = folder(tmp_path, odd__csv=self.SIGNED, bank__csv=BANK)
+        importer, decisions = self._placed(root)
+
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer("debit", "in_amt", is_format=False)
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer("credit", "in_amt", is_format=False)
+
+        plan = importer.plan(root, decisions)
+        assert any(question.subject == "debit" for question in plan.questions)
+        assert not plan.ready
+
+    @pytest.mark.parametrize("sentinel", [ABSENT, DERIVE])
+    def test_absent_and_derive_are_not_columns_and_do_not_displace(
+        self, tmp_path: Path, sentinel: str
+    ) -> None:
+        """Two fields can both be derived, and two can both be absent. Neither
+        is a claim on a column, so neither can collide with one."""
+        root = folder(tmp_path, odd__csv=self.SIGNED, bank__csv=BANK)
+        importer, decisions = self._placed(root)
+
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer("debit", sentinel, is_format=False)
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer("credit", sentinel, is_format=False)
+
+        mapping = importer.plan(root, decisions).of(RecordKind.SETTLEMENT_ROWS)
+        assert mapping is not None
+        if sentinel == DERIVE:
+            assert set(mapping.derived) == {"credit", "debit"}
+        else:
+            assert "credit" not in mapping.columns
+            assert "debit" not in mapping.columns
+
+    def test_answering_the_same_field_twice_just_replaces_it(self, tmp_path: Path) -> None:
+        root = folder(tmp_path, odd__csv=self.SIGNED, bank__csv=BANK)
+        importer, decisions = self._placed(root)
+
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer(
+            "credit", "charge_amt", is_format=False
+        )
+        decisions["odd.csv"] = decisions["odd.csv"].with_answer("credit", "in_amt", is_format=False)
+
+        mapping = importer.plan(root, decisions).of(RecordKind.SETTLEMENT_ROWS)
+        assert mapping is not None
+        assert mapping.columns.get("credit") == "in_amt"

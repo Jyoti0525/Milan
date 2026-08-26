@@ -242,3 +242,112 @@ body {
 ::selection {
   background: var(--accent-wash);
 }
+
+/*
+  Motion, and only where it carries information.
+
+  There are two animations in this file and both exist to answer the same
+  complaint: a person clicked something and could not tell that anything had
+  changed. Switching run swapped every figure on the screen silently, which
+  reads as a page that did not respond rather than one that responded
+  instantly.
+
+  `settle` is keyed on the run, so React remounts the strip and the animation
+  replays. That makes the feedback structural rather than a flag somebody has
+  to remember to set.
+*/
+@layer components {
+  .settle {
+    animation: settle 380ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .rise {
+    animation: rise 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* The proved share of what arrived, drawn rather than described. */
+  .meter {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    display: flex;
+  }
+  .meter > span {
+    display: block;
+    height: 100%;
+    transition: width 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: var(--r-control);
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+  .btn:disabled {
+    cursor: not-allowed;
+    color: var(--text-disabled);
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-strong);
+  }
+  .btn-primary:disabled {
+    background: var(--surface-sunken);
+    border-color: var(--border);
+  }
+}
+
+@keyframes settle {
+  from {
+    opacity: 0.35;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+  Somebody who has asked their system for less motion has asked for less
+  motion, not for a shorter version of it. The meter still fills; it just
+  arrives already filled.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .settle,
+  .rise {
+    animation: none;
+  }
+  .meter > span {
+    transition: none;
+  }
+}

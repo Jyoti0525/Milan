@@ -247,6 +247,62 @@ evidence a tool has left files in is worth less.
 
 ---
 
+## The browser path
+
+```
+milan serve --provider ollama
+```
+
+Then **Import your files** in the top bar. Drop the CSVs in, and the same
+refuse-and-ask contract runs behind HTTP:
+
+| Route | What it does |
+|---|---|
+| `POST /api/uploads` | Stages the files and returns a reading of them. **Nothing is reconciled and nothing is archived** |
+| `POST /api/uploads/{id}/answers` | Answers one or more questions; returns the whole plan back |
+| `POST /api/uploads/{id}/commit` | Reconciles and keeps it. 409 if anything is still unanswered |
+| `DELETE /api/uploads/{id}` | Throws the upload away. Closing the dialog calls this |
+
+This is the engine's only `POST`. It binds to loopback and has no
+authentication, so the filename check, the twelve-file cap and the 32 MB cap
+are the boundary rather than a belt beside a brace — a filename is data from a
+browser, and treating it as a path is how an upload writes outside its own
+directory.
+
+### Fifteen questions is a refusal nobody reads
+
+The first version of the wizard put every candidate column up as an identical
+button. On an export whose headers we have never met that came out as fifteen
+questions, one of them offering twenty-two choices. Technically a refusal to
+guess; in practice a wall.
+
+So where the model proposed something, that is the primary button and it says
+who proposed it — and when three or more questions have a suggestion, one
+**Accept N suggestions** takes them all. That is not a hole in the contract.
+The contract is that nothing is applied without a person agreeing, not that
+agreement is typed once per column: fifteen identical clicks is *less* consent
+than one reviewed batch, because by the eighth nobody is reading. What follows
+either way is the mapping table, every row marked `answered`, all of it open
+to being changed.
+
+On the hostile export that takes fifteen questions down to two — and the two
+left are exactly the ones a model could not help with: `Date` vs `Value Dt`,
+and a credit column whose only proposal the values had already refused.
+
+### One column cannot be two fields, whoever says so
+
+`coherent` enforced that on a model's proposals from the start. It did not
+enforce it on a person's answers, and the gap was reachable in three clicks:
+accept a suggestion that puts `paid_in` on the debit, then answer `paid_in`
+for the credit. Both stuck. Every settlement row came out with its debit equal
+to its credit and nothing said a word.
+
+Answering a field with a column that already answers another now **clears the
+other**, and that field goes back to being an open question. The person has
+just said what that column is; the thing it used to be is once again unknown.
+
+---
+
 ## On screen
 
 `milan serve` lists imported folders beside the generated runs, under their own

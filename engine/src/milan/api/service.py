@@ -21,6 +21,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from milan.api.staging import Staged, StagingArea
 from milan.chaos.config import Difficulty
 from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType, ExceptionCode
@@ -29,7 +30,8 @@ from milan.domain.records import BankCredit
 from milan.domain.results import Proof, ReconException, ReconReport
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.metrics import Scorecard
-from milan.ingest import archive
+from milan.ingest import archive, build
+from milan.ingest.plan import to_saved
 from milan.leaks.clusters import LeakCluster, LeakReport, summarise
 from milan.persistence import store
 from milan.persistence.store import StaleDatasetError
@@ -202,6 +204,26 @@ class RunSummary(BaseModel):
     exceptions_total: int
     exceptions_by_code: dict[str, int]
     rules_share: float
+    credited: Paise
+    """Every rupee that reached the bank account this run covers.
+
+    The first number a merchant asks for and the one this screen did not have
+    for its first six days. Counts of credits proved are how a reconciliation
+    engine thinks; how much money arrived is how the person paying for it
+    thinks.
+    """
+
+    proved_amount: Paise
+    """How much of that reconstructs to zero against the settlement rows."""
+
+    awaited: Paise
+    """Money the gateway says it sent that has not arrived, plus captured
+    payments the settlement report never mentions.
+
+    Kept strictly apart from the two above and never added to them. Those are
+    about money in the account; this is about money that is not, and a screen
+    that summed them would report a total the merchant does not have.
+    """
     drift_gross: Paise
     drift_net: Paise
     proofs_with_drift: int
@@ -350,6 +372,26 @@ class ImportSummary(BaseModel):
     exceptions_total: int
     exceptions_by_code: dict[str, int]
     rules_share: float
+    credited: Paise
+    """Every rupee that reached the bank account this run covers.
+
+    The first number a merchant asks for and the one this screen did not have
+    for its first six days. Counts of credits proved are how a reconciliation
+    engine thinks; how much money arrived is how the person paying for it
+    thinks.
+    """
+
+    proved_amount: Paise
+    """How much of that reconstructs to zero against the settlement rows."""
+
+    awaited: Paise
+    """Money the gateway says it sent that has not arrived, plus captured
+    payments the settlement report never mentions.
+
+    Kept strictly apart from the two above and never added to them. Those are
+    about money in the account; this is about money that is not, and a screen
+    that summed them would report a total the merchant does not have.
+    """
     drift_gross: Paise
     drift_net: Paise
     proofs_with_drift: int
@@ -365,6 +407,81 @@ class ImportView(BaseModel):
     queue: tuple[QueueItem, ...]
     proofs: tuple[ProofView, ...]
     leaks: LeakFindings
+
+
+class ChoiceView(BaseModel):
+    """One answer a question will accept."""
+
+    model_config = ConfigDict(frozen=True)
+
+    value: str
+    label: str
+
+
+class QuestionView(BaseModel):
+    """Something the import refuses to decide on its own."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    kind: str
+    file: str
+    subject: str
+    asks: str
+    choices: tuple[ChoiceView, ...]
+    suggested: str
+    blocking: bool
+
+
+class ResolutionView(BaseModel):
+    """One target field, and how far the import got with it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    field: str
+    describes: str
+    required: bool
+    column: str | None
+    pattern: str
+    certainty: str
+    reason: str
+    proposed_by: str
+    derived: bool
+
+
+class StagedFileView(BaseModel):
+    """One uploaded file, and what the import made of it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file: str
+    kind: str | None
+    kind_reason: str
+    rows: int
+    headers: tuple[str, ...]
+    resolutions: tuple[ResolutionView, ...]
+
+
+class PlanView(BaseModel):
+    """A reading of an upload, before anybody has agreed to it.
+
+    The shape the import wizard is built on. It is deliberately the whole
+    state rather than a delta: every answer re-plans from scratch on the
+    server, and a browser holding a patched-up copy of an older plan is a
+    browser that can show somebody a mapping the engine is not going to use.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    consulted: str
+    files: tuple[StagedFileView, ...]
+    questions: tuple[QuestionView, ...]
+    rejections: tuple[str, ...]
+    limitations: tuple[str, ...]
+    blockers: tuple[str, ...]
+    ready: bool
+    unreadable: tuple[str, ...]
 
 
 class RunNotFoundError(LookupError):
@@ -385,6 +502,7 @@ class Service:
     def __init__(self, root: Path | None = None) -> None:
         self._root = root if root is not None else store.default_root()
         self._cache: dict[tuple[str, int], RunView] = {}
+        self._staging = StagingArea(self._root)
 
     @property
     def root(self) -> Path:
@@ -453,7 +571,7 @@ class Service:
         credits, batches = _index(data)
 
         return RunView(
-            summary=self._summary(dataset, report),
+            summary=self._summary(dataset, data, report),
             queue=self._queue(report, data, credits, batches),
             proofs=self._proofs(report, credits),
             leaks=self._leaks(data, report),
@@ -499,6 +617,72 @@ class Service:
                 )
             )
         return tuple(found)
+
+    # --------------------------------------------------------- staged uploads
+
+    def stage(self, files: list[tuple[str, bytes]]) -> PlanView:
+        return _plan_view(self._staging.open(files))
+
+    def staged(self, staged_id: str) -> PlanView:
+        return _plan_view(self._staging.get(staged_id))
+
+    def answer(self, staged_id: str, answers: dict[str, str]) -> PlanView:
+        staged = self._staging.get(staged_id)
+        for key, value in answers.items():
+            staged.answer(key, value)
+        return _plan_view(staged)
+
+    def discard(self, staged_id: str) -> None:
+        self._staging.discard(staged_id)
+
+    def commit(self, staged_id: str, name: str) -> str:
+        """Reconcile a staged upload and archive it. Returns the new slug.
+
+        The upload directory is deleted afterwards, and the normalised records
+        kept instead. Holding on to the merchant's original files would leave
+        a second copy of their settlement data in a directory nobody manages,
+        for no benefit - the mapping records how they were read, and the
+        records themselves are what any later screen reads.
+        """
+        staged = self._staging.get(staged_id)
+        plan = staged.plan()
+        imported = build.build(plan)
+        report = ReconciliationPipeline().run(
+            imported.data, RunMetadata(seed=0, difficulty=IMPORTED_TIER)
+        )
+
+        slug = archive.slug_for(Path(name)) if name.strip() else f"upload-{staged_id[:6]}"
+        proposed = sum(
+            1
+            for mapping in plan.placed
+            for resolution in mapping.resolutions
+            if resolution.proposed_by
+        )
+        archive.save(
+            self._root,
+            slug,
+            record=archive.ImportRecord(
+                slug=slug,
+                source_root=f"uploaded: {', '.join(mapping.name for mapping in plan.placed)}",
+                consulted=plan.consulted,
+                files=tuple(mapping.name for mapping in plan.placed),
+                counts=imported.counts,
+                dropped=len(imported.dropped),
+                withdrawals=imported.withdrawals,
+                limitations=plan.limitations(),
+                rejections=tuple(
+                    f"{rejection.file}:{rejection.target} <- {rejection.column} "
+                    f"({rejection.reason})"
+                    for rejection in plan.rejections
+                ),
+                columns_proposed=proposed,
+            ),
+            mapping=to_saved(plan),
+            data=imported.data,
+            report=report,
+        )
+        self._staging.discard(staged_id)
+        return slug
 
     def _mappings(self, slug: str) -> tuple[MappedFile, ...]:
         saved = archive.load_mapping(self._root, slug)
@@ -547,7 +731,7 @@ class Service:
 
         credits, batches = _index(data)
         return ImportView(
-            summary=_import_summary(slug, record, report),
+            summary=_import_summary(slug, record, data, report),
             provenance=ImportProvenance(
                 source_root=record.source_root,
                 files=record.files,
@@ -565,12 +749,16 @@ class Service:
             leaks=self._leaks(data, report),
         )
 
-    def _summary(self, dataset: Dataset, report: ReconReport) -> RunSummary:
+    def _summary(self, dataset: Dataset, data: ReconInput, report: ReconReport) -> RunSummary:
         # The scorecard is the one thing here that reads ground truth, which
         # is why it is computed through the evaluation package rather than
         # assembled from anything the queue can see.
         card: Scorecard = evaluate(dataset, headline_only=True).headline
+        credited, proved_amount, awaited = _position(data, report)
         return RunSummary(
+            credited=credited,
+            proved_amount=proved_amount,
+            awaited=awaited,
             seed=report.seed,
             difficulty=report.difficulty,
             records_processed=report.records_processed,
@@ -723,6 +911,93 @@ def _finding(group: LeakCluster) -> LeakFinding:
     )
 
 
+IMPORTED_TIER = "imported"
+"""The tier an imported run carries. Not one of the generated difficulties,
+and deliberately not pretending to be."""
+
+
+def _plan_view(staged: Staged) -> PlanView:
+    """One reading of an upload, in the terms the wizard shows it."""
+    plan = staged.plan()
+    return PlanView(
+        id=staged.id,
+        consulted=plan.consulted,
+        files=tuple(
+            StagedFileView(
+                file=mapping.name,
+                kind=mapping.kind.value if mapping.kind else None,
+                kind_reason=mapping.kind_reason,
+                rows=len(mapping.source.rows),
+                headers=mapping.source.headers,
+                resolutions=tuple(
+                    ResolutionView(
+                        field=resolution.target.name,
+                        describes=resolution.target.describes,
+                        required=resolution.target.required,
+                        column=resolution.column,
+                        pattern=resolution.pattern,
+                        certainty=resolution.certainty.value,
+                        reason=resolution.reason,
+                        proposed_by=resolution.proposed_by,
+                        derived=resolution.derived,
+                    )
+                    for resolution in mapping.resolutions
+                ),
+            )
+            for mapping in plan.files
+        ),
+        questions=tuple(
+            QuestionView(
+                key=question.key,
+                kind=question.kind.value,
+                file=question.file,
+                subject=question.subject,
+                asks=question.asks,
+                suggested=question.suggested,
+                blocking=question.blocking,
+                choices=tuple(
+                    ChoiceView(value=choice.value, label=choice.label)
+                    for choice in question.choices
+                ),
+            )
+            for question in plan.questions
+        ),
+        rejections=tuple(
+            f"{rejection.file}:{rejection.target} <- {rejection.column} ({rejection.reason})"
+            for rejection in plan.rejections
+        ),
+        limitations=plan.limitations(),
+        blockers=plan.blockers(),
+        ready=plan.ready,
+        unreadable=tuple(f"{item.path.name}: {item.reason}" for item in plan.unreadable),
+    )
+
+
+ELSEWHERE = frozenset({ExceptionCode.MISSING_SETTLEMENT, ExceptionCode.UNSETTLED_PAYMENT})
+"""The two exception codes that are about money which never arrived.
+
+Every other code is about a credit that did arrive and would not reconstruct.
+The distinction decides which half of the cash position an exception belongs
+to, and getting it wrong would report money as both missing from the account
+and sitting in it.
+"""
+
+
+def _position(data: ReconInput, report: ReconReport) -> tuple[Paise, Paise, Paise]:
+    """What arrived, how much of it is explained, and what has not arrived.
+
+    Three sums off the run, and no answer key involved in any of them - which
+    is why an imported run reports the same three. A credit that reconstructs
+    to zero has proved itself; nothing external had to agree.
+    """
+    credited = Paise(sum(credit.amount for credit in data.bank_credits))
+    proved = Paise(sum(proof.credit_amount for proof in report.proofs if proof.balances))
+    awaited = Paise(
+        sum(exception.amount for exception in report.exceptions if exception.code in ELSEWHERE)
+    )
+    return credited, proved, awaited
+
+
 def _index(
     data: ReconInput,
 ) -> tuple[dict[str, BankCredit], dict[str, GatewayBatch]]:
@@ -733,7 +1008,12 @@ def _index(
     )
 
 
-def _import_summary(slug: str, record: archive.ImportRecord, report: ReconReport) -> ImportSummary:
+def _import_summary(
+    slug: str,
+    record: archive.ImportRecord,
+    data: ReconInput,
+    report: ReconReport,
+) -> ImportSummary:
     """Everything an imported run can honestly say about itself.
 
     Every figure here is read off the report. Nothing is scored, because
@@ -744,7 +1024,11 @@ def _import_summary(slug: str, record: archive.ImportRecord, report: ReconReport
     balanced = [proof for proof in report.proofs if proof.balances]
     categorised = Counter(exception.categorised_by for exception in report.exceptions)
     total = sum(categorised.values())
+    credited, proved_amount, awaited = _position(data, report)
     return ImportSummary(
+        credited=credited,
+        proved_amount=proved_amount,
+        awaited=awaited,
         slug=slug,
         records_processed=report.records_processed,
         duration_seconds=report.duration_seconds,
