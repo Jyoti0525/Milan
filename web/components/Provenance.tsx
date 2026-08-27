@@ -23,6 +23,7 @@
 
 import type { ImportProvenance, MappedFile } from "@/lib/api";
 import type { Tone } from "./Badge";
+import { proven, settledBy } from "@/lib/words";
 import { Badge } from "./Badge";
 import { Empty } from "./Table";
 
@@ -244,11 +245,19 @@ export function MappingTables({ files }: { files: MappedFile[] }) {
                       </span>
                     )}
                   </td>
-                  <td className="py-1">
-                    <Badge tone={TONE[column.certainty] ?? "neutral"}>
-                      {column.certainty === "unconfirmed" && column.proposed_by
-                        ? `${column.proposed_by}, unconfirmed`
-                        : column.certainty}
+                  {/*
+                    The audit table and the import dialog now describe a
+                    decision the same way, through `settledBy`. They used to
+                    disagree: a column the arithmetic proved read as "checked"
+                    on one screen and "ollama, unconfirmed" on the other, and
+                    the audit trail is the worse place of the two to understate
+                    what was done.
+                  */}
+                  <td className="py-1" title={settledBy(column).means}>
+                    <Badge
+                      tone={proven(column.reason) ? "good" : (TONE[column.certainty] ?? "neutral")}
+                    >
+                      {settledBy(column).label}
                     </Badge>
                   </td>
                 </tr>

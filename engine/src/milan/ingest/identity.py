@@ -46,7 +46,7 @@ from milan.ingest.parsing import parse_money
 from milan.ingest.reading import SourceFile
 from milan.ingest.schema import RecordKind
 
-__all__ = ["MONEY_FIELDS", "Verdict", "bank_amount", "check"]
+__all__ = ["MONEY_FIELDS", "Verdict", "bank_amount", "check", "proven"]
 
 MONEY_FIELDS = ("amount", "fee", "tax", "credit", "debit")
 """The five columns the settlement equation is written over."""
@@ -265,3 +265,17 @@ def bank_amount(source: SourceFile, proposed: str, candidates: tuple[str, ...]) 
 
     account = f"it is the only money column left once {' and '.join(ruled_out)}"
     return Verdict(True, readable, 0, account, settlement=False)
+
+
+PROOFS = ("the arithmetic holds", "it is the only money column left")
+"""The openings of the two accounts this module writes.
+
+Matched as prefixes rather than carried as a flag on the resolution, because
+the sentence is what reaches the screen and the saved mapping. A flag could
+drift from the words beside it; a prefix cannot.
+"""
+
+
+def proven(reason: str) -> bool:
+    """Whether this column was settled by the file's own arithmetic."""
+    return reason.startswith(PROOFS)

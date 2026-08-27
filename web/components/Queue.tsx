@@ -18,12 +18,13 @@
  * two-rupee rounding note are not equally urgent.
  */
 
-import type { Proof, QueueItem } from "@/lib/api";
-import { shortDate, withRupeeSign } from "@/lib/money";
+import { useState } from "react";
+import type { ExceptionCode, Proof, QueueItem } from "@/lib/api";
+import { inr, shortDate, withRupeeSign } from "@/lib/money";
 import { Amount } from "./Amount";
 import { Badge, Tag } from "./Badge";
 import { Empty, Id, rowProps, type Selection } from "./Table";
-import { codeLabel, codeTone, severity } from "./codes";
+import { codeLabel, codeTitle, codeTone, severity } from "./codes";
 
 export function sortQueue(items: QueueItem[]): { item: QueueItem; index: number }[] {
   return items
@@ -36,6 +37,98 @@ export function sortQueue(items: QueueItem[]): { item: QueueItem; index: number 
     );
 }
 
+/**
+ * What kinds of problem this run has, and what each is worth.
+ *
+ * The queue is sorted worst-first and every row of it is a sentence, which
+ * is right for working through and wrong for arriving at. Nine rows reading
+ * "The gateway reported ... No bank credit matches it." tell somebody that
+ * nine things are wrong; they do not say that eight of them are the same
+ * thing and are worth eighty thousand rupees between them.
+ *
+ * So the kinds come first, with a count and a total each, and picking one
+ * filters the list under it. That is the shape of the question a person
+ * actually arrives with - "what is wrong with my books" - and the individual
+ * cases are what they move to once they have chosen which problem to have.
+ *
+ * The totals are absolute values summed within a kind and are never summed
+ * across kinds. Money the bank never received and money that arrived short
+ * are two different populations, and a single headline over both would be
+ * the same mistake this project already fixed once upstairs.
+ */
+function kindsIn(
+  items: QueueItem[],
+): { code: ExceptionCode; count: number; total: number }[] {
+  const seen = new Map<
+    ExceptionCode,
+    { code: ExceptionCode; count: number; total: number }
+  >();
+  for (const item of items) {
+    const found = seen.get(item.code) ?? {
+      code: item.code,
+      count: 0,
+      total: 0,
+    };
+    found.count += 1;
+    found.total += Math.abs(item.amount);
+    seen.set(item.code, found);
+  }
+  return [...seen.values()].sort(
+    (a, b) => severity(a.code) - severity(b.code) || b.total - a.total,
+  );
+}
+
+/** The chip's word takes the code's own severity colour, not the badge's wash. */
+const CHIP_INK: Record<string, string> = {
+  bad: "var(--bad)",
+  warn: "var(--warn)",
+  neutral: "var(--text-muted)",
+  good: "var(--good)",
+  accent: "var(--accent-strong)",
+};
+
+function KindChip({
+  label,
+  count,
+  total,
+  tone,
+  active,
+  title,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  total: number | null;
+  tone: string;
+  active: boolean;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className="flex items-baseline gap-2 rounded-[var(--r-chip)] border px-2.5 py-1.5 text-left transition-colors"
+      style={{
+        borderColor: active ? "var(--accent)" : "var(--border)",
+        background: active ? "var(--accent-wash)" : "transparent",
+      }}
+    >
+      <span className="text-[12px] font-medium" style={{ color: tone }}>
+        {label}
+      </span>
+      <span className="tnum text-[12px] font-semibold">{count}</span>
+      {total !== null && (
+        <span className="tnum text-[11.5px] text-[var(--text-subtle)]">
+          {inr(total)}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function QueueList({
   items,
   selected,
@@ -45,56 +138,97 @@ export function QueueList({
   selected: Selection | null;
   onSelect: (selection: Selection) => void;
 }) {
-  const ordered = sortQueue(items);
-  if (ordered.length === 0) return <Empty>Nothing unresolved in this run.</Empty>;
+  const [only, setOnly] = useState<ExceptionCode | null>(null);
+  const kinds = kindsIn(items);
+  const ordered = sortQueue(items).filter(
+    ({ item }) => only === null || item.code === only,
+  );
+
+  if (items.length === 0) return <Empty>Nothing unresolved in this run.</Empty>;
 
   return (
-    <table className="w-full border-collapse">
-      <thead>
-        <tr>
-          {/*
+    <>
+      {kinds.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border)] px-4 py-2.5">
+          <KindChip
+            label="Everything"
+            count={items.length}
+            total={null}
+            tone="var(--text-muted)"
+            active={only === null}
+            title="Every unresolved case in this run"
+            onClick={() => setOnly(null)}
+          />
+          {kinds.map((kind) => (
+            <KindChip
+              key={kind.code}
+              label={codeLabel(kind.code)}
+              count={kind.count}
+              total={kind.total}
+              tone={CHIP_INK[codeTone(kind.code)]}
+              active={only === kind.code}
+              title={codeTitle(kind.code)}
+              onClick={() => setOnly(only === kind.code ? null : kind.code)}
+            />
+          ))}
+        </div>
+      )}
+      <table className="w-full border-collapse">
+        <thead>
+          <tr>
+            {/*
             Three columns, not five. The subject and the date used to have
             their own, and between them they squeezed the summary into four
             wrapped lines and pushed the amount off the edge of the pane.
             They belong under the sentence they qualify.
           */}
-          <th className="th w-[132px]">Type</th>
-          <th className="th">What happened</th>
-          <th className="th text-right">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ordered.map(({ item, index }) => {
-          const active = selected?.kind === "exception" && selected.index === index;
-          return (
-            <tr
-              key={`${item.subject.id}-${index}`}
-              {...rowProps(active, () => onSelect({ kind: "exception", index }))}
-            >
-              <td className="td align-top">
-                <Badge tone={codeTone(item.code)}>{codeLabel(item.code)}</Badge>
-              </td>
-              <td className="td">
-                <div className="text-[13px] leading-snug text-[var(--text)]">{withRupeeSign(item.summary)}</div>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <Id id={item.subject.id} />
-                  <span className="tnum text-[11px] text-[var(--text-subtle)]">
-                    {item.subject.occurred_on ? shortDate(item.subject.occurred_on) : "no date"}
-                  </span>
-                </div>
-              </td>
-              <td className="td align-top text-right whitespace-nowrap">
-                {item.amount === 0 ? (
-                  <span className="text-[12px] text-[var(--text-disabled)]">—</span>
-                ) : (
-                  <Amount paise={item.amount} size="md" />
+            <th className="th w-[132px]">Type</th>
+            <th className="th">What happened</th>
+            <th className="th text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordered.map(({ item, index }) => {
+            const active =
+              selected?.kind === "exception" && selected.index === index;
+            return (
+              <tr
+                key={`${item.subject.id}-${index}`}
+                {...rowProps(active, () =>
+                  onSelect({ kind: "exception", index }),
                 )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+              >
+                <td className="td align-top">
+                  <Badge tone={codeTone(item.code)}>
+                    {codeLabel(item.code)}
+                  </Badge>
+                </td>
+                <td className="td">
+                  <div className="text-[13px] leading-snug text-[var(--text)]">{withRupeeSign(item.summary)}</div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Id id={item.subject.id} />
+                    <span className="tnum text-[11px] text-[var(--text-subtle)]">
+                      {item.subject.occurred_on
+                        ? shortDate(item.subject.occurred_on)
+                        : "no date"}
+                    </span>
+                  </div>
+                </td>
+                <td className="td align-top text-right whitespace-nowrap">
+                  {item.amount === 0 ? (
+                    <span className="text-[12px] text-[var(--text-disabled)]">
+                      —
+                    </span>
+                  ) : (
+                    <Amount paise={item.amount} size="md" />
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
   );
 }
 

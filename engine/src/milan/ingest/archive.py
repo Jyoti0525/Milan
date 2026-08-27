@@ -58,6 +58,14 @@ class ImportRecord(BaseModel):
     wrong."""
 
     columns_proposed: int
+    columns_checked: int = 0
+    """Columns settled by the file's own arithmetic rather than by a name, an
+    answer or a suggestion.
+
+    Defaulted, because imports archived before the identity checks existed
+    have no such count and inventing one for them would be worse than
+    reporting none. A run predating the field reads as zero and says so.
+    """
     """How many columns a model contributed that the header names did not
     already cover. The entire "AI did something here" claim about ingest,
     stated as a count."""

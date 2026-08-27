@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"settlement_utr\": \"Bank Ref No\", \"payment_id\": \"Txn Ref No\", \"order_id\": \"Order Ref\", \"order_receipt\": \"Merchant Ref\", \"method\": \"Instrument\", \"card_type\": \"Card Variant\", \"card_issuer\": null, \"dispute_id\": null, \"on_hold\": null, \"settled\": \"Payout Date\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.268005699996138,
+  "prompt_tokens": 1109,
+  "completion_tokens": 84
+}

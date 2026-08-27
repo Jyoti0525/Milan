@@ -173,6 +173,7 @@ export interface ImportRef {
   credits: number;
   consulted: string;
   columns_proposed: number;
+  columns_checked: number;
 }
 
 /**
@@ -199,6 +200,7 @@ export interface MappedColumn {
   certainty: string;
   proposed_by: string;
   derived: boolean;
+  reason: string;
 }
 
 export interface MappedFile {
@@ -212,6 +214,7 @@ export interface ImportProvenance {
   files: string[];
   consulted: string;
   columns_proposed: number;
+  columns_checked: number;
   /** Column proposals the values refused. One line each, already written. */
   rejections: string[];
   /** Checks this run could not perform, and what each absence costs. */

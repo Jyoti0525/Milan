@@ -334,6 +334,15 @@ class SavedColumn(BaseModel):
     certainty: str = Certainty.ANSWERED.value
     proposed_by: str = ""
     derived: bool = False
+    reason: str = ""
+    """Why this column, in the words the resolver settled on.
+
+    Saved because `certainty` alone stopped being enough to describe a
+    decision: `unconfirmed` now covers both a model's suggestion and a
+    mapping the file's own arithmetic proved, and the difference between
+    those two is the sentence. Defaulted for mappings written before it
+    existed - an older run shows the certainty and no account of it, which
+    is what it actually has."""
 
 
 class SavedFile(BaseModel):
@@ -375,6 +384,7 @@ def to_saved(plan: IngestPlan) -> SavedMapping:
                         certainty=resolution.certainty.value,
                         proposed_by=resolution.proposed_by,
                         derived=resolution.derived,
+                        reason=resolution.reason,
                     )
                     for resolution in mapping.resolutions
                     if resolution.mapped

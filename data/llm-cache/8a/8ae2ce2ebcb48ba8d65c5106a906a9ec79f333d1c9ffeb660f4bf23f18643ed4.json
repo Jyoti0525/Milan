@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"entity_id\": \"Txn Ref No\", \"type\": \"Txn Type\", \"amount\": \"Gross Amount\", \"credit\": \"Amount Credited\", \"debit\": \"Amount Debited\", \"fee\": \"Commission\", \"tax\": \"Service Tax (GST)\", \"created_at\": \"Txn Date & Time\", \"settlement_id\": \"Payout Batch\", \"settled_at\": \"Payout Date\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 5.744038500008173,
+  "prompt_tokens": 975,
+  "completion_tokens": 93
+}

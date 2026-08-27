@@ -31,6 +31,7 @@ from milan.domain.results import Proof, ReconException, ReconReport
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.metrics import Scorecard
 from milan.ingest import archive, build
+from milan.ingest.identity import proven
 from milan.ingest.plan import to_saved
 from milan.leaks.clusters import LeakCluster, LeakReport, summarise
 from milan.persistence import store
@@ -297,6 +298,7 @@ class ImportRef(BaseModel):
     claim about the ingest path should be checked in."""
 
     columns_proposed: int
+    columns_checked: int = 0
 
 
 class MappedColumn(BaseModel):
@@ -307,6 +309,13 @@ class MappedColumn(BaseModel):
     field: str
     column: str | None
     pattern: str
+    reason: str = ""
+    """Why this column, in the resolver's own words.
+
+    `certainty` stopped being a complete answer once the import could prove a
+    mapping: `unconfirmed` covers both "a model suggested it" and "the file's
+    own arithmetic settles it", and only this says which."""
+
     certainty: str
     """`confirmed`, `answered`, `unconfirmed` or `absent`.
 
@@ -350,6 +359,7 @@ class ImportProvenance(BaseModel):
     files: tuple[str, ...]
     consulted: str
     columns_proposed: int
+    columns_checked: int = 0
     rejections: tuple[str, ...]
     limitations: tuple[str, ...]
     dropped: int
@@ -625,6 +635,7 @@ class Service:
                     credits=record.counts.get("bank_credits", 0),
                     consulted=record.consulted,
                     columns_proposed=record.columns_proposed,
+                    columns_checked=record.columns_checked,
                 )
             )
         return tuple(found)
@@ -667,6 +678,12 @@ class Service:
         )
 
         slug = archive.slug_for(Path(name)) if name.strip() else f"upload-{staged_id[:6]}"
+        checked = sum(
+            1
+            for mapping in plan.placed
+            for resolution in mapping.resolutions
+            if resolution.column is not None and proven(resolution.reason)
+        )
         proposed = sum(
             1
             for mapping in plan.placed
@@ -691,6 +708,7 @@ class Service:
                     for rejection in plan.rejections
                 ),
                 columns_proposed=proposed,
+                columns_checked=checked,
             ),
             mapping=to_saved(plan),
             data=imported.data,
@@ -715,6 +733,7 @@ class Service:
                         certainty=column.certainty,
                         proposed_by=column.proposed_by,
                         derived=column.derived,
+                        reason=column.reason,
                     )
                     for column in entry.columns
                 ),
@@ -752,6 +771,7 @@ class Service:
                 files=record.files,
                 consulted=record.consulted,
                 columns_proposed=record.columns_proposed,
+                columns_checked=record.columns_checked,
                 rejections=record.rejections,
                 limitations=record.limitations,
                 dropped=record.dropped,

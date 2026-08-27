@@ -131,10 +131,12 @@ export function ImportMetrics({
   summary,
   consulted,
   columnsProposed,
+  columnsChecked,
 }: {
   summary: ImportSummary;
   consulted: string;
   columnsProposed: number;
+  columnsChecked: number;
 }) {
   const model = consulted !== "none";
   return (
@@ -161,17 +163,35 @@ export function ImportMetrics({
           Where the schema came from, in the same place the generated screen
           puts its refusal rate. Both cards answer "how much of this did you
           decide, and on what evidence".
+
+          Three states, not two, and the order is deliberate. A column the
+          file's own arithmetic settled is the strongest of the three and is
+          shown ahead of a model's count when there is one, because "checked
+          against your numbers" and "a model suggested it" are not the same
+          claim and the stronger one should not be hidden behind the weaker.
+
+          The old third state was an em dash in disabled grey, which was
+          honest - nothing had been proposed - and read as a broken card.
         */}
-        <Card
-          label="Columns read by a model"
-          hint={model ? `${consulted}, checked by values` : "read from the names alone"}
-        >
-          {model ? (
-            <Figure value={String(columnsProposed)} />
-          ) : (
-            <Figure value="—" tone="var(--text-disabled)" />
-          )}
-        </Card>
+        {columnsChecked > 0 ? (
+          <Card
+            label="Columns checked against the file"
+            hint="proved by arithmetic on your own rows"
+          >
+            <Figure value={String(columnsChecked)} tone="var(--good)" />
+          </Card>
+        ) : (
+          <Card
+            label="Columns read by a model"
+            hint={model ? `${consulted}, checked by values` : "read from the names alone"}
+          >
+            {model ? (
+              <Figure value={String(columnsProposed)} />
+            ) : (
+              <Figure value="0" tone="var(--text-disabled)" />
+            )}
+          </Card>
+        )}
       </div>
 
       <Explain question="Why is there no score on my own files?">

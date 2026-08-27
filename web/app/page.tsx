@@ -450,6 +450,7 @@ export default function Workspace() {
               summary={view.summary}
               consulted={view.provenance.consulted}
               columnsProposed={view.provenance.columns_proposed}
+              columnsChecked={view.provenance.columns_checked}
             />
           ) : (
             view && <Metrics summary={view.summary} />
