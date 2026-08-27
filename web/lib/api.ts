@@ -204,6 +204,39 @@ export interface CausesView {
   total: number;
 }
 
+/** One supporting row of an answer, with the records it was computed from. */
+export interface AnswerLine {
+  label: string;
+  amount: Paise;
+  detail: string;
+  sources: string[];
+}
+
+/**
+ * A reply to one question about one reconciled month.
+ *
+ * `intent === null` is a refusal, and it is a result rather than an error.
+ * A settlement tool that produces a confident paragraph about the wrong
+ * question is worse than one that says it does not understand, because the
+ * reader has no way to tell that reply from a right one — so the refusal
+ * arrives as a 200 with `suggestions`, not as a failed request.
+ *
+ * `routed_by` says who worked out which question this was: `rules`, a model's
+ * name, or `nobody` on a refusal. It says nothing about where the figures
+ * came from. Those are arithmetic over the report in every case, including
+ * when a model did the reading — the model picks a question and never touches
+ * a number.
+ */
+export interface AnswerView {
+  asked: string;
+  intent: string | null;
+  headline: string;
+  lines: AnswerLine[];
+  routed_by: string;
+  subjects: string[];
+  suggestions: string[];
+}
+
 export interface RunView {
   summary: RunSummary;
   queue: QueueItem[];
@@ -480,6 +513,26 @@ async function send<T>(path: string, init: RequestInit): Promise<T> {
   }
   return (await response.json()) as T;
 }
+
+/**
+ * Ask one question about a run.
+ *
+ * A POST because the question is the merchant's words about their own money,
+ * and a question in a URL ends up in every access log the request crosses.
+ */
+export const askRun = (difficulty: string, seed: number, question: string) =>
+  send<AnswerView>(`/api/runs/${difficulty}/${seed}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+
+export const askImport = (slug: string, question: string) =>
+  send<AnswerView>(`/api/imports/${slug}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
 
 export function uploadFiles(files: File[]): Promise<Plan> {
   const body = new FormData();

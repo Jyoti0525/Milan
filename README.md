@@ -307,6 +307,63 @@ is about, with what the engine looked at before it gave up.
 
 ![The exception queue](docs/images/queue.png)
 
+### Thirty exceptions are usually about four things
+
+A queue of thirty cases is thirty decisions, and most of them are the same
+decision made repeatedly. Six credits short by the same undisclosed rate is
+**one** question for an account manager, not six — so above the queue sits
+the small number of causes behind it, ranked by money, each with the single
+question that would close the whole cluster.
+
+```
+Why - 25 of 30 exceptions are 8 causes. 5 stayed individual.
+
+Items    At stake  Cause                             Do this
+    5  ₹81,150.55  Payouts reported missing that a   Work the 5 shortfalls, not
+                   deposit here already accounts     these. Closing each shortfall
+                   for                               closes the payout with it, and
+                                                     the exposure is half what the
+                                                     queue total suggests.
+    2      ₹44.81  A deduction that is not in the    Ask Razorpay what the extra
+                   settlement report                 0.150% taken at payout is.
+                                                     One answer closes all 2.
+```
+
+Three things about that output are the whole design.
+
+**No model is involved.** Every grouping is an arithmetic test with a right
+answer — two payouts were short by the same share of their own gross or they
+were not. A clustering produced by a model is a clustering nobody can check,
+and an unfalsifiable heading over real money is worse than the list beneath
+it.
+
+**The test is printed with the cause.** Not "these look related" but "each
+shortfall is the same share of its own batch — 0.150%". A reader who thinks a
+cause is wrong is given the thing to disprove.
+
+**The coverage is stated, including the part that did not fit.** *5 stayed
+individual* is on the screen because an exception with no sibling has no
+pattern to belong to, and inventing one for it would be the guess this system
+refuses to make everywhere else.
+
+Measured against the answer key over thirty-six months, every cause's members
+came from the same injected defect — but the first version scored 80.7%, and
+what fixed it is worth more than the number. Three rules were grouping on
+coincidence: two missing payouts sharing a date out of twenty-one days is what
+randomness produces, not a settlement run that failed. Rewriting them to test
+something the arithmetic supports took purity to 100% and took coverage **up**,
+33% to 72%. The honest rules were not the conservative ones.
+
+Writing that measurement then turned up something nobody was looking for:
+**three quarters of the payouts reported missing are not missing.** The
+deposit is on the statement and in the same queue, matched to the right
+settlement and short by an amount the report cannot explain — so the money is
+counted twice and the merchant sees roughly double their real exposure. It is
+named as a cause rather than silently suppressed, because suppressing it would
+mean asserting a match the prover declined to assert.
+
+### Proved
+
 **Proved** is what could be, rebuilt line by line: the sale, every deduction
 that happened to it, and a running total that lands exactly on what the bank
 paid. Every line carries the source record ids behind it, so a finance team
@@ -427,6 +484,78 @@ proof, every cascade rung, every exception code and amount.
 
 If the import drops a paisa, reads a date the other way round, or maps the
 debit onto the credit, they diverge and the suite fails.
+
+## Ask it a question
+
+The Track 04 brief names a settlement Q&A agent by name, so here is one built
+to this project's rule rather than around it.
+
+```bash
+uv run milan ask "why was my payout short?" --seed 42 --difficulty messy
+```
+
+```
+3 payouts arrived short by ₹224.32 in total over 2026-07-03 to 2026-07-29, and
+each shortfall is named rather than written off. 2 of them share one cause: a
+deduction that is not in the settlement report.
+
+  GST was deducted at 28% of the ₹1,788.05 fee, not the 18% the        ₹178.81
+  report shows. The ₹178.81 difference is the shortfall.
+  Short by ₹42.42 against a report that foots. That is an extra         ₹42.42
+  0.150% of the ₹23,968.90 settled, plus GST on it.
+
+read as `shortfall` by rules
+```
+
+**The model's entire job is picking one name out of ten.** It never sees an
+amount, never writes a sentence anybody reads, and cannot reach the
+arithmetic — every figure is computed from the reconciled report afterwards,
+whichever way the question was routed. So the answer is exactly as correct
+with no model at all; only the range of phrasings it understands is narrower.
+The worst a wrong reading can do is answer a *different* question, say which
+one it answered, and show correct figures for it.
+
+That is why `read as shortfall by rules` is on the last line of every reply.
+
+### It refuses, out loud
+
+```
+$ uv run milan ask "what will my sales be next month"
+
+I could not tell which question that is, and I would rather say so than
+answer a different one. Here is what I can work out from these files:
+  - am I being overcharged?
+  - why was my payout short?
+  ...
+```
+
+A forecast is not computable from a month of reconciled rows, and neither is
+"should I switch payment gateway" or "email this to my accountant" — all three
+sound exactly like what this tool is for, which is what makes them dangerous.
+A confident paragraph about the wrong thing is worse than useless, because a
+merchant has no way to tell it from a right one.
+
+### How well the rules do, measured twice
+
+| | routed correctly | misrouted | unrouted |
+|---|---|---|---|
+| corpus the triggers were tuned against | 96.4% | 0 | 2 |
+| **held-out set, measured once** | **60.0%** | 12% | 28% |
+| held-out, after fixing only the misroutes | 68.0% | **0** | 32% |
+
+The middle row is the honest one. The held-out phrasings were written after
+the triggers were finished and scored once before anything changed, and they
+are twenty-eight points worse than the corpus that produced the rules — which
+is roughly what "I wrote the test and the code" is worth.
+
+Only the *misroutes* were then fixed, because the two failures are not the
+same failure. An unrouted question is refused, or handed to a model, and the
+person is told either way. A misrouted one is answered confidently, in detail,
+with real figures about a question nobody asked. `received` was triggering on
+the bare noun "deposit", which answered "there is a gap between the report and
+the deposit" with a month's deposit total. It now needs a word saying money
+*arrived*. That cost 3.6 points on the tuned corpus and took misroutes to zero
+on both sets.
 
 ## Where the model earns its place
 

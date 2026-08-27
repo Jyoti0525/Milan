@@ -1156,3 +1156,92 @@ If a decision is not here, it is not settled.
      annual GDP, so a longer cell is a corrupted export or an account number
      in a money column, and both deserve the answer a word already gets.
      Found by generating text and feeding it in, not by reading the code.
+238. **The second audit found nothing, and that is the finding.** The first
+     one turned up an artifact, and the fair reading of that is not "one bug
+     fixed" but "the list was too short" - so the list was extended with the
+     checks it did not have, starting with the settlement identity itself,
+     which it had never actually tested. Twenty months across four tiers and
+     five merchant shapes: every row keeps `credit - debit == amount - fee -
+     tax`, with 194-O off the payments and the sign flipped on reversals;
+     every provable credit is its batches' net; no injected defect is named in
+     any field a merchant can read; no unmatchable credit still carries a
+     working reference. Nothing new. Kept as
+     `test_generated_data_is_honest.py` so it cannot rot back.
+239. **Two of the new checks fired and both were the check being wrong.** 183
+     bank credits and 32 payouts dated on a Saturday or Sunday - every one of
+     them an instant settlement, which is not an artifact but the product.
+     Razorpay's instant settlement runs on rails that do not close, and NEFT
+     has been 24x7 in India since 2019. What *would* be an artifact is a
+     scheduled T+2 payout on a day the settlement calendar excludes, and there
+     are zero of those. The check is kept, narrowed to that.
+240. **A queue of thirty exceptions is not thirty problems.** Six credits
+     short by the same undisclosed rate is one question for an account
+     manager, so `recon/causes.py` reads the queue as a handful of named
+     causes. Deterministic, with no model anywhere near it: a grouping a model
+     produced is a grouping nobody can check, and an unfalsifiable heading
+     over real money is worse than the list underneath it. Every cause carries
+     the arithmetic test its members passed and the one question that closes
+     the cluster - empty when the answer is that nothing needs doing, which on
+     a queue full of refunds clearing into later payouts is the most valuable
+     thing it can say.
+241. **Three of the first cause rules were measuring coincidence.** Checked
+     against the answer key, purity was 80.7%, and every failure was a rule
+     grouping on a shared value that is shared by chance: two missing payouts
+     on the same date out of twenty-one days, two unreported captures on
+     another, and a bucket grouping deposits on the *absence* of evidence. The
+     day rules now require the whole day's population to be affected - which
+     the exception's own evidence records - and the absence bucket was cut.
+     Purity went to 100% and coverage went **up**, 33% to 72%. The honest
+     rules were not the conservative ones, and that is worth remembering the
+     next time a rule looks too strict to be useful.
+242. **Three quarters of the payouts we report as missing are not missing.**
+     Found while writing the measurement above, not while looking for it. Of
+     eighty `MISSING_SETTLEMENT` exceptions across thirty-six months, twenty
+     were injected as missing; for the other sixty the deposit is on the
+     statement and in the same queue, matched to the right settlement and
+     short by an amount the report cannot account for. The cascade withdrew
+     the credit's claim, so nothing marked the settlement as spoken for.
+     Both exceptions are individually true - one says the arithmetic would not
+     close, the other says no credit was concluded for this payout - and
+     together they show the merchant roughly twice the exposure they have.
+     Named as a cause rather than suppressed in the pipeline: suppressing it
+     would mean asserting a match the prover declined to assert, which is the
+     trade this project does not make.
+243. **The categoriser preferred a refund a few paise off to a GST slab that
+     fit exactly.** `_as_recovery_gap` ran first on the grounds that a refund
+     matches the shortfall to the paisa - true when it was written, and no
+     longer true once it was widened to the batch's rounding allowance. On
+     2,000-order months the refund pool is large enough that some unrelated
+     refund lands inside it. Split in two: the exact form keeps its place at
+     the top, the widened form drops below the tax test and above the fee test
+     that its own docstring admits almost any number satisfies. Five
+     mis-grouped clusters in thirty-six months became one, and that one is a
+     genuine ambiguity the evidence does not resolve.
+244. **A model may pick the question. It may never produce the answer.**
+     `milan.qa` answers a merchant's question about their own month, and the
+     model's entire job is choosing one name out of ten. It never sees an
+     amount, never writes a sentence anybody reads, and cannot reach the
+     arithmetic - every figure is computed from the report afterwards
+     regardless of how the question was routed. So the worst a wrong model
+     call can do is answer a different question, visibly, with correct
+     numbers. It cannot produce a plausible wrong figure, because it never
+     produces figures.
+245. **The question router scores 96.4% on the corpus it was tuned against
+     and 60% on one it was not.** The second number is the real one. A
+     held-out set of twenty-five phrasings, written after the triggers were
+     finished and measured exactly once, routed 60% correctly, misrouted 12%
+     and left 28% unrouted. Only the misroutes were then fixed, because the
+     two failures are not the same failure: an unrouted question is refused or
+     handed to a model and the person is told either way, while a misrouted
+     one is answered confidently with real figures about a question nobody
+     asked. `received` was triggering on the bare noun "deposit", so it now
+     needs a word saying money *arrived*. That cost 3.6 points on the tuned
+     corpus and took misroutes to zero on both sets, which is the right way
+     round for the trade.
+246. **A refusal is a 200 with a body, not an error.** Nothing is malformed
+     about "what will my sales be next month" - the service understands it
+     perfectly and has no way to answer it. The reply says so and lists what
+     does work. The alternative is a confident paragraph about the wrong
+     thing, which a merchant has no way to tell from a right one, and one of
+     those is how a finance team stops trusting every other answer in the
+     system.

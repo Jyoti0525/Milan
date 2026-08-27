@@ -27,6 +27,7 @@ from milan.evaluation.twice import Twice
 from milan.leaks.clusters import LeakReport
 from milan.llm.pricing import RATES
 from milan.llm.registry import Status
+from milan.qa import Answer
 from milan.recon.causes import induce
 from milan.samples.measure import Accuracy
 
@@ -94,6 +95,44 @@ def report_summary(report: ReconReport) -> None:
             console.print(causes)
         console.print()
         console.print(exception_table(report))
+
+
+def answer_panel(answer: Answer) -> None:
+    """One question, answered or refused.
+
+    A refusal gets the same weight on screen as an answer rather than being
+    printed as an error, because it is a result: this could not work out what
+    was being asked, and said so instead of picking the nearest question.
+    """
+    if not answer.answered:
+        console.print(f"[yellow]{answer.headline}[/yellow]")
+        for suggestion in answer.suggestions:
+            console.print(f"  [dim]-[/dim] {suggestion}")
+        return
+
+    console.print(answer.headline)
+    if not answer.lines:
+        return
+
+    console.print()
+    table = Table(box=None, pad_edge=False, show_header=False)
+    table.add_column("")
+    table.add_column("", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("", style="dim")
+    for line in answer.lines:
+        table.add_row(
+            line.label,
+            format_inr(line.amount) if line.amount else "",
+            line.detail,
+        )
+    console.print(table)
+
+    # Last and dim. It says which question was read and who read it, which
+    # matters when a model did the reading - but it is provenance rather than
+    # the answer, and putting it first would make every reply start with an
+    # apology for existing.
+    console.print()
+    console.print(f"[dim]read as `{answer.intent}` by {answer.routed_by}[/dim]")
 
 
 def causes_table(report: ReconReport) -> Table | None:

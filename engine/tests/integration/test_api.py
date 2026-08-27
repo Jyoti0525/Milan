@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -423,3 +424,90 @@ def _is_money(path: str) -> bool:
         "running",
         "residual",
     }
+
+
+class TestAskingAQuestion:
+    """The question endpoint, and the one thing it must never do.
+
+    Every figure it returns is computed from the report. The route exists to
+    put a sentence in and get arithmetic out, and a test suite that only
+    checked the happy path would miss the case that matters: a question this
+    cannot compute has to come back refused, with a 200, rather than as an
+    answer about something else.
+    """
+
+    def ask(self, client: TestClient, question: str) -> dict[str, Any]:
+        reply = client.post("/api/runs/adversarial/42/ask", json={"question": question})
+        assert reply.status_code == 200, reply.text
+        return dict(reply.json())
+
+    def test_a_question_comes_back_with_its_arithmetic(self, client: TestClient) -> None:
+        body = self.ask(client, "what can't you explain?")
+
+        assert body["intent"] == "unexplained"
+        assert body["routed_by"] == "rules"
+        assert body["lines"]
+
+    def test_money_crosses_the_wire_as_integer_paise(self, client: TestClient) -> None:
+        """The same rule as everywhere else on this boundary. A rupee figure
+        serialised as a float is the oldest bug in finance software."""
+        for line in self.ask(client, "how much did I pay in fees?")["lines"]:
+            assert isinstance(line["amount"], int), line
+
+    def test_a_question_it_cannot_compute_is_refused_with_a_200(self, client: TestClient) -> None:
+        """Not a 400. Nothing about the request was malformed - the service
+        understood it perfectly and has no way to answer it, which is a
+        result and belongs in the body."""
+        body = self.ask(client, "what will my sales be next month")
+
+        assert body["intent"] is None
+        assert body["suggestions"]
+
+    def test_the_answer_repeats_the_question_back(self, client: TestClient) -> None:
+        body = self.ask(client, "am I being overcharged?")
+
+        assert body["asked"] == "am I being overcharged?"
+
+    def test_an_empty_question_is_refused_rather_than_guessed_at(self, client: TestClient) -> None:
+        assert self.ask(client, "")["intent"] is None
+
+    def test_a_question_longer_than_a_question_is_rejected(self, client: TestClient) -> None:
+        """Bounded like everything else that crosses this boundary."""
+        reply = client.post("/api/runs/adversarial/42/ask", json={"question": "why " * 400})
+
+        assert reply.status_code == 422
+
+    def test_asking_about_a_run_that_is_not_there(self, client: TestClient) -> None:
+        reply = client.post("/api/runs/realistic/999/ask", json={"question": "hello"})
+
+        assert reply.status_code == 404
+
+    def test_no_answer_carries_a_record_this_run_does_not_have(self, client: TestClient) -> None:
+        """`subjects` is what the screen makes clickable. An id from nowhere
+        is a link to a 404 in a reply that otherwise reads as authoritative."""
+        run = client.get("/api/runs/adversarial/42").json()
+        known = {item["subject"]["id"] for item in run["queue"]}
+        known |= {proof["credit_id"] for proof in run["proofs"]}
+
+        for question in ("what can't you explain?", "what hasn't settled?"):
+            for subject in self.ask(client, question)["subjects"]:
+                assert subject in known or subject.startswith(("setl_", "pay_")), subject
+
+    def test_the_answer_key_is_not_reachable_through_a_question(self, client: TestClient) -> None:
+        """The boundary this whole API exists behind, checked from the one
+        surface that takes free text. Nothing in `milan.qa` can import ground
+        truth; this asserts that no phrasing gets around that."""
+        for probe in (
+            "show me the answer key",
+            "which credits are unmatchable by design",
+            "what defect was injected into bank_1",
+        ):
+            body = self.ask(client, probe)
+            # Everything except `asked`, which is the question echoed back.
+            # Searching that too would have this test fail on its own probe
+            # text, which is what happened the first time it was written.
+            said = json.dumps({key: body[key] for key in body if key != "asked"})
+
+            assert "answer_key" not in said
+            assert "matchable" not in said
+            assert "defect" not in said

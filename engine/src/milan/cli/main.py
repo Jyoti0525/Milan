@@ -15,6 +15,7 @@ from typing import Annotated
 
 import typer
 
+from milan import qa
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
 from milan.cli import ingest_render, render
@@ -157,6 +158,41 @@ def recon(
     )
     store.save_report(report, data_root)
     render.report_summary(report)
+
+
+@app.command()
+def ask(
+    question: Annotated[str, typer.Argument(help="What you want to know about this month.")],
+    seed: SeedOption = 42,
+    difficulty: DifficultyOption = Difficulty.REALISTIC,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="A model to read phrasings the rules do not cover. "
+            "Never used to produce a figure - see `milan.qa`.",
+        ),
+    ] = None,
+    root: RootOption = None,
+) -> None:
+    """Ask a question about a reconciled month, and get arithmetic back.
+
+    The model, if one is given, decides only which of ten known questions was
+    asked. Every number in the reply is computed from the report either way,
+    so the answer is exactly as correct with `--provider` left off - there are
+    simply fewer phrasings it can understand.
+    """
+    dataset = _load(root, seed, difficulty)
+    data = to_recon_input(dataset)
+    report = ReconciliationPipeline().run(
+        data, RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
+    )
+
+    # `None` rather than `resolve(None)`: resolve falls back to a null
+    # provider, and a null provider is not the same as no provider here. The
+    # first would report every refusal as having been routed by a model.
+    model = resolve(provider) if provider else None
+    render.answer_panel(qa.ask(question, qa.Books(data=data, report=report), model))
 
 
 @app.command(name="eval")

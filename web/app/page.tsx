@@ -34,6 +34,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   ApiError,
+  askImport,
+  askRun,
   listImports,
   listRuns,
   loadImport,
@@ -46,6 +48,7 @@ import {
 import { ExceptionPanel } from "@/components/ExceptionPanel";
 import { BackTo, ExpandButton, type Panel, Stepper } from "@/components/Expand";
 import { ImportWizard } from "@/components/ImportWizard";
+import { Ask } from "@/components/Ask";
 import { Merchant } from "@/components/Merchant";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { Position } from "@/components/Position";
@@ -591,6 +594,21 @@ export default function Workspace() {
             row in the run rather than a list of its own.
           */}
           {view && <Merchant findings={view.merchant} />}
+          {/*
+            Below the merchant strip, because both answer questions the
+            figures above cannot — and this one has to be asked, so it sits
+            closest to the queue it is usually asked about.
+          */}
+          {view && current && (
+            <Ask
+              key={key}
+              onAsk={(question) =>
+                current.kind === "run"
+                  ? askRun(current.run.difficulty, current.run.seed, question)
+                  : askImport(current.ref.slug, question)
+              }
+            />
+          )}
           {loading && (
             <div className="card px-5 py-4 text-[13px] text-[var(--text-subtle)]">Reconciling…</div>
           )}

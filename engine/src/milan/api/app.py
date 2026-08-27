@@ -18,7 +18,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from milan.api.service import (
     ImportRef,
@@ -33,6 +33,10 @@ from milan.api.staging import StagingError, UnknownStagingError
 from milan.ingest.build import NotReadyError
 from milan.llm.keyfile import load_keyfile
 from milan.persistence.store import StaleDatasetError
+from milan.qa import Answer
+
+LONGEST_QUESTION = 500
+"""The longest question this will read. A sentence, not a document."""
 
 load_keyfile()
 """Read `engine/.env` before the app is built, for the same reason the CLI
@@ -72,6 +76,19 @@ Written as an annotated alias rather than a `File(...)` default, because a
 function call in a default is evaluated once at import and shared by every
 request that follows.
 """
+
+
+class Asked(BaseModel):
+    """A question about one reconciled month.
+
+    Length-capped, because this is a text field on an unauthenticated
+    loopback service and everything else that crosses this boundary is
+    bounded too. Anything longer than this is not a question.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    question: str = Field(default="", max_length=LONGEST_QUESTION)
 
 
 class Answers(BaseModel):
@@ -158,6 +175,29 @@ def create_app(root: Path | None = None) -> FastAPI:
         try:
             return service.import_view(slug)
         except RunNotFoundError as missing:
+            raise HTTPException(status_code=404, detail=str(missing)) from missing
+
+    @app.post("/api/runs/{difficulty}/{seed}/ask")
+    def ask_run(difficulty: str, seed: int, asked: Asked) -> Answer:
+        """Answer one question about one run.
+
+        A POST because the question is a body rather than an identifier, and
+        a question in a URL ends up in every access log the request passes
+        through - which is the wrong place for a merchant's words about their
+        own money.
+        """
+        try:
+            return service.ask(difficulty, seed, asked.question)
+        except RunNotFoundError as missing:
+            raise HTTPException(status_code=404, detail=str(missing)) from missing
+        except StaleDatasetError as stale:
+            raise HTTPException(status_code=409, detail=str(stale)) from stale
+
+    @app.post("/api/imports/{slug}/ask")
+    def ask_import(slug: str, asked: Asked) -> Answer:
+        try:
+            return service.ask_import(slug, asked.question)
+        except (RunNotFoundError, FileNotFoundError) as missing:
             raise HTTPException(status_code=404, detail=str(missing)) from missing
 
     @app.post("/api/uploads")

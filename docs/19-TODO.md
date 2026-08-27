@@ -1024,3 +1024,33 @@ claim nobody checked.
 
 The second failure is subtler and more likely - **letting this list eat the
 video.** Every item here is optional. Neither deliverable is.
+
+---
+
+## Day 7 — the two that were named and never built
+
+Both were listed in the build order, both were reported as outstanding, both
+are now done.
+
+- [x] **Root-cause induction on the exception queue.** `recon/causes.py`.
+      Deterministic, measured against the answer key at 100% purity over
+      thirty-six months, and it found a real double-report in the pipeline
+      while being measured - see decisions 240-242.
+- [x] **The settlement Q&A agent.** `milan.qa`, reached by `milan ask`, the
+      API and the queue screen. A model picks one of ten questions and nothing
+      else; the arithmetic answers. Measured on a held-out corpus at 60% and
+      reported as 60% rather than as the 96.4% the tuned corpus gives.
+
+### Still open, and stated rather than quietly dropped
+
+- **Rule induction** - learning a merchant's own fee stack from their history
+  instead of being handed a rate card. Named in the original plan, never
+  built, and it is the one remaining item that would change a graded number.
+- **The question corpus is written by the same person as the triggers.** The
+  held-out set narrows that, and does not remove it. Nothing here has been in
+  front of a merchant.
+- **`MISSING_SETTLEMENT` overclaims.** Decision 242: three quarters of what it
+  reports is a payout whose deposit is in the same queue. The induction names
+  the duplication; the exception's own wording still reads as "the money never
+  arrived", and fixing that properly means the pipeline knowing that a
+  withdrawn claim still spoke for a settlement.

@@ -21,6 +21,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from milan import qa
 from milan.api.staging import Staged, StagingArea
 from milan.chaos.config import Difficulty
 from milan.domain.dataset import Dataset
@@ -35,8 +36,10 @@ from milan.ingest import archive, build
 from milan.ingest.identity import proven
 from milan.ingest.plan import to_saved
 from milan.leaks.clusters import LeakCluster, LeakReport, summarise
+from milan.llm.provider import Provider
 from milan.persistence import store
 from milan.persistence.store import StaleDatasetError
+from milan.qa import Answer
 from milan.recon.batches import GatewayBatch, rebuild_batches
 from milan.recon.causes import induce
 from milan.recon.inputs import ReconInput
@@ -607,10 +610,18 @@ class Service:
     from a stale entry in a long-lived process.
     """
 
-    def __init__(self, root: Path | None = None) -> None:
+    def __init__(self, root: Path | None = None, model: Provider | None = None) -> None:
         self._root = root if root is not None else store.default_root()
         self._cache: dict[tuple[str, int], RunView] = {}
         self._staging = StagingArea(self._root)
+        self._model = model
+        """A model for reading question phrasings the rules do not cover.
+
+        `None` rather than a null provider, and the difference is not
+        cosmetic: a null provider would make every refusal report that a
+        model had been consulted and declined, when in fact none was asked.
+        Left unset the question answerer works on rules alone, which is the
+        configuration every measured figure about it was taken under."""
 
     @property
     def root(self) -> Path:
@@ -661,6 +672,30 @@ class Service:
         if key not in self._cache:
             self._cache[key] = self._build(difficulty, seed)
         return self._cache[key]
+
+    def ask(self, difficulty: str, seed: int, question: str) -> Answer:
+        """Answer one question about a generated run.
+
+        Rebuilds the books rather than reading a cached view, because the
+        answer is computed from the report and the rows together and a view
+        carries neither in full. The reconciliation is deterministic and
+        fast, and a question answered against a different run than the one on
+        screen would be worse than a slow one.
+        """
+        dataset = self._dataset(difficulty, seed)
+        data = to_recon_input(dataset)
+        report = ReconciliationPipeline().run(
+            data, RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
+        )
+        return qa.ask(question, qa.Books(data=data, report=report), self._model)
+
+    def ask_import(self, slug: str, question: str) -> Answer:
+        """The same, for a folder of the merchant's own files."""
+        report = archive.load_report(self._root, slug)
+        data = archive.load_input(self._root, slug)
+        if report is None or data is None:
+            raise RunNotFoundError(f"{slug} has no reconciled report to ask about")
+        return qa.ask(question, qa.Books(data=data, report=report), self._model)
 
     # ------------------------------------------------------------- internals
 
