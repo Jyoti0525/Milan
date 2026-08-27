@@ -19,9 +19,10 @@
  */
 
 import { useState } from "react";
-import type { ExceptionCode, Proof, QueueItem } from "@/lib/api";
+import type { CausesView, ExceptionCode, Proof, QueueItem } from "@/lib/api";
 import { inr, shortDate, withRupeeSign } from "@/lib/money";
 import { Amount } from "./Amount";
+import { Causes } from "./Causes";
 import { Badge, Tag } from "./Badge";
 import { Empty, Id, rowProps, type Selection } from "./Table";
 import { codeLabel, codeTitle, codeTone, severity } from "./codes";
@@ -131,23 +132,46 @@ function KindChip({
 
 export function QueueList({
   items,
+  causes,
   selected,
   onSelect,
 }: {
   items: QueueItem[];
+  /** The reasons behind these rows. Optional so a caller that has none —
+   *  a leak list, a test — is not made to invent an empty one. */
+  causes?: CausesView;
   selected: Selection | null;
   onSelect: (selection: Selection) => void;
 }) {
   const [only, setOnly] = useState<ExceptionCode | null>(null);
+  const [cause, setCause] = useState<string | null>(null);
+
+  // The two filters sit at different levels — a cause is a reason, a chip is
+  // a kind — and combining them would let somebody land on an empty list
+  // through two reasonable clicks. Picking either clears the other.
+  const chosen = causes?.causes.find((one) => one.name === cause) ?? null;
+  const members = chosen === null ? null : new Set(chosen.members);
   const kinds = kindsIn(items);
   const ordered = sortQueue(items).filter(
-    ({ item }) => only === null || item.code === only,
+    ({ item }) =>
+      (members === null || members.has(item.subject.id)) &&
+      (only === null || item.code === only),
   );
 
   if (items.length === 0) return <Empty>Nothing unresolved in this run.</Empty>;
 
   return (
     <>
+      {causes !== undefined && (
+        <Causes
+          causes={causes}
+          active={cause}
+          onPick={(name) => {
+            setCause(name);
+            setOnly(null);
+          }}
+        />
+      )}
       {kinds.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border)] px-4 py-2.5">
           <KindChip
@@ -157,7 +181,10 @@ export function QueueList({
             tone="var(--text-muted)"
             active={only === null}
             title="Every unresolved case in this run"
-            onClick={() => setOnly(null)}
+            onClick={() => {
+              setOnly(null);
+              setCause(null);
+            }}
           />
           {kinds.map((kind) => (
             <KindChip
@@ -168,7 +195,10 @@ export function QueueList({
               tone={CHIP_INK[codeTone(kind.code)]}
               active={only === kind.code}
               title={codeTitle(kind.code)}
-              onClick={() => setOnly(only === kind.code ? null : kind.code)}
+              onClick={() => {
+                setOnly(only === kind.code ? null : kind.code);
+                setCause(null);
+              }}
             />
           ))}
         </div>

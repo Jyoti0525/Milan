@@ -38,6 +38,7 @@ from milan.leaks.clusters import LeakCluster, LeakReport, summarise
 from milan.persistence import store
 from milan.persistence.store import StaleDatasetError
 from milan.recon.batches import GatewayBatch, rebuild_batches
+from milan.recon.causes import induce
 from milan.recon.inputs import ReconInput
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
@@ -264,6 +265,60 @@ class RunSummary(BaseModel):
     explained_rate: float
 
 
+class CauseView(BaseModel):
+    """One reason, and the exceptions that provably share it.
+
+    `members` are subject ids rather than indices into the queue, so a
+    browser that has filtered or reordered the queue can still highlight the
+    rows a cause is about.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    because: str
+    ask: str
+    members: tuple[str, ...]
+    total: Paise
+    codes: tuple[ExceptionCode, ...]
+
+
+class CausesView(BaseModel):
+    """What the queue turned out to be, with the part that did not fit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    reading: str
+    causes: tuple[CauseView, ...]
+    uncaused: tuple[str, ...]
+    covered: int
+    total: int
+
+
+def _causes(report: ReconReport) -> CausesView:
+    """Induced here rather than in the browser, for the same reason the
+    merchant findings are: two implementations of what counts as a cause is
+    two answers to "why did this happen", eventually."""
+    found = induce(report.exceptions)
+    return CausesView(
+        reading=found.reading,
+        causes=tuple(
+            CauseView(
+                name=cause.name,
+                because=cause.because,
+                ask=cause.ask,
+                members=cause.members,
+                total=cause.total,
+                codes=cause.codes,
+            )
+            for cause in found.causes
+        ),
+        uncaused=found.uncaused,
+        covered=found.covered,
+        total=found.total,
+    )
+
+
 def _merchant(report: ReconReport) -> tuple[Finding, ...]:
     """The findings worth putting on a screen, in one place for both screens.
 
@@ -291,6 +346,13 @@ class RunView(BaseModel):
     summary: RunSummary
     queue: tuple[QueueItem, ...]
     proofs: tuple[ProofView, ...]
+    causes: CausesView
+    """The few reasons behind the queue.
+
+    Always present, including when it induced nothing - a run whose queue
+    holds no pattern has to be able to say so, or the only evidence the
+    induction ran is the runs where it found something."""
+
     merchant: tuple[Finding, ...] = ()
     """Who this merchant turned out to be, read off their own rows.
 
@@ -450,6 +512,7 @@ class ImportView(BaseModel):
     provenance: ImportProvenance
     queue: tuple[QueueItem, ...]
     proofs: tuple[ProofView, ...]
+    causes: CausesView
     merchant: tuple[Finding, ...] = ()
     leaks: LeakFindings
 
@@ -619,6 +682,7 @@ class Service:
             summary=self._summary(dataset, data, report),
             queue=self._queue(report, data, credits, batches),
             proofs=self._proofs(report, credits),
+            causes=_causes(report),
             merchant=_merchant(report),
             leaks=self._leaks(data, report),
         )
@@ -790,6 +854,7 @@ class Service:
 
         credits, batches = _index(data)
         return ImportView(
+            causes=_causes(report),
             merchant=_merchant(report),
             summary=_import_summary(slug, record, data, report),
             provenance=ImportProvenance(

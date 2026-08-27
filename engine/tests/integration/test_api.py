@@ -119,10 +119,60 @@ class TestOneRun:
         """One response, because they are one consistent picture of one run."""
         body = client.get("/api/runs/adversarial/42").json()
 
-        assert set(body) == {"summary", "queue", "proofs", "leaks", "merchant"}
+        assert set(body) == {"summary", "queue", "proofs", "leaks", "merchant", "causes"}
         assert body["summary"]["seed"] == 42
         assert body["queue"]
         assert body["proofs"]
+
+    def test_the_queue_arrives_with_the_reasons_behind_it(self, client: TestClient) -> None:
+        """The adversarial tier raises enough exceptions that some of them
+        are the same exception. If this ever comes back empty the screen has
+        quietly gone back to being a list."""
+        causes = client.get("/api/runs/adversarial/42").json()["causes"]
+
+        assert causes["causes"], causes["reading"]
+        assert causes["covered"] <= causes["total"]
+        for cause in causes["causes"]:
+            assert cause["because"], cause["name"]
+            assert len(cause["members"]) >= 2
+
+    def test_every_member_of_every_cause_is_a_subject_in_the_queue(
+        self, client: TestClient
+    ) -> None:
+        """A cause points at rows. If it pointed at an id the queue does not
+        carry, the browser would highlight nothing and say so to nobody."""
+        body = client.get("/api/runs/adversarial/42").json()
+        subjects = {item["subject"]["id"] for item in body["queue"]}
+
+        for cause in body["causes"]["causes"]:
+            for member in cause["members"]:
+                assert member in subjects, member
+
+    def test_the_causes_and_the_leftovers_account_for_the_whole_queue(
+        self, client: TestClient
+    ) -> None:
+        body = client.get("/api/runs/adversarial/42").json()
+        causes = body["causes"]
+        placed = [member for cause in causes["causes"] for member in cause["members"]]
+
+        assert len(placed) == causes["covered"]
+        assert causes["covered"] + len(causes["uncaused"]) == len(body["queue"])
+
+    def test_a_run_always_sends_the_field_even_with_nothing_in_it(self, tmp_path: Path) -> None:
+        """Empty has to be sent rather than omitted, or the browser cannot
+        tell "no patterns here" from "this build has no induction".
+
+        A clean tier, which by construction raises nothing at all - so this
+        also checks the reading reads correctly when there is no queue.
+        """
+        config = GenerationConfig(seed=42, difficulty=Difficulty.CLEAN, order_count=120)
+        store.save_dataset(ChaosEngine(config).generate(), tmp_path, config)
+        client = TestClient(create_app(tmp_path))
+
+        causes = client.get("/api/runs/clean/42").json()["causes"]
+
+        assert causes["causes"] == []
+        assert causes["reading"]
 
     def test_an_ordinary_merchant_produces_no_findings_about_themselves(
         self, client: TestClient

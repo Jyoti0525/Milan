@@ -643,7 +643,12 @@ export default function Workspace() {
                 </div>
               )}
               {view && tab === "queue" && (
-                <QueueList items={view.queue} selected={shown} onSelect={pick} />
+                <QueueList
+                  items={view.queue}
+                  causes={view.causes}
+                  selected={shown}
+                  onSelect={pick}
+                />
               )}
               {view && tab === "proved" && (
                 <ProofList proofs={view.proofs} selected={shown} onSelect={pick} />

@@ -114,7 +114,7 @@ class ReconciliationPipeline:
         exceptions.extend(withdrawn_explanations)
         shortfalls.extend(withdrawn_shortfalls)
         exceptions.extend(
-            reading.categoriser.missing_settlement(batch)
+            reading.categoriser.missing_settlement(batch, batches)
             for batch in batches
             if batch.settlement_id not in claimed
         )

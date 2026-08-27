@@ -14,9 +14,10 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from functools import partial
 
 from milan.domain.enums import EntityType, ExceptionCode
-from milan.domain.money import Paise, format_inr
+from milan.domain.money import ZERO, Paise, format_inr
 from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit, Payment, SettlementRow
 from milan.domain.results import ReconException, UnprovenCredit
@@ -110,8 +111,20 @@ class Categoriser:
             },
         )
 
-    def missing_settlement(self, batch: GatewayBatch) -> ReconException:
-        """A payout the gateway reported that never reached the bank."""
+    def missing_settlement(
+        self, batch: GatewayBatch, batches: tuple[GatewayBatch, ...] = ()
+    ) -> ReconException:
+        """A payout the gateway reported that never reached the bank.
+
+        `batches` is every payout in the run, and it is here so the evidence
+        can record how many the gateway sent out that day. On its own that
+        number says nothing; across several of these it is the difference
+        between "two payouts went astray" and "the whole run of the 21st
+        never left", and those are two different phone calls. Nothing else
+        in the report carries the day's population, so without it a reader
+        with several missing payouts on one date cannot tell which they have.
+        """
+        that_day = sum(1 for other in batches if other.settled_on == batch.settled_on)
         return ReconException(
             code=ExceptionCode.MISSING_SETTLEMENT,
             subject_id=batch.settlement_id,
@@ -125,6 +138,7 @@ class Categoriser:
                 "settled_on": batch.settled_on.isoformat(),
                 "rows": str(len(batch.rows)),
                 "reference": batch.settlement_utr or "absent",
+                **({"batches_that_day": str(that_day)} if that_day else {}),
             },
         )
 
@@ -171,8 +185,35 @@ class Categoriser:
         divide into gross at some small percentage, which almost any number
         does. Running the loosest check first made it answer for a tax
         variance it had no business explaining.
+
+        The refund check appears twice, and that is what the order above is
+        really saying. "Matches the shortfall to the paisa" was true of it
+        when it was written and stopped being true when it was widened to
+        the batch's rounding allowance - so the sentence justifying its
+        place at the top now only describes half of what it does.
+
+        The two halves belong in different places. An exact refund is the
+        sharpest test here: a named record, to the paisa, and nothing else
+        in the report can beat it. A refund a few paise off is still a named
+        record and still strong, but it is no longer sharper than a shortfall
+        that lands on a published GST slab, so it sits below that and above
+        the fee test - which its own docstring admits almost any number
+        satisfies.
+
+        Measured rather than argued. Checking induced causes against the
+        answer key over thirty-six 2,000-order months, the original order
+        put five clusters together from genuinely different defects; this
+        order puts together one. The one that remains is a refund recovery
+        and a 28% GST deduction that fit the same shortfall, where the
+        evidence really does not choose.
         """
-        for check in (self._as_recovery_gap, self._as_tax_variance, self._as_fee_variance):
+        checks = (
+            partial(self._as_recovery_gap, exact=True),
+            self._as_tax_variance,
+            partial(self._as_recovery_gap, exact=False),
+            self._as_fee_variance,
+        )
+        for check in checks:
             found = check(unproven, group, all_rows)
             if found is not None:
                 return found
@@ -192,9 +233,17 @@ class Categoriser:
         )
 
     def _as_recovery_gap(
-        self, unproven: UnprovenCredit, group: BatchGroup, all_rows: tuple[SettlementRow, ...]
+        self,
+        unproven: UnprovenCredit,
+        group: BatchGroup,
+        all_rows: tuple[SettlementRow, ...],
+        *,
+        exact: bool = False,
     ) -> ReconException | None:
         """Short by the size of a refund sitting somewhere else.
+
+        `exact` demands the refund equal the shortfall to the paisa. See
+        `unproven_credit` for why this runs both ways round.
 
         Refunds are netted into whichever group is running when they clear,
         five to seven working days later - normally a group with no other
@@ -221,7 +270,7 @@ class Categoriser:
         if unproven.residual >= 0:
             return None
         shortfall = Paise(-unproven.residual)
-        allowance = group.rounding_allowance
+        allowance = ZERO if exact else group.rounding_allowance
         culprits = [
             row
             for row in all_rows

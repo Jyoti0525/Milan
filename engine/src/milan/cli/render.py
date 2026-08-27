@@ -27,6 +27,7 @@ from milan.evaluation.twice import Twice
 from milan.leaks.clusters import LeakReport
 from milan.llm.pricing import RATES
 from milan.llm.registry import Status
+from milan.recon.causes import induce
 from milan.samples.measure import Accuracy
 
 console = Console()
@@ -87,8 +88,45 @@ def report_summary(report: ReconReport) -> None:
         console.print(merchant)
 
     if report.exceptions:
+        causes = causes_table(report)
+        if causes is not None:
+            console.print()
+            console.print(causes)
         console.print()
         console.print(exception_table(report))
+
+
+def causes_table(report: ReconReport) -> Table | None:
+    """The few reasons behind the queue, before the queue itself.
+
+    Printed above the exception list rather than instead of it. The list is
+    the evidence and stays; this is what it turned out to mean, and a reader
+    who disagrees with a cause needs the rows underneath it to say so.
+    """
+    found = induce(report.exceptions)
+    if not found.causes:
+        return None
+
+    table = Table(
+        title=f"Why - {found.reading}",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Items", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("At stake", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Cause")
+    table.add_column("Do this")
+
+    for cause in found.causes:
+        table.add_row(
+            str(cause.size),
+            format_inr(cause.total),
+            f"[bold]{cause.name}[/bold]\n[dim]{cause.because}[/dim]",
+            cause.ask or "[green]Nothing - this is explained[/green]",
+        )
+    return table
 
 
 def exception_table(report: ReconReport, limit: int = 12) -> Table:

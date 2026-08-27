@@ -166,10 +166,52 @@ export interface Finding {
   because: string;
 }
 
+/**
+ * One reason, and every exception that provably shares it.
+ *
+ * `because` is the test the members passed, with its numbers in it. It is
+ * the field that stops a cause being a guess — specific enough that a reader
+ * who disagrees has something to check.
+ *
+ * `ask` is the single question that would close the whole cluster, and it is
+ * empty when the answer is that nothing needs doing. That empty string is a
+ * finding rather than a gap: it is the screen telling somebody the nine
+ * items they were about to work are already accounted for.
+ */
+export interface CauseView {
+  name: string;
+  because: string;
+  ask: string;
+  /** Subject ids, so a reordered or filtered queue can still be matched up. */
+  members: string[];
+  total: Paise;
+  codes: ExceptionCode[];
+}
+
+/**
+ * What the queue turned out to be, including the part that did not fit.
+ *
+ * `uncaused` is sent on purpose. A response carrying only the causes would
+ * let a screen imply the queue was entirely explained by them, and the rows
+ * that stayed individual are the ones a reader most needs not to be steered
+ * away from.
+ */
+export interface CausesView {
+  reading: string;
+  causes: CauseView[];
+  uncaused: string[];
+  covered: number;
+  total: number;
+}
+
 export interface RunView {
   summary: RunSummary;
   queue: QueueItem[];
   proofs: Proof[];
+  /** The few reasons behind the queue. Always sent, empty when there are
+   *  none — the screen has to be able to tell "no patterns here" from "this
+   *  build does not induce them". */
+  causes: CausesView;
   /**
    * Who this merchant turned out to be. Empty for an ordinary one, which is
    * the common case and reads correctly as one — nothing withheld, nothing
@@ -300,6 +342,7 @@ export interface ImportView {
   provenance: ImportProvenance;
   queue: QueueItem[];
   proofs: Proof[];
+  causes: CausesView;
   merchant: Finding[];
   leaks: LeakFindings;
 }
