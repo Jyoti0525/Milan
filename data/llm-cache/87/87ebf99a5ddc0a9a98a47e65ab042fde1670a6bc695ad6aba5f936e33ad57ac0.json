@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"entity_id\": \"entity_id\", \"type\": \"type\", \"amount\": \"amount\", \"credit\": \"credit\", \"debit\": \"debit\", \"fee\": \"fee\", \"tax\": \"tax\", \"created_at\": \"created_at\", \"settlement_id\": \"settlement_id\", \"settled_at\": \"settled_at\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 8.487986699998146,
+  "prompt_tokens": 929,
+  "completion_tokens": 246
+}

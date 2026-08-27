@@ -1,0 +1,9 @@
+{
+  "text": "{\n  \"columns\": {\n    \"entity_id\": \"Record ID\",\n    \"type\": \"Record Type\",\n    \"amount\": \"Gross Amount\",\n    \"credit\": \"Amount Paid In\",\n    \"debit\": \"Amount Taken Out\",\n    \"fee\": \"Processing Fee\",\n    \"tax\": \"GST On Fee\",\n    \"created_at\": \"Booked On\",\n    \"settlement_id\": \"Settlement Ref\",\n    \"settled_at\": \"Settled On\"\n  }\n}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 1.9208514999918407,
+  "prompt_tokens": 925,
+  "completion_tokens": 571
+}

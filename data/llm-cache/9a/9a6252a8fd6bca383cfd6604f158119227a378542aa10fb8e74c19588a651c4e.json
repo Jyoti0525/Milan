@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"payment_id\": \"payment_id\", \"order_id\": \"order_id\", \"amount\": \"amount\", \"captured_at\": \"captured_at\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 6.19068870000774,
+  "prompt_tokens": 529,
+  "completion_tokens": 127
+}

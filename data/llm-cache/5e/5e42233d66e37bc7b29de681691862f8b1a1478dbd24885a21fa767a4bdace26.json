@@ -1,0 +1,9 @@
+{
+  "text": "{\"order_id\": \"PO Number\", \"amount\": \"Value\", \"created_at\": \"Raised On\"}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 3.9871202999929665,
+  "prompt_tokens": 382,
+  "completion_tokens": 24
+}

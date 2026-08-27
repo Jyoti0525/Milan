@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"order_id\": \"PO Number\", \"amount\": \"Value\", \"captured_at\": \"Raised On\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 4.349149799993029,
+  "prompt_tokens": 434,
+  "completion_tokens": 234
+}

@@ -1073,3 +1073,27 @@ If a decision is not here, it is not settled.
      model agrees with the rules 14.5% of the time over ten adversarial seeds.
      Reporting one number for "how good is the model" would have averaged a
      part that no longer needs one with a part that does.
+228. **The answer budget is a property of the model, so one budget across
+     providers is a confound.** `--max-tokens` defaults to 96, which is right
+     for a 3B instruct model that writes one small JSON object and stops and
+     wrong for a reasoning model that spends a few hundred tokens thinking
+     first. Left alone, `ablate --all` would have truncated `gpt-oss-120b`
+     mid-thought and scored it as a model that declined. `--all` now uses 512
+     for every column - uniformly, because giving each provider its own budget
+     would put a second difference into a table whose purpose is to isolate
+     one, and a ceiling costs nothing to a model that stops short of it.
+229. **A key loaded at an entry point is not loaded everywhere, and that is a
+     trap worth writing down rather than designing away.** `load_keyfile()`
+     runs at import in the CLI and the API and nowhere else, because it mutates
+     `os.environ` and a call buried in `resolve()` would undo a test's
+     `monkeypatch.delenv` mid-test. The cost was paid immediately: a one-off
+     probe script imported the registry directly, got no key, and reported both
+     hosted providers answering nothing in zero seconds - which is
+     indistinguishable from two dead keys. The module docstring now says so.
+230. **A hosted column that replays 71 of 71 from cache has not tested a key.**
+     `data/llm-cache/` is committed on purpose, so an ablation reproduces the
+     published figures on a machine with no GPU and no key. The consequence is
+     that running one against a *new* key can consult the disk and never leave
+     the machine. The `replayed from cache` row is what makes that visible, and
+     it is why verifying a key means a live probe and a run on seeds the cache
+     has not seen - not a table that looks right.

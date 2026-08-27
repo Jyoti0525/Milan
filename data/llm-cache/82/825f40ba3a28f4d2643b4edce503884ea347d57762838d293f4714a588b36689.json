@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"order_id\": \"order_id\", \"amount\": \"amount\", \"created_at\": \"created_at\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 4.392209300000104,
+  "prompt_tokens": 471,
+  "completion_tokens": 165
+}

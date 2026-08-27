@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"debit\": \"Debit\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 1.4501297999959206,
+  "prompt_tokens": 563,
+  "completion_tokens": 393
+}

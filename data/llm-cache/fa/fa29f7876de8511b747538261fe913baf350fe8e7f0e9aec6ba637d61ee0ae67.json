@@ -1,0 +1,9 @@
+{
+  "text": "{\"amount\": \"Value\", \"value_date\": \"Raised On\"}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 2.152695600001607,
+  "prompt_tokens": 405,
+  "completion_tokens": 15
+}

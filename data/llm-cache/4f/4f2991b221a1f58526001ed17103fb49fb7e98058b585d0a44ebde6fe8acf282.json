@@ -1,0 +1,9 @@
+{
+  "text": "{\n  \"columns\": {\n    \"settlement_utr\": \"Payout UTR\",\n    \"payment_id\": \"Payment Ref\",\n    \"order_id\": \"Order Ref\",\n    \"method\": \"Mode\",\n    \"card_type\": \"Card Class\",\n    \"on_hold\": \"Held\",\n    \"settled\": \"Paid\"\n  }\n}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 1.8145535999938147,
+  "prompt_tokens": 1051,
+  "completion_tokens": 604
+}

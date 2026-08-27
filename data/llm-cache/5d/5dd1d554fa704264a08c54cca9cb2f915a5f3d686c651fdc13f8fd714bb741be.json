@@ -1,0 +1,9 @@
+{
+  "text": "{\n  \"settlement_utr\": \"Bank Ref No\",\n  \"payment_id\": \"Txn Ref No\",\n  \"order_id\": \"Order Ref\",\n  \"order_receipt\": \"Merchant Ref\",\n  \"method\": \"Instrument\",\n  \"card_type\": \"Card Variant\",\n  \"on_hold\": \"Blocked\",\n  \"settled\": \"Paid Out\"\n}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 2.07338630000595,
+  "prompt_tokens": 1020,
+  "completion_tokens": 91
+}

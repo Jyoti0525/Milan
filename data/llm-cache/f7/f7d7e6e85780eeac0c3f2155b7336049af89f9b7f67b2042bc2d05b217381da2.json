@@ -1,0 +1,9 @@
+{
+  "text": "{\n  \"entity_id\": \"entity_id\",\n  \"type\": \"type\",\n  \"amount\": \"amount\",\n  \"credit\": \"credit\",\n  \"debit\": \"debit\",\n  \"fee\": \"fee\",\n  \"tax\": \"tax\",\n  \"created_at\": \"created_at\",\n  \"settlement_id\": \"settlement_id\",\n  \"settled_at\": \"settled_at\"\n}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 3.2663246000010986,
+  "prompt_tokens": 972,
+  "completion_tokens": 105
+}

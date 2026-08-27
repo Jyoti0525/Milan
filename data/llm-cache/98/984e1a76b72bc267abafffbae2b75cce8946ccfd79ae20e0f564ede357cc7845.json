@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"debit\": \"Debit\"}}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 3.874236600007862,
+  "prompt_tokens": 506,
+  "completion_tokens": 10
+}

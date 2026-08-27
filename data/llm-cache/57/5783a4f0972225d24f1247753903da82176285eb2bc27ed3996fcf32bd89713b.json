@@ -1,0 +1,9 @@
+{
+  "text": "{\n  \"payment_id\": \"payment_id\",\n  \"order_id\": \"order_id\",\n  \"amount\": \"amount\",\n  \"captured_at\": \"captured_at\"\n}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 4.714000100007979,
+  "prompt_tokens": 505,
+  "completion_tokens": 47
+}

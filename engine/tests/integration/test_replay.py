@@ -173,10 +173,13 @@ class TestTheHostedRunsReplayToo:
     tier's quota, and a vendor catalogue that changes underneath both. The
     answers are in the repository for the same reason the local ones are.
 
-    Groq's three unanswered questions are part of the record rather than an
-    embarrassment: its free tier is eight thousand tokens a minute and the
-    model thinks in paragraphs, so three questions ran out of retries. They
-    are scored as disagreements, which makes the published rate a floor.
+    Groq's record was three questions short for a while, and the gap was a
+    rate limit rather than a refusal: its free tier is eight thousand tokens a
+    minute and the model thinks in paragraphs, so three ran out of retries and
+    were scored as disagreements, making the published rate a floor. They have
+    since been answered and kept. The rate did not move - all three came back
+    `unknown` - but 36.4% is now a measurement rather than a lower bound, and
+    that is the difference worth having gone back for.
     """
 
     GROQ = "openai/gpt-oss-120b"
@@ -202,11 +205,11 @@ class TestTheHostedRunsReplayToo:
     def test_groq_replays_to_the_published_figures(self, cache_root: Path) -> None:
         result, absent = self._replayed(cache_root, "groq", self.GROQ)
 
-        assert result.answered == 107
+        assert result.answered == 110
         assert result.agreement_hits == 40
         assert result.rejected == 9
         assert result.invented_ids == 0
-        assert absent.calls == 3, "only the three that were never answered should miss"
+        assert absent.calls == 0, "the record is complete; nothing should need a network"
 
     def test_gemini_replays_to_the_published_figures(self, cache_root: Path) -> None:
         result, absent = self._replayed(cache_root, "gemini", self.GEMINI)

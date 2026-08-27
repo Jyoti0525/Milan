@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"amount\": \"Credit\", \"value_date\": \"Tran Date\", \"narration\": \"Particulars\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 1.0672488999989582,
+  "prompt_tokens": 535,
+  "completion_tokens": 190
+}

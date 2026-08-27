@@ -1,0 +1,9 @@
+{
+  "text": "{\n  \"columns\": {\n    \"entity_id\": \"Txn Ref No\",\n    \"type\": \"Txn Type\",\n    \"amount\": \"Gross Amount\",\n    \"credit\": \"Amount Credited\",\n    \"debit\": \"Amount Debited\",\n    \"fee\": \"Commission\",\n    \"tax\": \"Service Tax (GST)\",\n    \"created_at\": \"Txn Date & Time\",\n    \"settlement_id\": \"Payout Batch\",\n    \"settled_at\": \"Payout Date\"\n  }\n}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 10.293939500013948,
+  "prompt_tokens": 943,
+  "completion_tokens": 589
+}

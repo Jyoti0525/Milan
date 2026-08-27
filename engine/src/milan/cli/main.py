@@ -760,6 +760,23 @@ def ablate_command(
     console.print(render.ablation_table(result))
 
 
+ROOMY = 512
+"""The answer budget `--all` uses, unless asked for a larger one.
+
+The default budget of 96 is right for a 3B instruct model, which writes its
+one small JSON object and stops. It is wrong for a reasoning model: Groq
+serves nothing else these days, and `gpt-oss-120b` spends a few hundred tokens
+thinking before it says anything - so 96 truncates it mid-thought, and the
+ablation scores that as a question the model declined to answer rather than as
+a budget somebody set too low.
+
+Applied to every provider in the comparison rather than only the ones that
+need it. A ceiling costs nothing to a model that stops short of it, and giving
+each provider its own budget would put a second difference into a table whose
+whole purpose is to isolate one.
+"""
+
+
 def _ablate_everything(seeds: int, difficulty: Difficulty, orders: int, max_tokens: int) -> None:
     """The same shortfalls, put to every provider that could answer them.
 
@@ -772,6 +789,7 @@ def _ablate_everything(seeds: int, difficulty: Difficulty, orders: int, max_toke
     """
     from milan.llm import registry
 
+    budget = max(max_tokens, ROOMY)
     results = []
     for found in registry.status():
         if not found.ready or found.name == "none":
@@ -788,7 +806,7 @@ def _ablate_everything(seeds: int, difficulty: Difficulty, orders: int, max_toke
                 # a dash in the column whose whole job is to say which model
                 # a row's numbers belong to.
                 found.model,
-                max_tokens=max_tokens,
+                max_tokens=budget,
             )
         )
 

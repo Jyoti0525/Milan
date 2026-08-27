@@ -449,19 +449,31 @@ through the same arithmetic:
 
 | | Qwen 2.5 1.5B<br>local | Qwen 2.5 3B<br>local | Gemini 3.1<br>Flash Lite | Groq<br>gpt-oss-120b |
 |---|---|---|---|---|
-| questions answered | 110/110 | 110/110 | 110/110 | 107/110 |
+| questions answered | 110/110 | 110/110 | 110/110 | 110/110 |
 | proposed a cause at all | 0 | 65 | 31 | 49 |
 | **agreement with the rules** | 0.0% | 16.4% | 28.2% | **36.4%** |
 | proposals rejected by arithmetic | 0 | 47 | 0 | 9 |
 | **identifiers invented** | 0 | **5** | 0 | 0 |
 | **contribution beyond the rules** | **0/0** | **0/0** | **0/0** | **0/0** |
-| output tokens | 1,430 | 2,453 | 1,877 | 33,893 |
+| output tokens | 1,430 | 2,453 | 1,877 | 33,756 |
 
 ```bash
 uv run milan ablate --provider ollama --seeds 20 --orders 600 --model qwen2.5:1.5b
 uv run milan ablate --provider gemini --seeds 20 --orders 600 --max-tokens 512
 uv run milan ablate --provider groq   --seeds 20 --orders 600 --max-tokens 512
 ```
+
+Or every provider that has a key, in one table and one budget:
+
+```bash
+uv run milan ablate --all --seeds 20 --orders 600
+```
+
+Keys go in `engine/.env` (`engine/.env.example` has the format); it is
+gitignored, anything already exported wins over it, and no value is ever
+printed. `milan providers` says which providers can answer, and it is worth
+running first: an unset key and a stopped daemon look identical until the
+first question comes back empty.
 
 **The last row is the same in every column, and it is the point.** Not one of
 the four models reached a case the deterministic rules had left open, because
@@ -486,10 +498,13 @@ a finance team through their ledger looking for records that were never there.
 Every one was caught by the same arithmetic the rules use, cost nothing, and
 never reached a screen.
 
-Three of Groq's questions went unanswered: its free tier is 8,000 tokens a
-minute and this model thinks in paragraphs, so three ran out of retries. They
-are scored as **disagreements**, which makes 36.4% a floor rather than an
-estimate.
+Three of Groq's questions went unanswered for a while, and the reason was a
+quota rather than a refusal: its free tier is 8,000 tokens a minute and this
+model thinks in paragraphs, so three ran out of retries and were scored as
+**disagreements**. They have since been answered and kept, which is why the
+column now reads 110/110. All three came back `unknown`, so the rate did not
+move — but 36.4% is a measurement now rather than a floor, and a rate whose
+denominator is complete is worth going back for.
 
 **Nothing was spent, and the volume is measured anyway.** Token counts come
 from each provider's own counters rather than an estimate, so the projection
@@ -500,9 +515,9 @@ carries its source and the date it was read.
 |---|---|---|---|
 | Qwen 2.5 3B, local | 66,146 / 2,453 | $0.0114 | $0.0202 |
 | Gemini 3.1 Flash Lite | 67,582 / 1,877 | $0.0113 | $0.0197 |
-| Groq gpt-oss-120b | 64,628 / 32,357 | $0.0291 | $0.0647 |
+| Groq gpt-oss-120b | 66,424 / 33,756 | $0.0302 | $0.0672 |
 
-**A thinking model costs twenty times the output for the same answer.** Every
+**A thinking model costs eighteen times the output for the same answer.** Every
 answer here is one small JSON object; gpt-oss-120b writes a few hundred tokens
 of reasoning before each one, and both vendors bill that as output. Gemini
 reports those tokens in a separate field — `thoughtsTokenCount` — and counting

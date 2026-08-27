@@ -1,0 +1,9 @@
+{
+  "text": "{\"utr\": \"Reference No\"}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 2.6108296000020346,
+  "prompt_tokens": 450,
+  "completion_tokens": 8
+}

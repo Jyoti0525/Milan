@@ -76,16 +76,34 @@ class TestEveryCommandRuns:
         assert result.output.strip().endswith("<!-- /generated -->")
         assert "|---|" in result.output
 
-    def test_providers_says_what_is_missing_rather_than_just_no(self) -> None:
-        """An unset key and a stopped daemon look identical to a
-        reconciliation, which reports nothing about either by design. This is
-        the one place that difference is visible, so it has to name the fix
-        and not just the state."""
+    def test_providers_lists_every_provider_it_knows_about(self) -> None:
         result = runner.invoke(app, ["providers"])
 
         assert result.exit_code == 0, result.output
         for name in ("none", "ollama", "groq", "gemini"):
             assert name in result.output
+
+    def test_providers_says_what_is_missing_rather_than_just_no(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unset key and a stopped daemon look identical to a
+        reconciliation, which reports nothing about either by design. This is
+        the one place that difference is visible, so it has to name the fix
+        and not just the state.
+
+        The keys are cleared here rather than assumed absent. This asserted
+        that "API key" appears somewhere in the output, which is true only on a
+        machine that has no key - so the day `engine/.env` was filled in, a
+        test about a missing key started failing because a key was present.
+        A test of the not-ready branch has to put the system in that state
+        instead of hoping to find it there.
+        """
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        result = runner.invoke(app, ["providers"])
+
+        assert result.exit_code == 0, result.output
         assert "API key" in result.output
 
     def test_curve_scores_every_tier_and_dashes_the_empty_ones(self) -> None:

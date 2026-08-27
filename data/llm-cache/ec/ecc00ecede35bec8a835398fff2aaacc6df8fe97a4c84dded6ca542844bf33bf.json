@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"utr\": \"Chq./Ref.No.\", \"debit\": \"Withdrawal Amt.\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 4.235085099993739,
+  "prompt_tokens": 597,
+  "completion_tokens": 263
+}

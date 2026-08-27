@@ -1,0 +1,9 @@
+{
+  "text": "{\"amount\": \"Deposit Amt.\", \"value_date\": \"Value Dt\", \"narration\": \"Narration\"}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 2.3498005000001285,
+  "prompt_tokens": 546,
+  "completion_tokens": 25
+}

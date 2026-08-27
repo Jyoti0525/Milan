@@ -18,6 +18,15 @@ replace a key that CI, a secret manager, or the person at the keyboard has
 already set. Reading a file is a convenience; overriding a deliberate export
 would make it a trap.
 
+**It is loaded at an entry point, not on demand.** `cli/main.py` and
+`api/app.py` call it at import; the registry does not. That is deliberate -
+`load_keyfile` mutates `os.environ`, and a call buried inside `resolve()`
+would quietly undo a test's `monkeypatch.delenv` in the middle of the test
+that set it. The cost is a real trap, hit while writing this: a one-off script
+that imports `milan.llm.registry` directly gets no key and sees both hosted
+providers answer nothing in zero seconds, which looks exactly like two dead
+keys. Such a script should call this first.
+
 **Nothing here ever prints a value.** Not on success, not in an error, not
 truncated to the first six characters. The one thing this module exists to
 protect is a string, and a log line is one of the places it must not go.

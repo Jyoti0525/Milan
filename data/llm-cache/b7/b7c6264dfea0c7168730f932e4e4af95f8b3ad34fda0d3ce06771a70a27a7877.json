@@ -1,0 +1,9 @@
+{
+  "text": "{\n  \"entity_id\": \"Txn Ref No\",\n  \"type\": \"Txn Type\",\n  \"amount\": \"Gross Amount\",\n  \"credit\": \"Amount Credited\",\n  \"debit\": \"Amount Debited\",\n  \"fee\": \"Commission\",\n  \"tax\": \"Service Tax (GST)\",\n  \"created_at\": \"Txn Date & Time\",\n  \"settlement_id\": \"Payout Batch\",\n  \"settled_at\": \"Payout Date\"\n}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 2.864831500002765,
+  "prompt_tokens": 969,
+  "completion_tokens": 113
+}

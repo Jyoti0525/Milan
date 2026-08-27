@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"utr\": \"Reference No\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 6.65228430001298,
+  "prompt_tokens": 520,
+  "completion_tokens": 207
+}

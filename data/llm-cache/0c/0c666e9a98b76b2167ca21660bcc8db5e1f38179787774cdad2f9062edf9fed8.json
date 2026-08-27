@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 4.502952300012112,
+  "prompt_tokens": 440,
+  "completion_tokens": 182
+}

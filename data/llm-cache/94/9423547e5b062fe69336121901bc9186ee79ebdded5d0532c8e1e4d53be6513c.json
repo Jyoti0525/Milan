@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"method\": \"Mode\", \"card_type\": \"Card Class\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 1.0980144999921322,
+  "prompt_tokens": 560,
+  "completion_tokens": 216
+}

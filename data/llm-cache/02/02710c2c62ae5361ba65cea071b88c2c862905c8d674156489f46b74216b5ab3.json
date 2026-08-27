@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"amount\": \"Value\", \"value_date\": \"Raised On\"}}",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "cached": false,
+  "latency_seconds": 5.425999500002945,
+  "prompt_tokens": 444,
+  "completion_tokens": 214
+}

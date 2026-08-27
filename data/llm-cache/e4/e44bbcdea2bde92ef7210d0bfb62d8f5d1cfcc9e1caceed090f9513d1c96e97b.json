@@ -1,0 +1,9 @@
+{
+  "text": "{\"amount\": \"Credit\", \"value_date\": \"Tran Date\", \"narration\": \"Particulars\"}",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "cached": false,
+  "latency_seconds": 1.8271588999923551,
+  "prompt_tokens": 506,
+  "completion_tokens": 23
+}
