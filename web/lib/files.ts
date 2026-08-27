@@ -136,3 +136,63 @@ export async function fromDrop(transfer: DataTransfer): Promise<File[]> {
   for (const entry of entries) found.push(...(await walk(entry, 0)));
   return found.slice(0, MAX_FILES);
 }
+
+/**
+ * The other folder picker, and why there are two.
+ *
+ * `<input webkitdirectory>` makes Chrome raise a centred modal — "Upload 7
+ * files to this site? Only do this if you trust the site." — over the dialog
+ * a merchant is halfway through. It cannot be restyled, replaced or
+ * suppressed by the page, and it should not be: it is the browser asking
+ * about *us*, and a site that could skin that prompt could forge it.
+ *
+ * `showDirectoryPicker` asks differently. The permission is granted inside
+ * the folder chooser itself and Chrome confirms it in a bubble under the
+ * address bar, so the flow reads as "choose a folder" rather than as a
+ * security warning arriving mid-task. Same access, same consent, calmer
+ * shape.
+ *
+ * It is Chromium-only, hence `null` for "this browser cannot" — distinct from
+ * `[]` for "the person cancelled". Firefox and Safari fall back to the input
+ * and see the prompt, and a drag-and-drop raises nothing anywhere.
+ */
+export function canPickDirectory(): boolean {
+  return typeof window !== "undefined" && "showDirectoryPicker" in window;
+}
+
+async function descend(
+  handle: FileSystemDirectoryHandle,
+  depth: number,
+  into: File[],
+): Promise<void> {
+  if (depth >= MAX_DEPTH) return;
+  for await (const entry of handle.values()) {
+    if (into.length >= MAX_FILES) return;
+    if (entry.kind === "directory") {
+      await descend(entry, depth + 1, into);
+      continue;
+    }
+    if (!wanted(entry.name)) continue;
+    into.push(await entry.getFile());
+  }
+}
+
+/**
+ * A folder, or `null` where this browser has no such picker.
+ *
+ * An empty array is a cancelled picker and means exactly that. Falling back
+ * to the `webkitdirectory` input on a cancel would answer somebody closing a
+ * dialog by opening another one.
+ */
+export async function pickDirectory(): Promise<File[] | null> {
+  if (!canPickDirectory()) return null;
+  let handle: FileSystemDirectoryHandle;
+  try {
+    handle = await window.showDirectoryPicker({ id: "milan-books", mode: "read" });
+  } catch {
+    return [];
+  }
+  const found: File[] = [];
+  await descend(handle, 0, found);
+  return found;
+}

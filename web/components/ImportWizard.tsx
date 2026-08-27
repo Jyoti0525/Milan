@@ -34,7 +34,7 @@ import {
   type Question,
   type StagedFile,
 } from "@/lib/api";
-import { fromDrop, keep } from "@/lib/files";
+import { fromDrop, keep, pickDirectory } from "@/lib/files";
 import {
   askDetail,
   askTitle,
@@ -82,6 +82,24 @@ function Dropzone({
   const [over, setOver] = useState(false);
   const files = useRef<HTMLInputElement>(null);
   const folder = useRef<HTMLInputElement>(null);
+
+  /**
+   * The folder button, preferring the picker that does not alarm anybody.
+   *
+   * `pickDirectory` returns null only where the browser has no such API, and
+   * that is the one case worth falling back for. A cancelled picker returns
+   * an empty list and ends here - answering somebody who closed a dialog by
+   * opening a second one is worse than doing nothing.
+   */
+  const choose = () => {
+    void pickDirectory().then((picked) => {
+      if (picked === null) {
+        folder.current?.click();
+        return;
+      }
+      if (picked.length > 0) onFiles(picked);
+    });
+  };
 
   const drop = (event: React.DragEvent) => {
     event.preventDefault();
@@ -137,7 +155,7 @@ function Dropzone({
             type="button"
             className="btn btn-primary"
             disabled={busy}
-            onClick={() => folder.current?.click()}
+            onClick={choose}
           >
             {busy ? "Reading\u2026" : "Choose a folder"}
           </button>
@@ -166,9 +184,12 @@ function Dropzone({
         */}
         {!adding && (
           <p className="mt-2.5 max-w-md text-[11.5px] leading-relaxed text-[var(--text-subtle)]">
-            Your browser will ask you to confirm the folder before it hands anything over. That
-            prompt is your browser&apos;s, not ours - choose <strong className="font-medium">Upload</strong>.
-            Nothing is read until you approve the plan on the next screen.
+            <strong className="font-medium">
+              Dragging the folder onto this box asks nothing at all.
+            </strong>{" "}
+            The buttons below go through your browser&apos;s own folder permission - that is your
+            browser asking about us, and not something a page can skip. Either way, nothing is read
+            until you approve the plan on the next screen.
           </p>
         )}
 
