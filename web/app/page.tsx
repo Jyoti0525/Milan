@@ -589,7 +589,21 @@ export default function Workspace() {
                 what={HEADINGS[tab].one}
               />
             </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
+            {/*
+              A reading width, once there is a screen to spare.
+
+              At full width the label column and its value end up a foot
+              apart, and a sentence of evidence runs to twelve hundred pixels
+              - which is more room than reading wants and is what maximising
+              was asked for anyway. Capped and centred, so the extra width
+              goes to whitespace rather than to line length. Tables inside
+              still scroll on their own.
+            */}
+            <div
+              className={`min-h-0 flex-1 overflow-hidden ${
+                big === "detail" ? "mx-auto w-full max-w-5xl" : ""
+              }`}
+            >
             {detail ?? (
               <div className="grid h-full place-items-center px-6 text-center">
                 {/*
