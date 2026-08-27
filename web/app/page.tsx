@@ -44,6 +44,7 @@ import {
   type RunView,
 } from "@/lib/api";
 import { ExceptionPanel } from "@/components/ExceptionPanel";
+import { ExpandButton, type Panel } from "@/components/Expand";
 import { ImportWizard } from "@/components/ImportWizard";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { Position } from "@/components/Position";
@@ -101,30 +102,41 @@ const KIND: Record<Tab, Selection["kind"]> = {
  * turned into nested conditionals at three - the shape that quietly ends with
  * one branch saying something slightly different from the others.
  */
-const HEADINGS: Record<Tab, { title: string; blurb: string; empty: string; absent: string }> = {
+const HEADINGS: Record<
+  Tab,
+  { title: string; blurb: string; empty: string; absent: string; panel: string; one: string }
+> = {
   provenance: {
     title: "Column mapping",
     blurb: "What every column in these files was read as, and who decided.",
     empty: "",
     absent: "",
+    panel: "The file",
+    one: "this file",
   },
   queue: {
     title: "Exception queue",
     blurb: "Everything the engine would not claim, worst first.",
     empty: "Select a case to see what the engine looked at before it gave up.",
     absent: "Nothing to open. Every credit on this run was resolved.",
+    panel: "The case",
+    one: "this case",
   },
   proved: {
     title: "Proved credits",
     blurb: "Every credit rebuilt from its settlement rows, to the paisa.",
     empty: "Select a credit to see it rebuilt from its settlement rows, line by line.",
     absent: "Nothing to open. No credit on this run was proved.",
+    panel: "The proof",
+    one: "this proof",
   },
   leaks: {
     title: "Charged above contract",
     blurb: "Rows that reconciled perfectly and were still priced wrong.",
     empty: "Select a finding to see the rate pair, the window, and every row behind it.",
     absent: "Nothing to open. Every fee on this run matched the rate its own row describes.",
+    panel: "The finding",
+    one: "this finding",
   },
 };
 
@@ -216,6 +228,14 @@ export default function Workspace() {
   const [current, setCurrent] = useState<Source | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [chosen, setTab] = useState<Tab>("queue");
+  /*
+    Which panel, if either, has the work area to itself.
+
+    Held here rather than in the two sections because it is one choice with
+    three states, not two independent booleans - maximising the case has to
+    put the list away, and a pair of booleans can be true at once.
+  */
+  const [big, setBig] = useState<Panel | null>(null);
   const [importing, setImporting] = useState(false);
   const [picked, setPicked] = useState<{
     key: string;
@@ -334,6 +354,23 @@ export default function Workspace() {
   }, []);
 
   /*
+    Escape puts the split back.
+
+    A maximised panel covers the navigation that would otherwise be the way
+    out, and Escape is what somebody presses when a screen has grown to fill
+    everything. Bound only while one is maximised, so it never competes with
+    the import dialog's own handler.
+  */
+  useEffect(() => {
+    if (big === null) return;
+    const restore = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setBig(null);
+    };
+    window.addEventListener("keydown", restore);
+    return () => window.removeEventListener("keydown", restore);
+  }, [big]);
+
+  /*
     Open the first case rather than an empty pane.
 
     The detail pane is close to half the screen, and on arrival it held one
@@ -435,7 +472,18 @@ export default function Workspace() {
           Switching run used to swap every figure with no sign that anything
           had happened, which reads as a screen that did not respond.
         */}
-        <div key={key} className="settle shrink-0 space-y-3 px-5 pt-4">
+        {/*
+          The run summary, which a maximised panel does not need.
+
+          Four cards and a cash position are an orientation, and somebody who
+          has just asked for one panel at full size has finished orienting.
+          Keeping them would spend a fifth of the height they asked for on
+          figures they had already read.
+        */}
+        <div
+          key={key}
+          className={`settle shrink-0 space-y-3 px-5 pt-4 ${big === null ? "" : "hidden"}`}
+        >
           {view && (
             <Position
               credited={view.summary.credited}
@@ -461,7 +509,11 @@ export default function Workspace() {
         </div>
 
         <div className="flex min-h-0 flex-1 gap-4 p-5">
-          <section className="card flex min-w-0 flex-1 flex-col overflow-hidden 2xl:max-w-[58%]">
+          <section
+            className={`card flex min-w-0 flex-1 flex-col overflow-hidden ${
+              big === "detail" ? "hidden" : big === "list" ? "" : "2xl:max-w-[58%]"
+            }`}
+          >
             <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-4 py-2.5">
               {/*
                 Title only. The blurb under it said what the list was, which is
@@ -486,6 +538,14 @@ export default function Workspace() {
                   {current.ref.slug} · {current.ref.files.length} files
                 </span>
               )}
+              {/* Last, and pushed right by the truncating title beside it. */}
+              <div className="ml-auto">
+                <ExpandButton
+                  expanded={big === "list"}
+                  onToggle={() => setBig(big === "list" ? null : "list")}
+                  what={HEADINGS[tab].title.toLowerCase()}
+                />
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto">
@@ -507,7 +567,29 @@ export default function Workspace() {
             </div>
           </section>
 
-          <section className="card hidden min-w-0 flex-1 overflow-hidden xl:block">
+          {/*
+            A header the right-hand panel did not have.
+
+            It exists for the control in it, and it earns its own line by
+            making the two panels symmetric - before this the left had a bar
+            and the right began abruptly with a badge. The label is what one
+            selected thing is called on this tab, which is the one word the
+            panel below never says about itself.
+          */}
+          <section
+            className={`card min-w-0 flex-1 flex-col overflow-hidden ${
+              big === "list" ? "hidden" : big === "detail" ? "flex" : "hidden xl:flex"
+            }`}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-4 py-2.5">
+              <h2 className="truncate text-[13.5px] font-semibold">{HEADINGS[tab].panel}</h2>
+              <ExpandButton
+                expanded={big === "detail"}
+                onToggle={() => setBig(big === "detail" ? null : "detail")}
+                what={HEADINGS[tab].one}
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
             {detail ?? (
               <div className="grid h-full place-items-center px-6 text-center">
                 {/*
@@ -527,6 +609,7 @@ export default function Workspace() {
                 </div>
               </div>
             )}
+            </div>
           </section>
         </div>
       </div>
