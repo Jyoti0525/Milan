@@ -1097,3 +1097,62 @@ If a decision is not here, it is not settled.
      the machine. The `replayed from cache` row is what makes that visible, and
      it is why verifying a key means a live probe and a run on seeds the cache
      has not seen - not a table that looks right.
+231. **A free tier is a budget, not a switch, so the providers are a list.**
+     `--provider groq,gemini,ollama` asks the best model first and falls to
+     the next when one stops answering; `chain` builds that list from whatever
+     is ready. The order is measured rather than assumed - it is what
+     `ablate --all` reported - and the local model is last because it is the
+     only one that cannot run out. Two properties make it honest: a provider
+     that has gone quiet is **set aside** rather than retried (an exhausted
+     hosted provider still costs the full ninety-second retry ladder on every
+     question, which turns a two-minute run into a three-hour one for the same
+     nothing), and every answer carries the name of the model that gave it, so
+     a mixed run prints its composition instead of filing Gemini's answers
+     under Groq's.
+232. **The cache goes inside each link, never around the chain.** A cache in
+     front would key every answer under one model name, so the second provider
+     asked would replay the first one's answer - the exact bug
+     `CachedProvider._keyed` was written to fix, reintroduced one layer up
+     where that fix cannot see it. Found while writing the test for it.
+233. **`CachedProvider` was hiding the model it wrapped.** No `model`
+     attribute, so `getattr(provider, "model", "")` - which is what every
+     caller outside the module does - returned nothing, and every
+     `milan ablate --provider groq` run ever made recorded an empty model
+     name. The cache key was always right, because `_keyed` reaches `inner`
+     directly; it was only everything that reports *which model produced a
+     number* that was blank.
+234. **No bank has ever printed a negative deposit.** An audit of eighty
+     generated months found seven bank credits below zero - a batch whose
+     refunds outweighed its sales - written straight into the deposit column
+     as `-4.63`. Money leaving is a positive number in the *other* column.
+     Rare is why it survived and not a reason to leave it: these files exist
+     to be indistinguishable from a merchant's own. Our own reader was already
+     skipping the row as a withdrawal, so nothing downstream was wrong - the
+     file was.
+235. **Everything else in the generated month audits clean.** Same eighty
+     months, checked for duplicate identifiers, negative fees, rows that are
+     both a credit and a debit, payouts dated before the capture they pay, GST
+     that is not 18% of the fee beside it, and settled payments in no capture
+     log. Nothing. And on the 1,342 credits the answer key calls clean and
+     provable, the largest gap between a batch's rows and what the bank paid
+     is four paise, with none beyond the rounding allowance - so every gap
+     wider than that has an injected defect behind it, which is what the
+     generator is for.
+236. **Three unhandled 500s on the upload endpoint, all found by sending
+     things.** A filename longer than the filesystem takes reached
+     `write_bytes` and returned `FileNotFoundError`. A workbook whose XML
+     declares an external entity raised `ElementTree.ParseError`, which the
+     workbook reader did not catch because a workbook is a zip full of XML and
+     malformed XML is not a bad zip. A CSV with an unclosed quote makes
+     everything after it one field and blew through `csv`'s 128 KB field cap.
+     None disclosed anything - the XML parser refuses external entities on its
+     own - but a 500 on attacker-controlled input is the shape every other
+     problem hides behind. All three are 4xx with a sentence now.
+237. **`parse_money` raised on a twenty-eight digit cell.** `Decimal` carries
+     twenty-eight significant digits and converting rupees to paise multiplies
+     by a hundred, so the context overflowed and `InvalidOperation` came out
+     of the import. Bounded rather than caught, because the bound is the
+     honest statement: fifteen digits of rupees is several times India's
+     annual GDP, so a longer cell is a corrupted export or an account number
+     in a money column, and both deserve the answer a word already gets.
+     Found by generating text and feeding it in, not by reading the code.

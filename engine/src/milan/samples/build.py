@@ -319,6 +319,39 @@ BUILDERS = (
 )
 
 
+def named(name: str) -> bool:
+    """Whether `name` is one of the folders this module can build."""
+    return any(known == name for known, _ in BUILDERS)
+
+
+def write_one(
+    root: Path,
+    name: str,
+    *,
+    seed: int = 42,
+    orders: int = 400,
+    withholding: bool = False,
+    route: float = 0.0,
+    instant: float = 0.0,
+) -> Folder:
+    """Build a single folder, directly into `root` rather than beneath it.
+
+    The pack exists to be worked through in order, and each folder's name is
+    the lesson it teaches - `2-names-we-do-not` is a title, not a place. When
+    somebody asks for one folder they have already chosen where it goes and
+    what it is called, so putting `5-a-real-handover` inside their directory
+    would be renaming their folder for them.
+
+    No pack README either, for the same reason: an index over one entry is a
+    contents page for a single page. The folder's own README still goes in,
+    because that one says what the files are.
+    """
+    builder = next(build for known, build in BUILDERS if known == name)
+    data = month(seed=seed, orders=orders, withholding=withholding, route=route, instant=instant)
+    root.mkdir(parents=True, exist_ok=True)
+    return builder(data, root)
+
+
 def write_all(
     root: Path,
     *,

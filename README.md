@@ -469,6 +469,32 @@ Or every provider that has a key, in one table and one budget:
 uv run milan ablate --all --seeds 20 --orders 600
 ```
 
+**A free tier is a budget, not a switch**, so the providers can be a list
+rather than a choice. The best model answers until it stops answering, then
+the next one does, and the local model is last because it is the only one that
+cannot run out:
+
+```bash
+uv run milan ablate --provider groq,gemini,ollama    # best first, in order
+uv run milan ablate --provider chain                 # whichever are ready
+```
+
+A provider that has gone quiet is set aside rather than retried — an exhausted
+hosted tier still costs the full ninety-second retry ladder on every remaining
+question — and every answer carries the name of the model that gave it, so a
+run that fell through prints what it was made of:
+
+```
+Which provider answered
+Provider  Asked  Answered
+groq          2         0  ran out, handed on
+gemini       12        12
+ollama        0         0
+```
+
+That table is not decoration. A chained run is a mixture, and its headline
+rate belongs to no single model in it.
+
 Keys go in `engine/.env` (`engine/.env.example` has the format); it is
 gitignored, anything already exported wins over it, and no value is ever
 printed. `milan providers` says which providers can answer, and it is worth

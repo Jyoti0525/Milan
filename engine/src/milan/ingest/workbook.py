@@ -34,6 +34,7 @@ import datetime as dt
 import zipfile
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 WORKBOOK_SUFFIXES = frozenset({".xlsx", ".xlsm"})
 """What `openpyxl` reads. `.xls` is a different format entirely - see below."""
@@ -257,6 +258,13 @@ def sheets(path: Path) -> tuple[tuple[str, list[list[str]]], ...]:
         book = load_workbook(path, read_only=True, data_only=True)
     except InvalidFileException as failure:
         raise FormatError(f"is not a workbook openpyxl can read: {failure}") from failure
+    except ElementTree.ParseError as failure:
+        # A workbook is a zip of XML, so a malformed or hostile part reaches
+        # us as a parse error rather than as a bad zip. Found by posting a
+        # workbook whose XML declared an external entity: the entity was not
+        # resolved - Python's parser refuses those - but the refusal came back
+        # as an unhandled exception and a 500.
+        raise FormatError(f"has XML in it that will not parse: {failure}") from failure
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as failure:
         raise FormatError(f"could not be opened as a workbook: {failure}") from failure
 

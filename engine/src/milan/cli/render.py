@@ -453,6 +453,37 @@ def curve_markdown(result: Curve) -> str:
     return "\n".join((CURVE_OPEN, *header, *rows, MARKDOWN_CLOSE))
 
 
+def chain_table(tally: Sequence[tuple[str, int, int, bool]]) -> Table:
+    """How a chained run divided between its providers.
+
+    Printed underneath a chained ablation because the headline rate above it
+    belongs to no single model. A run where the best model answered forty
+    questions and the second answered seventy is a measurement of neither one
+    on its own, and the only honest way to publish it is beside the split.
+
+    `ran out, handed on` is the column worth reading. A provider that stopped
+    answering part way through has met a free tier rather than failed, and the
+    run carried on down the list - which is the feature working, and also the
+    reason the rate above is a blend.
+    """
+    table = Table(
+        title="Which provider answered",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Provider")
+    table.add_column("Asked", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Answered", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("")
+
+    for name, asked, answered, standing in tally:
+        note = "" if standing else "[yellow]ran out, handed on[/yellow]"
+        table.add_row(name, str(asked), str(answered), note)
+    return table
+
+
 def ablation_parity(results: Sequence[Ablation]) -> Table:
     """The same shortfalls, the same verifier, one column per provider.
 

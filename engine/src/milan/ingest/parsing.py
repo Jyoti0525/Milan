@@ -36,6 +36,25 @@ _SIDE_MARKER = re.compile(r"\s*\b(cr|dr)\b\.?$", re.IGNORECASE)
 _NUMERIC = re.compile(r"^\d+(?:,\d+)*(?:\.\d+)?$")
 
 
+MOST_DIGITS = 15
+"""The most significant digits an amount may have before it stops being one.
+
+`Decimal` carries twenty-eight significant digits by default, and converting
+rupees to paise multiplies by a hundred - so a twenty-eight digit cell
+overflowed the context and raised `InvalidOperation` out of `from_rupees`,
+through `parse_money`, and out of the import. Found by generating text and
+feeding it in.
+
+Bounded rather than caught, because the bound is the honest statement.
+Fifteen digits of rupees is nine hundred and ninety-nine trillion, which is
+several times India's annual GDP; a cell holding more than that is a
+corrupted export, a concatenated field or an account number that has landed in
+a money column, and the right answer to all three is the one this already
+gives for a word: **that is not an amount**. A caught exception would return
+the same `None` while implying the value was merely unrepresentable.
+"""
+
+
 def parse_money(raw: str | None) -> Paise | None:
     """Read an amount in whatever way a finance export happened to write it.
 
@@ -47,6 +66,9 @@ def parse_money(raw: str | None) -> Paise | None:
     A blank cell is `None`, not zero. Bank statements leave the credit column
     empty on every debit line, and reading those as zero-rupee credits would
     invent a payout for every withdrawal the merchant ever made.
+
+    A number too long to be an amount is `None` for the same reason a word is:
+    it is not money. See `MOST_DIGITS`.
     """
     text = (raw or "").strip()
     if not text:
@@ -69,8 +91,12 @@ def parse_money(raw: str | None) -> Paise | None:
 
     if not _NUMERIC.match(text):
         return None
+
+    digits = text.replace(",", "")
+    if len(digits.replace(".", "").lstrip("0")) > MOST_DIGITS:
+        return None
     try:
-        value = Decimal(text.replace(",", ""))
+        value = Decimal(digits)
     except InvalidOperation:
         return None
 

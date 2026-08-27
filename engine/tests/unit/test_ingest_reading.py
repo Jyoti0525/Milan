@@ -287,3 +287,78 @@ class TestAColumnIsMeasuredNotDescribed:
     def test_a_column_that_is_mostly_junk_is_not_money(self) -> None:
         values = tuple(["100.00"] * 4 + ["pending"] * 6)
         assert not profile_column("Credit", values).fits(ValueKind.MONEY)
+
+
+class TestNothingAMerchantCanWriteMakesTheParserRaise:
+    """The parsers answer with `None`; they do not raise.
+
+    That contract is the whole reason a merchant can hand over a folder
+    containing anything at all. It was true of every input anyone had thought
+    of and false of one nobody had - found by generating text and feeding it
+    in, rather than by reading the code.
+    """
+
+    def test_a_number_too_long_to_be_an_amount_is_not_one(self) -> None:
+        """`Decimal` carries twenty-eight significant digits, and turning
+        rupees into paise multiplies by a hundred - so a twenty-eight digit
+        cell overflowed the context and threw `InvalidOperation` out of
+        `from_rupees`, up through `parse_money` and out of the import.
+
+        A cell like this is a corrupted export, a concatenated field, or an
+        account number that has landed in a money column. All three deserve
+        the answer a word already got: that is not an amount.
+        """
+        assert parsing.parse_money("9" * 28) is None
+        assert parsing.parse_money("9" * 400) is None
+
+    def test_the_bound_is_far_above_any_real_transaction(self) -> None:
+        """A limit that refused real money would be the worse bug.
+
+        Fifteen digits of rupees is nine hundred and ninety-nine trillion,
+        several times India's annual GDP, so nothing a payment gateway has
+        ever settled comes near it.
+        """
+        assert parsing.parse_money("1" + "0" * (parsing.MOST_DIGITS - 1)) is not None
+        assert parsing.parse_money("99,99,99,99,99,999.99") is not None
+
+    def test_a_long_number_is_refused_whichever_way_it_is_dressed(self) -> None:
+        """The length check sits after the currency, sign and bracket handling
+        is stripped, so none of those is a way around it."""
+        for written in (
+            "-" + "9" * 30,
+            "(" + "9" * 30 + ")",
+            "Rs " + "9" * 30,
+            "9" * 30 + " Cr",
+            "  " + "9" * 30 + "  ",
+        ):
+            assert parsing.parse_money(written) is None, written
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            " ",
+            "1e999999",
+            "1E+400",
+            "NaN",
+            "Infinity",
+            "-",
+            "()",
+            "(-)",
+            "Rs",
+            "Cr",
+            chr(0) * 2,
+            "1,,2",
+            "." * 50,
+            "9" * 5000,
+        ],
+    )
+    def test_none_of_these_raise(self, text: str) -> None:
+        """Each of these is something that has been, or plausibly could be, in
+        a cell of a real export. The assertion is only that asking is safe."""
+        parsing.parse_money(text)
+
+    def test_a_readable_amount_still_reads_the_same(self) -> None:
+        """The bound must not have moved what an ordinary amount parses to."""
+        for rupees in ("0.00", "1.00", "0.99", "1,23,456.78", "9,99,99,99,99,999.99"):
+            assert parsing.parse_money(rupees) == from_rupees(rupees.replace(",", ""))

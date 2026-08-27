@@ -296,7 +296,17 @@ def read_text(path: Path) -> SourceFile:
     # a row of fragments that will be reported as unreadable at a line number
     # nobody can make sense of.
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    records = [(reader.line_num, cells) for cells in reader]
+    try:
+        records = [(reader.line_num, cells) for cells in reader]
+    except csv.Error as failure:
+        # `csv` caps a single field at 128 KB, and a file with an opening
+        # quote that is never closed makes the rest of the file one field.
+        # Raising the cap would only move the failure to whatever memory the
+        # machine has, so the answer is to say what is wrong with the file.
+        raise UnreadableFileError(
+            f"could not be parsed as {delimiter!r}-separated text: {failure}. "
+            "An unclosed quote makes everything after it a single field."
+        ) from failure
     return _assemble(path, records, encoding=encoding, delimiter=delimiter)
 
 

@@ -87,6 +87,32 @@ class CachedProvider:
         self._cache = cache
         self.name = inner.name
 
+    @property
+    def model(self) -> str:
+        """The wrapped provider's model, so the wrapper is not opaque.
+
+        Without this, `getattr(provider, "model", "")` on a cached provider
+        returns nothing - which is what every caller outside this module does,
+        and why `milan ablate --provider groq` recorded an empty model name on
+        every run it ever made. The cache key was always right, because
+        `_keyed` reaches `inner` directly; it was only everything that reports
+        which model produced a number that was blank.
+        """
+        named = getattr(self.inner, "model", "")
+        return named if isinstance(named, str) else ""
+
+    @model.setter
+    def model(self, name: str) -> None:
+        """Point the wrapped provider at a different model.
+
+        A setter rather than a read-only property because comparing two models
+        is a supported experiment - `milan ablate --model` does exactly this -
+        and the alternative is every caller reaching through `.inner`, which
+        is how the getter came to be missing in the first place.
+        """
+        if hasattr(self.inner, "model"):
+            self.inner.model = name
+
     def complete(self, request: Request) -> Completion:
         keyed = self._keyed(request)
         cached = self._cache.get(keyed)

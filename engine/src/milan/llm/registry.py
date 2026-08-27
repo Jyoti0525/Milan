@@ -18,6 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from milan.llm.cache import CachedProvider, ResponseCache
+from milan.llm.chain import PREFERENCE, Chain
 from milan.llm.hosted import GeminiProvider, GroqProvider
 from milan.llm.ollama import OllamaProvider
 from milan.llm.provider import NullProvider, Provider
@@ -159,8 +160,20 @@ def unpinned(provider: Provider) -> Provider:
     return provider
 
 
+CHAIN = "chain"
+"""The name that means "every provider that can answer, best first"."""
+
+
 def resolve(name: str | None = None, cache_root: Path | None = None) -> Provider:
     """Build the configured provider, wrapped in its cache.
+
+    Three shapes of name, and the last two are the same mechanism:
+
+    * `groq` - one provider.
+    * `groq,gemini,ollama` - those providers in that order, falling through
+      to the next when one stops answering.
+    * `chain` - every provider that is ready right now, in the measured
+      preference order.
 
     An unknown name falls back to `none` rather than raising. A typo in an
     environment variable should degrade the explanations, never stop a
@@ -168,9 +181,59 @@ def resolve(name: str | None = None, cache_root: Path | None = None) -> Provider
     provider is consulted.
     """
     chosen = (name or os.environ.get(PROVIDER_ENV) or "none").strip().lower()
+    root = cache_root or default_cache_root()
+
+    if chosen == CHAIN:
+        return _chain(_ready_in_preference_order(), root)
+    if "," in chosen:
+        named = tuple(part.strip() for part in chosen.split(",") if part.strip())
+        return _chain(named, root)
+
     build = _BUILDERS.get(chosen, NullProvider)
     provider = build()
     if isinstance(provider, NullProvider):
         # Nothing to cache, and an empty cache directory would imply otherwise.
         return provider
-    return CachedProvider(provider, ResponseCache(cache_root or default_cache_root()))
+    return CachedProvider(provider, ResponseCache(root))
+
+
+def _ready_in_preference_order() -> tuple[str, ...]:
+    """The preferred providers that could answer right now, best first.
+
+    Filtered by readiness rather than handed the whole preference list. An
+    unset key is not a provider that ran out mid-run; it is one that was never
+    there, and letting the chain discover that costs two questions and up to
+    three minutes of retries to learn something `providers` already knew.
+    """
+    usable = {found.name for found in status() if found.ready}
+    return tuple(name for name in PREFERENCE if name in usable)
+
+
+def _chain(names: tuple[str, ...], cache_root: Path) -> Provider:
+    """Build the named providers into a chain, each behind its own cache.
+
+    The cache goes *inside* each link and never around the chain. A cache in
+    front of the chain would key every answer under one model name, so the
+    second provider asked would replay the first one's answer - the exact bug
+    `CachedProvider._keyed` was written to fix, reintroduced one layer up.
+    """
+    links: list[Provider] = []
+    for name in names:
+        build = _BUILDERS.get(name)
+        if build is None:
+            continue
+        provider = build()
+        if isinstance(provider, NullProvider):
+            # `none` answers nothing by design. A link that exists to be
+            # silent would be stood down after two questions and turn the
+            # chain into the chain without it, slowly.
+            continue
+        links.append(CachedProvider(provider, ResponseCache(cache_root)))
+
+    if not links:
+        return NullProvider()
+    if len(links) == 1:
+        # A chain of one is a provider. Wrapping it would put a second name on
+        # a column and a fallback story on a run that has nothing to fall to.
+        return links[0]
+    return Chain(links)

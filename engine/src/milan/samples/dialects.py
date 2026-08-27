@@ -225,6 +225,28 @@ def unfamiliar_settlement(dataset: Dataset, path: Path) -> None:
 # ------------------------------------------------------------ bank statements
 
 
+def _sides(amount: Paise) -> tuple[str, str]:
+    """One signed amount as a bank writes it: withdrawal, then deposit.
+
+    A bank statement has no sign. It has two columns, and money leaving goes
+    in the left one as a positive number - so a payout that came back smaller
+    than nothing is a withdrawal, not a deposit of minus four rupees.
+
+    That is what these writers used to emit. A settlement batch whose refunds
+    outweigh its sales nets negative, `Settlement.amount` carries the negative,
+    and it went straight into the deposit column as `-4.63`. Rare - seven
+    credits in eighty generated months - and impossible, which is worse than
+    rare: sample files exist to be indistinguishable from a merchant's own,
+    and no bank has ever printed a negative deposit.
+
+    Kotak is the exception and does it with a suffix instead, which is why
+    that writer has its own version of this rather than calling here.
+    """
+    if amount < 0:
+        return grouped(Paise(-amount)), ""
+    return "", grouped(amount)
+
+
 def hdfc_statement(
     dataset: Dataset, path: Path, *, only: Sequence[BankCredit] | None = None
 ) -> None:
@@ -247,8 +269,7 @@ def hdfc_statement(
                 credit.narration,
                 credit.utr or "",
                 credit.value_date.strftime("%d/%m/%y"),
-                "",
-                grouped(credit.amount),
+                *_sides(credit.amount),
                 grouped(Paise(balance)),
             ]
         )
@@ -305,8 +326,9 @@ def icici_statement(
                 credit.value_date.strftime("%d/%m/%Y"),
                 "",
                 credit.narration,
-                "0.00",
-                grouped(credit.amount),
+                # ICICI prints `0.00` rather than an empty cell on the side
+                # that did not move, so the zero is the dialect and not a gap.
+                *(part or "0.00" for part in _sides(credit.amount)),
                 grouped(Paise(balance)),
             ]
         )
@@ -349,7 +371,9 @@ def kotak_statement(
                 credit.value_date.strftime("%d-%b-%Y"),
                 credit.narration,
                 credit.utr or "",
-                f"{grouped(credit.amount)} Cr",
+                # The direction is the suffix here, not the column, so a
+                # negative amount is a positive number marked `Dr`.
+                f"{grouped(Paise(abs(credit.amount)))} {'Cr' if credit.amount >= 0 else 'Dr'}",
             ]
         )
     _write(
@@ -533,9 +557,10 @@ def workbook_export(dataset: Dataset, path: Path) -> None:
     bank.append([])
     bank.append(["Value Date", "Narration", "Ref No", "Withdrawal Amt.", "Deposit Amt."])
     for credit in _credits(dataset):
-        bank.append(
-            [credit.value_date, credit.narration, credit.utr or "", None, rupees(credit.amount)]
-        )
+        # Two columns here too, so the same rule applies: out on the left.
+        out = rupees(Paise(-credit.amount)) if credit.amount < 0 else None
+        into = None if credit.amount < 0 else rupees(credit.amount)
+        bank.append([credit.value_date, credit.narration, credit.utr or "", out, into])
 
     payments = book.create_sheet("Payments")
     payments.append(["payment_id", "order_id", "amount", "method", "card_type", "captured_at"])
@@ -634,8 +659,7 @@ def axis_statement(
                 credit.value_date.strftime("%d-%m-%Y"),
                 "",
                 credit.narration,
-                "",
-                grouped(credit.amount),
+                *_sides(credit.amount),
                 grouped(Paise(balance)),
                 "KORAMANGALA",
             ]

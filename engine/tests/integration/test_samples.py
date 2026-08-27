@@ -13,14 +13,22 @@ here, against the folders the command actually writes.
 
 from __future__ import annotations
 
+import csv
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from milan.chaos.config import Difficulty, GenerationConfig
+from milan.chaos.generator import ChaosEngine
+from milan.domain.dataset import Dataset
+from milan.domain.money import Paise
+from milan.domain.records import BankCredit
 from milan.ingest import build
 from milan.ingest.resolver import Importer
 from milan.ingest.schema import RecordKind
-from milan.samples import write_all
+from milan.samples import dialects, write_all
 from milan.samples.build import month
 
 
@@ -384,3 +392,123 @@ class TestARealHandover:
         )
         assert report.proofs
         assert all(proof.residual == 0 for proof in report.proofs if proof.balances)
+
+
+class TestNoStatementPrintsANegativeDeposit:
+    """The artifact an audit of eighty generated months turned up.
+
+    A settlement batch whose refunds outweigh its sales nets negative, and
+    `Settlement.amount` carries that negative straight through to the bank
+    credit. Every statement writer put it in the deposit column, so the file
+    said `-4.63` where a deposit goes.
+
+    Seven credits in eighty months, and rarity is the reason it survived
+    rather than a reason to leave it. These files exist to be
+    indistinguishable from a merchant's own, and no bank has printed a
+    negative deposit: money leaving is a positive number in the other column.
+    Our own reader was already skipping the row as a withdrawal, so nothing
+    downstream was wrong - the file was.
+    """
+
+    def owed(self) -> BankCredit:
+        """A payout that came back smaller than nothing."""
+        return BankCredit(
+            credit_id="bank_00001",
+            amount=Paise(-463),
+            value_date=date(2026, 7, 29),
+            narration="UTRIQ0YY00460XZ RAZORPAY RECOVERY",
+            utr="IQ0YY00460XZ",
+        )
+
+    def one_credit(self, amount: Paise) -> Dataset:
+        """A month rewritten to hold a single credit of our choosing."""
+        built = ChaosEngine(
+            GenerationConfig(seed=2, difficulty=Difficulty.REALISTIC, order_count=120)
+        ).generate()
+        return built.model_copy(
+            update={"bank_credits": (self.owed() if amount < 0 else built.bank_credits[0],)}
+        )
+
+    @pytest.mark.parametrize(
+        ("writer", "withdrawal", "deposit"),
+        [
+            (dialects.hdfc_statement, 4, 5),
+            (dialects.icici_statement, 5, 6),
+            (dialects.axis_statement, 3, 4),
+        ],
+    )
+    def test_money_leaving_goes_in_the_withdrawal_column(
+        self, tmp_path: Path, writer: Any, withdrawal: int, deposit: int
+    ) -> None:
+        path = tmp_path / "statement.csv"
+        writer(self.one_credit(Paise(-463)), path, only=[self.owed()])
+
+        row = self._transaction_row(path)
+
+        assert "4.63" in row[withdrawal], row
+        assert "4.63" not in row[deposit], row
+
+    @pytest.mark.parametrize(
+        ("writer", "deposit"),
+        [
+            (dialects.hdfc_statement, 5),
+            (dialects.icici_statement, 6),
+            (dialects.axis_statement, 4),
+        ],
+    )
+    def test_money_arriving_still_goes_in_the_deposit_column(
+        self, tmp_path: Path, writer: Any, deposit: int
+    ) -> None:
+        """The other half, or the fix would be a different bug.
+
+        A rule that moved everything to the withdrawal column would pass the
+        test above and make every statement in the pack unreadable.
+        """
+        arrived = self.owed().model_copy(update={"amount": Paise(463)})
+        path = tmp_path / "statement.csv"
+        writer(self.one_credit(Paise(463)), path, only=[arrived])
+
+        row = self._transaction_row(path)
+
+        assert "4.63" in row[deposit], row
+
+    def test_kotak_marks_the_direction_rather_than_moving_the_column(self, tmp_path: Path) -> None:
+        """Kotak writes one column and a two-letter suffix, so the same fact
+        is expressed differently - a positive number marked `Dr`, never a
+        negative number marked `Cr`."""
+        path = tmp_path / "kotak.csv"
+        dialects.kotak_statement(self.one_credit(Paise(-463)), path, only=[self.owed()])
+
+        row = self._transaction_row(path)
+
+        assert row[-1] == "4.63 Dr", row
+
+    def test_no_generated_month_writes_a_negative_number_in_a_money_column(
+        self, tmp_path: Path
+    ) -> None:
+        """The audit that found it, kept as a test.
+
+        Whole months rather than a constructed row, because the bug was not in
+        the handling of a negative credit - it was that nobody had noticed
+        generated months contain them.
+        """
+        for seed in (1, 2, 3, 7):
+            built = ChaosEngine(
+                GenerationConfig(seed=seed, difficulty=Difficulty.REALISTIC, order_count=400)
+            ).generate()
+            path = tmp_path / f"hdfc-{seed}.csv"
+            dialects.hdfc_statement(built, path)
+
+            for line in path.read_text(encoding="utf-8").splitlines():
+                cells = line.split(",")
+                if len(cells) < 7:
+                    continue
+                assert not any(cell.strip().startswith("-") for cell in cells[4:6]), (
+                    f"seed {seed}: {line}"
+                )
+
+    def _transaction_row(self, path: Path) -> list[str]:
+        """The one data row, past whatever banner the dialect writes."""
+        rows = list(csv.reader(path.read_text(encoding="utf-8").splitlines()))
+        wide = [row for row in rows if len(row) >= 4]
+        return wide[-1]

@@ -261,4 +261,9 @@ class LlmTriage:
         if not completion.answered:
             return Hypothesis(kind=HypothesisKind.UNKNOWN, source=self._provider.name)
         self.answered += 1
-        return parse(completion.text, known).model_copy(update={"source": self._provider.name})
+        # The provider on the completion, not the one that was asked. Those
+        # differ exactly when a chain fell through, and a chain is the case
+        # where the distinction matters: recording the chain's name would file
+        # Gemini's answer under Groq's, on the question where Groq ran out.
+        answered_by = completion.provider or self._provider.name
+        return parse(completion.text, known).model_copy(update={"source": answered_by})

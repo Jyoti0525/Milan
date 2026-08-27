@@ -93,6 +93,22 @@ class UnknownStagingError(LookupError):
     """No such staged upload - expired, committed, or never existed."""
 
 
+LONGEST_NAME = 120
+"""The most filename this will write, in characters.
+
+Every common filesystem stops somewhere near 255 bytes for a single component,
+and Windows has a path limit as well as a name limit - so the ceiling that
+matters depends on how deep the data root already is. A four-hundred character
+name got past every check here, reached `write_bytes`, and came back as
+`FileNotFoundError` from the standard library: an unhandled exception, and a
+500 to whoever sent it.
+
+Well under the limit on purpose. This is a leaf name inside a data root whose
+depth is the operator's business, and a cap that is exactly the filesystem's
+is a cap that fails on a deep root.
+"""
+
+
 def safe_name(raw: str) -> str:
     """The last component of a filename, and nothing that could escape a folder.
 
@@ -101,10 +117,20 @@ def safe_name(raw: str) -> str:
     name that survives all of that and is still empty, hidden, or of a suffix
     this reader does not handle is refused rather than corrected - silently
     renaming a merchant's file is how the wrong file gets reconciled.
+
+    Length is refused for the same reason it is not truncated. Shortening
+    `settlement_report_...(380 more characters).csv` produces a different
+    file name that this would then reconcile under, and a merchant looking for
+    the file they sent would not find it. A refusal names the problem; a
+    silent rename hides it.
     """
     name = raw.replace("\\", "/").rsplit("/", 1)[-1].strip()
     if not name or name.startswith("."):
         raise StagingError(f"{raw!r} is not a usable file name")
+    if len(name) > LONGEST_NAME:
+        raise StagingError(
+            f"{name[:40]}... is {len(name)} characters, and the limit is {LONGEST_NAME}"
+        )
     suffix = Path(name).suffix.lower()
     if suffix not in ALLOWED:
         # Named rather than listed, where there is something useful to say.

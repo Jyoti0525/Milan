@@ -38,7 +38,7 @@ from milan.leaks.clusters import summarise
 from milan.leaks.detector import detect
 from milan.llm.keyfile import load_keyfile
 from milan.llm.provider import NullProvider
-from milan.llm.registry import available, direct, resolve, status, unpinned
+from milan.llm.registry import CHAIN, available, direct, resolve, status, unpinned
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
 
@@ -719,9 +719,11 @@ def ablate_command(
         _ablate_everything(seeds, difficulty, orders, max_tokens)
         return
 
-    if provider not in available():
+    if not _known(provider):
         console.print(
-            f"[red]No provider called {provider!r}.[/] Registered: {', '.join(available())}."
+            f"[red]No provider called {provider!r}.[/] Registered: {', '.join(available())}. "
+            "Several may be named at once, best first - `groq,gemini,ollama` - or `chain` "
+            "for every one that is ready right now."
         )
         raise typer.Exit(code=2)
 
@@ -758,6 +760,34 @@ def ablate_command(
             "looks exactly like a model that declined."
         )
     console.print(render.ablation_table(result))
+    _say_how_it_divided(built)
+
+
+def _known(named: str) -> bool:
+    """Whether every name in a provider argument is one we have.
+
+    A chain silently drops links it does not recognise, so a typo in the
+    middle of `groq,gemni,ollama` would build a working two-link chain and
+    never mention that the model somebody asked for is not in it.
+    """
+    if named.strip().lower() == CHAIN:
+        return True
+    return all(part.strip() in available() for part in named.split(",") if part.strip())
+
+
+def _say_how_it_divided(built: object) -> None:
+    """If a chain answered, say which links did and which ran out.
+
+    A chained run is a mixture of models, and its headline rate belongs to no
+    single one of them. Printing the rate without the composition files one
+    model's answers under another - which, on the questions where the first
+    model ran out, is precisely backwards.
+    """
+    tally = getattr(built, "tally", None)
+    if tally is None:
+        return
+    console.print()
+    console.print(render.chain_table(tally()))
 
 
 ROOMY = 512
@@ -943,6 +973,10 @@ def samples(
     ] = Path("milan-samples"),
     seed: SeedOption = 42,
     orders: Annotated[int, typer.Option("--orders", help="How many orders the month holds.")] = 400,
+    only: Annotated[
+        str,
+        typer.Option("--only", help="Write one folder, straight into --to. Empty writes the pack."),
+    ] = "",
     withholding: WithholdingOption = False,
     route: RouteOption = 0.0,
     instant: InstantOption = 0.0,
@@ -967,9 +1001,33 @@ def samples(
     with all three carries transfer rows, a 1% gap on every payout and
     same-day batches, and reconciles exactly as the plain one does.
     """
-    from milan.samples import write_all
+    from milan.samples import BUILDERS, named, write_all, write_one
 
     root = to.expanduser().resolve()
+    if only:
+        if not named(only):
+            known = ", ".join(folder for folder, _ in BUILDERS)
+            console.print(f"[red]No sample folder called {only!r}.[/] There is: {known}.")
+            raise typer.Exit(code=2)
+        # Straight into `--to`, not beneath it. Somebody asking for one folder
+        # has already chosen where it goes and what to call it, and nesting
+        # `5-a-real-handover` inside their directory renames it for them.
+        one = write_one(
+            root,
+            only,
+            seed=seed,
+            orders=orders,
+            withholding=withholding,
+            route=route,
+            instant=instant,
+        )
+        console.print(f"[green]{one.title}[/green]")
+        for name in one.files:
+            console.print(f"  [dim]{name}[/dim]")
+        console.print()
+        console.print(f"[dim]{root}[/dim]")
+        return
+
     built = write_all(
         root,
         seed=seed,
