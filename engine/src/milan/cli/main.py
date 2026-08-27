@@ -878,6 +878,13 @@ def measure_command(
             help="Which model to put the unfamiliar columns to. Omit for none.",
         ),
     ] = "",
+    every: Annotated[
+        bool,
+        typer.Option(
+            "--all/--one",
+            help="Score every provider that could answer, side by side.",
+        ),
+    ] = False,
     seed: SeedOption = 42,
     orders: Annotated[int, typer.Option("--orders", help="Orders in the generated month.")] = 400,
 ) -> None:
@@ -902,6 +909,27 @@ def measure_command(
     """
     from milan.llm import registry
     from milan.samples.measure import measure
+
+    if every:
+        # None first and always, because it is the baseline the rest are a
+        # difference from - and on the current corpus the difference is
+        # nothing, which is a result and not an omission.
+        scores = [measure(None, seed=seed, orders=orders)]
+        for found in registry.status():
+            # Ready, rather than merely registered. A provider with no key in
+            # the environment would score as `none` under a different name,
+            # which is a column of the same numbers claiming to be a
+            # comparison.
+            if not found.ready or found.name == "none":
+                continue
+            scores.append(measure(registry.resolve(found.name), seed=seed, orders=orders))
+        if len(scores) == 1:
+            console.print(
+                "[dim]No provider is ready, so there is nothing to compare against. "
+                "`milan providers` says what each one needs.[/dim]"
+            )
+        console.print(render.parity_report(scores))
+        return
 
     chosen = registry.resolve(provider) if provider else None
     scored = measure(chosen, seed=seed, orders=orders)

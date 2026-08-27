@@ -34,7 +34,14 @@ from dataclasses import field as dataclass_field
 from pathlib import Path
 
 from milan.ingest import identity
-from milan.ingest.parsing import ISO, normalise, parse_temporal
+from milan.ingest.parsing import (
+    ISO,
+    normalise,
+    parse_card_type,
+    parse_entity_type,
+    parse_method,
+    parse_temporal,
+)
 from milan.ingest.plan import (
     ABSENT,
     DERIVE,
@@ -1044,89 +1051,228 @@ def _known_ids(mappings: Sequence[FileMapping]) -> dict[str, dict[str, frozenset
     return known
 
 
-def _joined(mapping: FileMapping, known: dict[str, dict[str, frozenset[str]]]) -> FileMapping:
-    """Fill in identifier columns this file gave up on, from the folder around it.
+class Settling:
+    """One file's resolutions, part-way through being filled in.
 
-    The gap this closes was not a wrong answer and was not a question either.
-    An unfamiliar export's `Merchant Ref` column reads as an identifier and as
-    nothing more specific, so the import concluded the file had no payment id
-    and moved on - quietly, with the column sitting there in plain sight, and
-    every downstream check that wanted it going without.
+    A small mutable holder rather than a chain of tuples, because the second
+    pass is a *sequence* of checks and each one depends on what the last
+    settled: the batch id is found by pairing against the UTR, the UTR is
+    found because the identifier join already claimed the payment reference,
+    and none of them may take a column another has spoken for.
 
-    The folder answers it. A payments export names its own `payment_id` in
-    words the schema knows, so those ids are established; a column of this
-    file whose values are all drawn from that set is the same field. Never the
-    file's own columns as its own reference, and never a column already
-    spoken for by another field.
+    Threading `taken` through six functions by hand is how a column ends up
+    claimed twice, which produces a mapping that looks settled and is wrong.
     """
-    if mapping.kind is None or not mapping.resolutions:
-        return mapping
 
-    taken = {
-        resolution.column for resolution in mapping.resolutions if resolution.column is not None
-    }
-    asked = {question.subject for question in mapping.questions}
-    resolutions = list(mapping.resolutions)
-    answered: set[str] = set()
+    def __init__(self, mapping: FileMapping) -> None:
+        self.mapping = mapping
+        self.resolutions = list(mapping.resolutions)
+        self.taken = {
+            resolution.column for resolution in mapping.resolutions if resolution.column is not None
+        }
+        self.asked = {question.subject for question in mapping.questions}
+        self.answered: set[str] = set()
 
-    for field in JOINABLE:
-        index = next(
+    def wanted(self, field: str) -> int | None:
+        """Where `field` sits, if it is unsettled and this file has it at all."""
+        for position, resolution in enumerate(self.resolutions):
+            if resolution.target.name != field:
+                continue
+            if resolution.column is not None and field not in self.asked:
+                return None
+            return position
+        return None
+
+    def column(self, field: str) -> str | None:
+        """The column already settled for `field`, if there is one."""
+        return next(
             (
-                position
-                for position, resolution in enumerate(resolutions)
+                resolution.column
+                for resolution in self.resolutions
                 if resolution.target.name == field
             ),
             None,
         )
-        if index is None:
-            continue
-        resolution = resolutions[index]
-        if resolution.column is not None and field not in asked:
-            continue
 
+    def settle(self, position: int, column: str, account: str) -> None:
+        """Attach a column, at the certainty a proof earns and no higher.
+
+        `unconfirmed`, always. The file supports this mapping; it did not
+        attest to it the way a matching header does, and it is not a person's
+        answer. The screen keeps offering to change it.
+        """
+        resolution = self.resolutions[position]
+        self.resolutions[position] = replace(
+            resolution,
+            certainty=Certainty.UNCONFIRMED,
+            column=column,
+            reason=account,
+            proposed_by="",
+        )
+        self.taken.add(column)
+        self.answered.add(resolution.target.name)
+
+    def frozen(self) -> frozenset[str]:
+        return frozenset(self.taken)
+
+    def done(self) -> FileMapping:
+        if not self.answered:
+            return self.mapping
+        return replace(
+            self.mapping,
+            resolutions=tuple(self.resolutions),
+            questions=tuple(
+                question
+                for question in self.mapping.questions
+                if question.subject not in self.answered
+            ),
+        )
+
+
+VOCABULARIES: tuple[tuple[str, object, str], ...] = (
+    ("type", parse_entity_type, "a payment, a refund or an adjustment"),
+    ("method", parse_method, "a way of paying"),
+    ("card_type", parse_card_type, "a kind of card"),
+)
+"""Fields whose column is identified by what is written in it.
+
+The three closed lists in `parsing.py`, and they do not overlap - which is
+what makes a column of `domestic_consumer` and `international` a card type
+rather than a candidate for all three.
+"""
+
+
+def _fill(
+    settling: Settling,
+    known: dict[str, dict[str, frozenset[str]]],
+    narration: frozenset[str],
+) -> None:
+    """Everything the folder can settle, in the order the answers unlock.
+
+    Ordered, not independent. Each check may only use columns nothing else has
+    claimed, so running them in the wrong order settles the wrong field with
+    the right column - and the vocabularies go first precisely because they
+    are the most certain: a column of nothing but `upi` and `netbanking` is a
+    payment method whatever else the file needs.
+    """
+    source = settling.mapping.source
+
+    # 1. Closed lists. Certain, and they remove three columns from every
+    #    later candidate set.
+    for field, reader, named in VOCABULARIES:
+        position = settling.wanted(field)
+        if position is None:
+            continue
+        assert callable(reader)
+        column, verdict = identity.vocabulary(source, reader, named, settling.frozen())
+        if column is not None:
+            settling.settle(position, column, verdict.account)
+
+    # 2. Foreign keys into a file the merchant exported beside this one.
+    for field in JOINABLE:
+        position = settling.wanted(field)
+        if position is None:
+            continue
         # `union` of nothing is the empty set, which `identity.joined`
         # refuses outright - so a folder with no reference file settles
         # nothing here rather than matching against emptiness.
         elsewhere = frozenset().union(
-            *(values for name, values in known[field].items() if name != mapping.name)
+            *(values for name, values in known[field].items() if name != settling.mapping.name)
         )
-        column, verdict = identity.joined(mapping.source, elsewhere, frozenset(taken))
-        if column is None:
+        column, verdict = identity.joined(source, elsewhere, settling.frozen())
+        if column is not None:
+            settling.settle(position, column, verdict.account)
+
+    if settling.mapping.kind is not RecordKind.SETTLEMENT_ROWS:
+        return
+
+    # 3. The reference the bank quoted back, which is what separates it from
+    #    the batch id sitting beside it with an identical shape.
+    utr = settling.wanted("settlement_utr")
+    if utr is not None:
+        column, verdict = identity.mentioned(source, narration, settling.frozen())
+        if column is not None:
+            settling.settle(utr, column, verdict.account)
+
+    # 4. The batch id, as whatever pairs one-to-one with that reference.
+    batch = settling.wanted("settlement_id")
+    reference = settling.column("settlement_utr")
+    if batch is not None and reference is not None:
+        column, verdict = identity.paired(source, reference, settling.frozen())
+        if column is not None:
+            settling.settle(batch, column, verdict.account)
+
+    # 5. The flag that agrees with the batch id, and then the flag left over.
+    settled = settling.wanted("settled")
+    batch_column = settling.column("settlement_id")
+    if settled is not None and batch_column is not None:
+        column, verdict = identity.flag_for(source, batch_column, settling.frozen())
+        if column is not None:
+            settling.settle(settled, column, verdict.account)
+
+    held = settling.wanted("on_hold")
+    if held is not None:
+        column, verdict = identity.only_flag(source, settling.frozen())
+        if column is not None:
+            settling.settle(held, column, verdict.account)
+
+    # 6. The row's own identity, last: a timestamp is unique too, and by now
+    #    every date column in the file has been claimed by something.
+    entity = settling.wanted("entity_id")
+    if entity is not None:
+        column, verdict = identity.unique_key(source, settling.frozen())
+        if column is not None:
+            settling.settle(entity, column, verdict.account)
+
+
+def _narration(mappings: Sequence[FileMapping]) -> frozenset[str]:
+    """Every line of free text a bank statement in this folder wrote.
+
+    Taken from `narration` columns settled by their own header, because a
+    statement's description column is one of the few things every bank names
+    recognisably - and a text corpus assembled from a guess would let one
+    unverified proposal settle a second field.
+    """
+    lines: set[str] = set()
+    for mapping in mappings:
+        if mapping.kind is not RecordKind.BANK_CREDITS:
             continue
-
-        resolutions[index] = replace(
-            resolution,
-            certainty=Certainty.UNCONFIRMED,
-            column=column,
-            reason=verdict.account,
-            proposed_by="",
-        )
-        taken.add(column)
-        answered.add(field)
-
-    if not answered:
-        return mapping
-    return replace(
-        mapping,
-        resolutions=tuple(resolutions),
-        questions=tuple(
-            question for question in mapping.questions if question.subject not in answered
-        ),
-    )
+        for resolution in mapping.resolutions:
+            if resolution.target.name != "narration" or resolution.column is None:
+                continue
+            if resolution.certainty is not Certainty.CONFIRMED or resolution.proposed_by:
+                continue
+            lines.update(
+                value.strip() for value in mapping.source.column(resolution.column) if value.strip()
+            )
+    return frozenset(lines)
 
 
-def join_identifiers(mappings: Sequence[FileMapping]) -> tuple[FileMapping, ...]:
-    """Let every file in the folder answer what the others could not.
+def settle_from_the_folder(mappings: Sequence[FileMapping]) -> tuple[FileMapping, ...]:
+    """Let every file in the folder answer what it could not answer alone.
 
     A second pass, because the first one cannot do this: a file is mapped
-    before its neighbours are, and the reference set this depends on only
-    exists once all of them have been. Running it after costs one more sweep
-    over columns already in memory and needs no model at all.
+    before its neighbours are, and the references this depends on only exist
+    once all of them have been. Running it after costs one more sweep over
+    columns already in memory and needs no model at all.
+
+    That last part is the point. Everything here is counting, set membership
+    and substring search over the merchant's own files, so it settles the same
+    columns whether a provider is configured or not - and the columns it
+    settles were, before it existed, either a question or a shrug.
     """
     known = _known_ids(mappings)
-    if not any(known[field] for field in JOINABLE):
-        return tuple(mappings)
-    return tuple(_joined(mapping, known) for mapping in mappings)
+    narration = _narration(mappings)
+
+    filled: list[FileMapping] = []
+    for mapping in mappings:
+        if mapping.kind is None or not mapping.resolutions:
+            filled.append(mapping)
+            continue
+        settling = Settling(mapping)
+        _fill(settling, known, narration)
+        filled.append(settling.done())
+    return tuple(filled)
 
 
 class Importer:
@@ -1183,7 +1329,7 @@ class Importer:
     def plan(self, root: Path, decisions: dict[str, Decisions] | None = None) -> IngestPlan:
         self.load(root)
         given = decisions or {}
-        mappings = join_identifiers(
+        mappings = settle_from_the_folder(
             [self._map(source, given.get(source.name, Decisions())) for source in self._sources]
         )
         return IngestPlan(

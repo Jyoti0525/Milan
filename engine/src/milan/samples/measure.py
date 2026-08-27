@@ -55,6 +55,17 @@ class Outcome:
     certainty: str
     asked: bool
     proposed_by: str
+    blank: bool = False
+    """The file names this column and puts nothing in it.
+
+    A bank statement with a `Cheque Number` header and no cheque numbers in
+    it does not hold a UTR, and an import concluding the file has none is
+    right. Counting that as a column we failed to find would report a
+    correct answer as a failure, and would put pressure on exactly the wrong
+    thing - the way to make the figure go up would be to map a field to a
+    column of nothing.
+    """
+
     suggested: str = ""
     """What the question offered as its lead answer, where it asked one.
 
@@ -111,8 +122,19 @@ class Accuracy:
 
     @property
     def missed(self) -> list[Outcome]:
-        """The file has the column; the import concluded it has none."""
-        return self._where(lambda o: not o.asked and o.got is None)
+        """The file has the column *with values in it*; the import found none."""
+        return self._where(lambda o: not o.asked and o.got is None and not o.blank)
+
+    @property
+    def blank(self) -> list[Outcome]:
+        """The column is in the header row and empty on every row below it.
+
+        Reported rather than folded into either side. It is not a miss, and
+        calling it a success would be just as wrong - the honest statement is
+        that the file offered a name and no data, and there was nothing to
+        find.
+        """
+        return self._where(lambda o: o.blank)
 
     @property
     def proposed(self) -> list[Outcome]:
@@ -182,6 +204,13 @@ def write_corpus(data: Dataset, root: Path) -> dict[tuple[str, str], Path]:
     return written
 
 
+def _has_values(mapping: FileMapping, column: str) -> bool:
+    """Whether the column the answer key names actually holds anything."""
+    if column not in mapping.source.headers:
+        return False
+    return any(value.strip() for value in mapping.source.column(column))
+
+
 def _outcomes(mapping: FileMapping, truth: Truth) -> Iterator[Outcome]:
     asked = {question.subject: question.suggested for question in mapping.questions}
     columns = mapping.columns
@@ -197,6 +226,7 @@ def _outcomes(mapping: FileMapping, truth: Truth) -> Iterator[Outcome]:
             certainty=resolution.certainty.value if resolution else "missing",
             asked=name in asked,
             proposed_by=resolution.proposed_by if resolution else "",
+            blank=not _has_values(mapping, expected),
             suggested=asked.get(name, ""),
         )
 

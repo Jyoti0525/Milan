@@ -117,27 +117,29 @@ def test_the_file_carries_most_of_the_corpus_with_no_model_at_all(scored: Accura
     used to be derivable stopped being derived.
     """
     settled = len(scored.settled_right)
-    assert settled >= 70, f"only {settled} of {len(scored.outcomes)} columns settled with no model"
+    assert settled >= 78, f"only {settled} of {len(scored.outcomes)} columns settled with no model"
     assert scored.rate(scored.settled_right, scored.outcomes).endswith(f"of {len(scored.outcomes)}")
 
 
 def test_what_is_still_asked_is_what_nothing_in_the_file_can_answer(scored: Accuracy) -> None:
     """The list this design is trying to reduce to, rather than to empty.
 
-    Three fields, and each is genuinely undecidable from the file:
+    One field, and it is genuinely undecidable: `value_date` against a
+    transaction date. Two real date columns that disagree with each other,
+    where which one a merchant reconciles on is a fact about their bank and
+    not about the file in front of us. No amount of reading the file settles
+    it, and the only honest thing to do is ask.
 
-    `value_date` against a transaction date - two real date columns that
-    disagree, where which one a merchant reconciles on is a fact about their
-    bank. `entity_id` and `settlement_id` on an export that names neither -
-    two columns of opaque strings, one per row and one per batch, with no
-    arithmetic over them and no file beside them holding either.
+    `entity_id` and `settlement_id` were here and are not any more - the row
+    key is the only column filled and different on every row, and the batch
+    id is whatever pairs one-to-one with the reference the bank quoted back.
 
-    A question appearing here that is *not* one of these means something
-    became underivable that used to be derived. A question disappearing from
-    here means either a real improvement or a guess dressed as a proof, and
+    A question appearing here that is not `value_date` means something became
+    underivable that used to be derived. A question disappearing from here
+    means either a real improvement or a guess dressed as a proof, and
     `test_nothing_is_settled_wrongly` is the one that tells them apart.
     """
-    unanswerable = {"value_date", "entity_id", "settlement_id"}
+    unanswerable = {"value_date"}
     surprising = sorted({outcome.field for outcome in scored.asked} - unanswerable)
     assert surprising == [], f"asked about {', '.join(surprising)}, which the file can answer"
 

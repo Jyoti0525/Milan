@@ -215,8 +215,12 @@ CAPTURES = Truth(
         "captured_at": "captured_at",
         "method": "method",
         "card_type": "card_type",
-        "currency": "currency",
     },
+    note=(
+        "the file has a `currency` column and the payments schema has no such "
+        "field, so the answer key does not claim one - scoring a field the "
+        "import never looks for would be measuring the schema, not the import"
+    ),
 )
 
 ORDERS = Truth(

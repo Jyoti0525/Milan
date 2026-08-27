@@ -9,6 +9,8 @@ a glance.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+
 from rich.console import Console
 from rich.table import Table
 
@@ -642,6 +644,54 @@ def control_markdown(result: Comparison) -> str:
     return "\n".join((CONTROL_OPEN, *header, *rows, MARKDOWN_CLOSE))
 
 
+def parity_report(scores: Sequence[Accuracy]) -> Table:
+    """The same corpus, the same answer key, one column per provider.
+
+    The question this exists to answer is whether the local model and a hosted
+    one are at the same level, and the honest answer turned out to be that the
+    question has stopped mattering for this part of the system: the file's own
+    arithmetic settles the mapping, so every provider reaches the same
+    mapping, and a provider that reached a different one would be reaching a
+    worse one.
+
+    Which is exactly why it is worth printing. A claim that swapping the model
+    changes nothing is a claim, and this is the instrument that would catch it
+    becoming false - a column here that does not match its neighbours is
+    either a model earning its place or a check that has stopped working.
+
+    `settled wrongly` is the row to read first and it is the row that must be
+    zero in every column. A provider that settles more columns by settling one
+    of them wrongly has not done better.
+    """
+    table = Table(box=None, pad_edge=False, title="The same twelve files, scored per provider")
+    table.add_column("Measure")
+    for scored in scores:
+        table.add_column(scored.provider, justify="right")
+
+    def row(label: str, cell: Callable[[Accuracy], str], note: str = "") -> None:
+        table.add_row(label, *(cell(scored) for scored in scores))
+        del note
+
+    wrongs = [len(scored.wrong) for scored in scores]
+    table.add_row(
+        "settled wrongly",
+        *(
+            f"[bold red]{count}[/bold red]" if count else "[bold green]0[/bold green]"
+            for count in wrongs
+        ),
+    )
+    table.add_section()
+    row("files placed", lambda s: f"{s.kinds_right}/{len(s.kinds)}")
+    row("columns settled", lambda s: s.rate(s.settled_right, s.outcomes))
+    row("columns asked about", lambda s: str(len(s.asked)))
+    row("columns not found", lambda s: str(len(s.missed)))
+    row(
+        "suggestions correct",
+        lambda s: f"{len(s.suggested_right)}/{len(s.suggested)}" if s.suggested else "-",
+    )
+    return table
+
+
 def accuracy_report(scored: Accuracy) -> Table:
     """The import marked against an answer key, with the failures named.
 
@@ -683,6 +733,12 @@ def accuracy_report(scored: Accuracy) -> Table:
         str(len(scored.missed)),
         "the file has them; the import concluded it had none",
     )
+    if scored.blank:
+        table.add_row(
+            "columns with no data",
+            str(len(scored.blank)),
+            "the file names the column and leaves every row of it empty",
+        )
 
     if scored.suggested:
         table.add_section()

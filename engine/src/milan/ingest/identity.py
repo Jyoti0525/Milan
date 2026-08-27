@@ -38,13 +38,13 @@ read as an identity check that passed.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import pairwise, permutations
 
 from milan.domain.money import Paise
-from milan.ingest.parsing import parse_money, parse_temporal, temporal_patterns
+from milan.ingest.parsing import parse_bool, parse_money, parse_temporal, temporal_patterns
 from milan.ingest.reading import SourceFile
 from milan.ingest.schema import RecordKind
 
@@ -54,11 +54,24 @@ __all__ = [
     "bank_amount",
     "check",
     "earliest_date",
+    "flag_for",
     "joined",
+    "mentioned",
     "only_deposit",
+    "only_flag",
+    "paired",
     "proven",
     "solve",
+    "unique_key",
+    "vocabulary",
 ]
+
+Reader = Callable[[str], object | None]
+"""Anything that turns a cell into a value or into `None`.
+
+The parsers in `parsing.py` all have this shape, and what a vocabulary
+check needs from them is only the `None`.
+"""
 
 MONEY_FIELDS = ("amount", "fee", "tax", "credit", "debit")
 """The five columns the settlement equation is written over."""
@@ -73,8 +86,23 @@ them would need the file to be constructed against us.
 """
 
 SAMPLE = 400
-"""Rows read before the verdict is called. A settlement report is large and
-the check is not improved by reading all of it."""
+"""Rows read where reading more would not improve the verdict.
+
+The arithmetic checks only. A mapping that satisfies the settlement equation
+on four hundred rows satisfies it, and `solve` searches arrangements, so the
+cap is what keeps that search cheap.
+
+It is emphatically *not* the right cap for the rest of this module, and
+assuming it was produced a real bug: a settlement report is written in date
+order, so the rows that have not settled yet are the last ones in the file.
+Reading the first four hundred of four hundred and nine rows found a `Paid`
+column that was true on every row it looked at, concluded it carried no
+information, and refused - while the seven rows that would have identified it
+sat just past the window.
+
+The head of a chronologically sorted file is not a sample of it. Anything
+below asking "is this true of every row" reads every row.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -475,8 +503,13 @@ def bank_amount(source: SourceFile, proposed: str, candidates: tuple[str, ...]) 
 PROOFS = (
     "the arithmetic holds",
     "it is the only money column left",
+    "every value in it is",
+    "it is the only column filled and different",
+    "the bank quoted it",
+    "it has exactly one value per",
+    "it is true on exactly the rows",
+    "it is the only yes/no column",
     "it is the only column that never runs ahead",
-    "every value in it is an identifier",
 )
 """The openings of the two accounts this module writes.
 
@@ -655,9 +688,7 @@ def joined(
     for header in source.headers:
         if header in taken:
             continue
-        values = {
-            value.strip() for row in source.rows[:SAMPLE] if (value := row.get(header, "")).strip()
-        }
+        values = {value.strip() for row in source.rows if (value := row.get(header, "")).strip()}
         if len(values) < MINIMUM_ROWS:
             continue
         found = len(values & known)
@@ -685,5 +716,390 @@ def joined(
         0,
         f"every value in it is an identifier another file names in its own header "
         f"({found} of {total} matched)",
+        settlement=False,
+    )
+
+
+# --------------------------------------------------- a vocabulary, not a value
+
+
+def _read_all(source: SourceFile, column: str, reader: Reader) -> tuple[int, int]:
+    """Values in the column, and how many of them the reader recognised.
+
+    Every row. "Every value in it is a card type" is a statement about the
+    column, and a column is not four hundred rows of a column.
+    """
+    seen = 0
+    known = 0
+    for row in source.rows:
+        value = row.get(column, "").strip()
+        if not value:
+            continue
+        seen += 1
+        if reader(value) is not None:
+            known += 1
+    return seen, known
+
+
+def vocabulary(
+    source: SourceFile,
+    reader: Reader,
+    named: str,
+    taken: frozenset[str],
+) -> tuple[str | None, Verdict]:
+    """The one column whose every value is a word from a closed list.
+
+    Some fields are not identified by their name or by arithmetic over them.
+    They are identified by what is written in them, because the set of things
+    that can be written is small and fixed: a row is a payment, a refund or an
+    adjustment; a card is consumer, corporate or international; a payment was
+    taken by UPI, a card, netbanking, a wallet, EMI or PayLater.
+
+    A column holding nothing but members of one of those lists is that field.
+    Not probably — the lists do not overlap, so a column of `domestic_consumer`
+    and `international` cannot be a payment method and a column of `upi` and
+    `netbanking` cannot be a card type. The vocabulary *is* the identification.
+
+    Every value, not most. One unrecognised entry means the list is not closed
+    after all, and a column that is nearly a vocabulary is a column we have
+    misunderstood. Where two columns both qualify, neither is claimed.
+    """
+    matches: list[tuple[str, int]] = []
+    for header in source.headers:
+        if header in taken:
+            continue
+        seen, known = _read_all(source, header, reader)
+        if seen >= MINIMUM_ROWS and known == seen:
+            matches.append((header, seen))
+
+    if not matches:
+        return None, Verdict(False, 0, 0, f"no column here reads as {named}", settlement=False)
+    if len(matches) > 1:
+        names = ", ".join(name for name, _ in matches)
+        return None, Verdict(
+            False, 0, 0, f"more than one column reads as {named}: {names}", settlement=False
+        )
+
+    header, seen = matches[0]
+    return header, Verdict(
+        True,
+        seen,
+        0,
+        f"every value in it is {named}, on all {seen} rows that have one",
+        settlement=False,
+    )
+
+
+# ------------------------------------------------------- one row, one identity
+
+
+def unique_key(source: SourceFile, taken: frozenset[str]) -> tuple[str | None, Verdict]:
+    """The one column that names the row rather than something the row is about.
+
+    A settlement report's `entity_id` is a primary key: filled on every row,
+    different on every row. Nothing else in the file is - a payment reference
+    repeats across a payment and its refund, a batch reference repeats across
+    every row in the batch, and a date repeats whenever two things happened
+    the same day.
+
+    So it is found by counting rather than by reading. `Txn Ref No` and
+    `pay_S3kQ1nZ8vM2xLd` say nothing about which field they belong to; being
+    the only column with a distinct value on all two hundred rows says it
+    exactly.
+
+    `taken` is what makes this work rather than nearly work. A timestamp
+    column is usually unique too, and it is settled before this runs - by name
+    where the header is recognisable, by capture-before-payout ordering where
+    it is not - so by the time uniqueness is counted there is one column left
+    that has it.
+    """
+    rows = len(source.rows)
+    if rows < MINIMUM_ROWS:
+        return None, Verdict(False, rows, 0, f"only {rows} rows to count over", settlement=False)
+
+    matches: list[str] = []
+    for header in source.headers:
+        if header in taken:
+            continue
+        # Every row, because uniqueness on a sample is not uniqueness - the
+        # two rows that share a value are exactly the two a window can miss.
+        values = [row.get(header, "").strip() for row in source.rows]
+        if any(not value for value in values):
+            continue
+        if len(set(values)) == rows:
+            matches.append(header)
+
+    if not matches:
+        return None, Verdict(
+            False, rows, 0, "no column here is filled and different on every row", settlement=False
+        )
+    if len(matches) > 1:
+        return None, Verdict(
+            False,
+            rows,
+            0,
+            f"more than one column is unique on every row: {', '.join(matches)}",
+            settlement=False,
+        )
+    return matches[0], Verdict(
+        True,
+        rows,
+        0,
+        f"it is the only column filled and different on all {rows} rows, "
+        f"which is what identifies a row rather than describing it",
+        settlement=False,
+    )
+
+
+# ------------------------------------------- a reference the bank wrote down
+
+
+def mentioned(
+    source: SourceFile, text: frozenset[str], taken: frozenset[str]
+) -> tuple[str | None, Verdict]:
+    """The one column whose values the bank quoted back in its own narration.
+
+    `settlement_utr` is the join key the whole reconciliation runs on, and it
+    is the hardest identifier to recognise: it sits beside `settlement_id`,
+    both filled on the same rows, both with one value per batch. Cardinality
+    cannot separate them and neither can their contents, which are opaque
+    either way.
+
+    What separates them is who wrote them. A batch id is the gateway's own
+    filing reference and appears nowhere outside the gateway's own files. A
+    UTR is what the bank put on the transfer, so it comes back in the
+    statement - inside the narration where a statement has no reference
+    column of its own:
+
+        NEFT-EIQO7RMB8Q93-RAZORPAY SOFTWARE PVT LTD
+
+    So this looks for the column the bank echoed. Substring rather than
+    equality, because that string is a narration and not a field, and a
+    statement that files the reference properly is handled by `joined` before
+    this is reached.
+    """
+    if len(text) < MINIMUM_ROWS:
+        return None, Verdict(
+            False, 0, 0, f"only {len(text)} lines of bank narration to look in", settlement=False
+        )
+
+    blob = "\n".join(text)
+    matches: list[tuple[str, int, int]] = []
+    for header in source.headers:
+        if header in taken:
+            continue
+        values = {value.strip() for row in source.rows if (value := row.get(header, "")).strip()}
+        # A value short enough to fall inside an unrelated word is not
+        # evidence of anything. A UTR is twelve characters; four would match
+        # half the alphabet soup in a narration line.
+        values = {value for value in values if len(value) >= 8}
+        if len(values) < MINIMUM_ROWS:
+            continue
+        found = sum(1 for value in values if value in blob)
+        if found >= MINIMUM_ROWS and found >= len(values) * QUOTED:
+            matches.append((header, found, len(values)))
+
+    if not matches:
+        return None, Verdict(
+            False, 0, 0, "the bank's narration quotes no column of this file", settlement=False
+        )
+    if len(matches) > 1:
+        names = ", ".join(name for name, _, _ in matches)
+        return None, Verdict(
+            False,
+            0,
+            0,
+            f"the bank's narration quotes more than one column: {names}",
+            settlement=False,
+        )
+
+    header, found, total = matches[0]
+    return header, Verdict(
+        True,
+        total,
+        0,
+        f"the bank quoted it in its own narration ({found} of {total} references found)",
+        settlement=False,
+    )
+
+
+QUOTED = 0.6
+"""How much of a reference column a statement must echo before we believe it.
+
+Not near-total, and deliberately. A month's settlement report covers payouts
+the statement in the folder has not received yet, payouts to a second account,
+and - this being the whole subject of the project - payouts that were reported
+and never arrived. Every one of those is a reference the bank never wrote
+down, and requiring them all would refuse hardest on exactly the months this
+exists for.
+
+The column it is being told apart from is quoted zero times, so the gap is the
+whole range and the threshold only has to be somewhere sensible in it.
+"""
+
+
+# ----------------------------------------------- one of these per one of those
+
+
+def paired(source: SourceFile, against: str, taken: frozenset[str]) -> tuple[str | None, Verdict]:
+    """The one column in one-to-one correspondence with `against`.
+
+    Once the UTR is known, the batch id is the column that agrees with it
+    exactly: every batch has one reference and every reference belongs to one
+    batch. Not merely the same number of distinct values - a date column can
+    manage that by coincidence - but the same *partition* of the rows, which
+    a coincidence cannot manage over two hundred of them.
+
+    This is the last thing about a settlement export that had to be asked, and
+    it is asked no longer as long as a bank statement came in the same folder.
+    Without one, `mentioned` finds nothing, this has nothing to pair against,
+    and both questions stand - which is correct. Two opaque columns with
+    identical shape, and nothing in the folder that can tell them apart.
+    """
+    if against not in source.headers:
+        return None, Verdict(
+            False, 0, 0, f"{against} is not a column in this file", settlement=False
+        )
+
+    def pairs(left: str, right: str) -> tuple[bool, int]:
+        seen: dict[str, str] = {}
+        back: dict[str, str] = {}
+        rows = 0
+        for row in source.rows:
+            one = row.get(left, "").strip()
+            two = row.get(right, "").strip()
+            if not one or not two:
+                # Both empty together is consistent with a pairing; one
+                # without the other is not, and says these are different
+                # facts about the row.
+                if one or two:
+                    return False, 0
+                continue
+            if seen.setdefault(one, two) != two or back.setdefault(two, one) != one:
+                return False, 0
+            rows += 1
+        # Two columns that are both unique on every row pair perfectly and
+        # mean nothing by it - every group holds one row, so the "pairing" is
+        # a restatement of both being keys. A correspondence is only evidence
+        # where there is grouping for it to preserve.
+        grouped = len(seen) > 1 and len(seen) < rows
+        return grouped and rows >= MINIMUM_ROWS, len(seen)
+
+    matches: list[tuple[str, int]] = []
+    for header in source.headers:
+        if header in taken or header == against:
+            continue
+        holds, groups = pairs(header, against)
+        if holds:
+            matches.append((header, groups))
+
+    if not matches:
+        return None, Verdict(
+            False, 0, 0, f"no column here has one value per {against}", settlement=False
+        )
+    if len(matches) > 1:
+        names = ", ".join(name for name, _ in matches)
+        return None, Verdict(
+            False, 0, 0, f"more than one column pairs with {against}: {names}", settlement=False
+        )
+
+    header, groups = matches[0]
+    return header, Verdict(
+        True,
+        groups,
+        0,
+        f"it has exactly one value per {against} and back again, across all {groups} of them",
+        settlement=False,
+    )
+
+
+# --------------------------------------------- a flag that says what happened
+
+
+def flag_for(source: SourceFile, filled: str, taken: frozenset[str]) -> tuple[str | None, Verdict]:
+    """The boolean column that is true exactly where `filled` has a value.
+
+    `settled` and `on_hold` are two yes/no columns side by side, and nothing
+    in either one says which is which - `Y`, `N`, `Y`, `Y` reads the same
+    whichever it means. Getting them the wrong way round would report every
+    paid row as held back.
+
+    They are not symmetric against the rest of the file, though. A row that
+    has been settled is a row with a settlement id on it, and a row that has
+    not been settled has an empty one - so `settled` is the flag that agrees
+    with that column, on every row, and `on_hold` is whatever is left.
+
+    Requires the file to disagree with itself somewhere. A month in which
+    every row settled makes both columns constant and agreement meaningless,
+    so a flag with only one value in it is not claimed.
+    """
+    if filled not in source.headers:
+        return None, Verdict(
+            False, 0, 0, f"{filled} is not a column in this file", settlement=False
+        )
+
+    matches: list[str] = []
+    for header in source.headers:
+        if header in taken or header == filled:
+            continue
+        seen = 0
+        agreed = 0
+        values: set[bool] = set()
+        for row in source.rows:
+            flag = parse_bool(row.get(header, ""))
+            if flag is None:
+                seen = -1
+                break
+            seen += 1
+            values.add(flag)
+            if flag == bool(row.get(filled, "").strip()):
+                agreed += 1
+        if seen >= MINIMUM_ROWS and len(values) > 1 and agreed == seen:
+            matches.append(header)
+
+    if not matches:
+        return None, Verdict(
+            False, 0, 0, f"no yes/no column here follows {filled}", settlement=False
+        )
+    if len(matches) > 1:
+        return None, Verdict(
+            False,
+            0,
+            0,
+            f"more than one yes/no column follows {filled}: {', '.join(matches)}",
+            settlement=False,
+        )
+    return matches[0], Verdict(
+        True,
+        len(source.rows),
+        0,
+        f"it is true on exactly the rows that have a {filled} and false on the rest",
+        settlement=False,
+    )
+
+
+def only_flag(source: SourceFile, taken: frozenset[str]) -> tuple[str | None, Verdict]:
+    """The one yes/no column nothing else has claimed.
+
+    Reached only after every other flag in the file is settled, which is what
+    makes it a conclusion rather than a guess. Two boolean columns and one
+    field is a question; one boolean column and one field is an answer.
+    """
+    matches = []
+    for header in source.headers:
+        if header in taken:
+            continue
+        seen, known = _read_all(source, header, parse_bool)
+        if seen >= MINIMUM_ROWS and known == seen:
+            matches.append(header)
+
+    if len(matches) != 1:
+        found = ", ".join(matches) if matches else "none"
+        return None, Verdict(False, 0, 0, f"the yes/no columns left are: {found}", settlement=False)
+    return matches[0], Verdict(
+        True,
+        0,
+        0,
+        "it is the only yes/no column in the file that nothing else accounts for",
         settlement=False,
     )
