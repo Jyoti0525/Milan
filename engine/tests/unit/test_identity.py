@@ -13,7 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from milan.chaos.config import Difficulty, GenerationConfig
+from milan.chaos.generator import ChaosEngine
 from milan.domain.dataset import Dataset
+from milan.domain.rates import RateCard
 from milan.ingest import identity
 from milan.ingest.parsing import parse_card_type, parse_entity_type, parse_method
 from milan.ingest.reading import SourceFile, read
@@ -728,3 +731,136 @@ def test_a_flag_is_read_past_the_arithmetic_window(tmp_path: Path, data: Dataset
 
     assert column == "Paid", verdict.reason
     assert verdict.checked == total
+
+
+# ------------------------------------------- the operator, and Section 194-O
+
+
+@pytest.fixture(scope="module")
+def withheld(tmp_path_factory: pytest.TempPathFactory) -> SourceFile:
+    """A month belonging to an e-commerce operator, in unfamiliar headers."""
+    data = ChaosEngine(
+        GenerationConfig(
+            seed=42,
+            difficulty=Difficulty.REALISTIC,
+            order_count=200,
+            rates=RateCard(tds_applies=True),
+        )
+    ).generate()
+    path = tmp_path_factory.mktemp("withheld") / "payouts.csv"
+    dialects.unfamiliar_settlement(data, path)
+    return read(path)
+
+
+def test_the_equation_still_solves_when_one_percent_is_withheld(
+    withheld: SourceFile,
+) -> None:
+    """The gap this closed, found by turning the fee stack all the way on.
+
+    A 194-O merchant's payment rows credit `amount - fee - tax` less one
+    percent of gross, so the plain identity fails on every one of them - and
+    the solver, correctly refusing to conclude from an equation that does not
+    hold, went back to asking. Safe, and worse than it needed to be: the
+    withheld shape is as fixed and as checkable as the plain one.
+    """
+    known = {
+        field: column
+        for field, column in UNFAMILIAR.columns.items()
+        if field in ("amount", "fee", "tax")
+    }
+
+    answer, verdict = identity.solve(
+        withheld, RecordKind.SETTLEMENT_ROWS, known, ("credit", "debit"), MONEY_COLUMNS
+    )
+
+    assert answer == {"credit": "Amount Credited", "debit": "Amount Debited"}
+    assert verdict.holds
+    assert verdict.withheld
+    assert "Section 194-O" in verdict.account
+
+
+def test_the_withholding_is_reported_rather_than_absorbed(withheld: SourceFile) -> None:
+    """Which merchant this is, worked out from their own numbers.
+
+    Nobody told the import that this merchant is an e-commerce operator. The
+    rows only foot once a statutory one percent comes off each payment, and
+    that is a finding worth putting on screen - so the verdict carries it
+    instead of quietly picking the shape that fitted.
+    """
+    verdict = identity.check(withheld, RecordKind.SETTLEMENT_ROWS, dict(UNFAMILIAR.columns))
+
+    assert verdict.holds
+    assert verdict.withheld
+
+
+def test_an_ordinary_month_is_not_reported_as_withheld(settlement: SourceFile) -> None:
+    """The plain shape is tried first and wins outright where it holds.
+
+    A merchant selling their own goods has nothing withheld, and reporting
+    otherwise would tell them they are an operator with a filing obligation
+    they do not have.
+    """
+    verdict = identity.check(settlement, RecordKind.SETTLEMENT_ROWS, dict(UNFAMILIAR.columns))
+
+    assert verdict.holds
+    assert not verdict.withheld
+    assert "194-O" not in verdict.account
+
+
+def test_a_file_that_withholds_on_only_some_rows_is_not_a_withheld_file(
+    tmp_path: Path,
+) -> None:
+    """Two shapes are not twice as many chances to pass.
+
+    Withholding is a fact about the merchant, so it applies to every payment
+    row or to none. A file where half the rows foot one way and half the other
+    is not an operator's month - it is a mapping we have got wrong, and
+    allowing the shapes to be chosen per row would let it through.
+    """
+    lines = ["Type,Gross,Fee,Tax,In,Out"]
+    for index in range(40):
+        gross = 100_00 + index * 37
+        fee = gross * 2 // 100
+        tax = fee * 18 // 100
+        net = gross - fee - tax - (gross // 100 if index % 2 else 0)
+        lines.append(
+            f"payment,{gross / 100:.2f},{fee / 100:.2f},{tax / 100:.2f},{net / 100:.2f},0.00"
+        )
+    path = tmp_path / "half.csv"
+    path.write_text(chr(10).join(lines), encoding="utf-8")
+
+    verdict = identity.check(
+        read(path),
+        RecordKind.SETTLEMENT_ROWS,
+        {"amount": "Gross", "fee": "Fee", "tax": "Tax", "credit": "In", "debit": "Out"},
+    )
+
+    assert not verdict.holds
+    assert "does not hold" in verdict.reason
+
+
+def test_a_same_day_payout_does_not_read_as_settling_before_capture(
+    tmp_path: Path,
+) -> None:
+    """Days, not instants - the other thing the full fee stack turned up.
+
+    A settlement date has no time of day in it, so comparing a capture
+    timestamp against it reads midnight. A payment captured at half past two
+    and settled the same day by instant settlement then looks like a payout
+    that happened before the money arrived, and the capture column gets
+    disqualified for running ahead of a date it is actually inside.
+    """
+    lines = ["Captured,Paid Out,Amount"]
+    for index in range(40):
+        day = 1 + index % 20
+        # Every other row settles the same day, at a time of day later than
+        # the midnight a bare date parses to.
+        paid = day if index % 2 else day + 2
+        lines.append(f"2026-07-{day:02d} 14:32:11,2026-07-{paid:02d},{100 + index}.00")
+    path = tmp_path / "instant.csv"
+    path.write_text(chr(10).join(lines), encoding="utf-8")
+
+    column, verdict = identity.earliest_date(read(path), "Paid Out", ("Captured", "Paid Out"))
+
+    assert column == "Captured", verdict.reason
+    assert verdict.holds

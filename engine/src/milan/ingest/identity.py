@@ -11,6 +11,16 @@ A settlement report can say which is which, because its rows are an equation:
     a payment row:  credit - debit  ==  amount - fee - tax
     a refund row:   credit - debit  == -(amount + fee + tax)
 
+or, for a merchant who is an e-commerce operator under Section 194-O and has
+one percent of gross withheld before it reaches them:
+
+    a payment row:  credit - debit  ==  amount - fee - tax - 1% of amount
+    a refund row:   credit - debit  == -(amount + fee + tax)
+
+Both, and never a mixture. Withholding is a fact about the merchant, so it
+applies to every payment row in the file or to none of them - which is what
+keeps two equations from being twice as easy to satisfy as one.
+
 The gateway did that arithmetic when it wrote the file. If a proposed mapping
 is right, the equation holds on every row; if `credit` and `debit` are the
 wrong way round it fails on every payment row; if `amount` is pointed at a
@@ -43,7 +53,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from itertools import pairwise, permutations
 
-from milan.domain.money import Paise
+from milan.domain.money import Paise, apply_rate
+from milan.domain.rates import TDS_194O_RATE
 from milan.ingest.parsing import parse_bool, parse_money, parse_temporal, temporal_patterns
 from milan.ingest.reading import SourceFile
 from milan.ingest.schema import RecordKind
@@ -120,13 +131,28 @@ class Verdict:
     """Whether `account` should describe the settlement equation. The bank
     check reaches its conclusion by elimination and states its own."""
 
+    withheld: bool = False
+    """Whether the rows only foot once 1% of gross is taken off each payment.
+
+    Worth carrying rather than discarding, because it is a finding and not an
+    implementation detail: a file that balances only under the withheld shape
+    is a file belonging to an e-commerce operator, and the import worked that
+    out from the merchant's own numbers without being told.
+    """
+
     @property
     def account(self) -> str:
         """The sentence that goes on screen, and into the saved mapping."""
         if self.holds and self.settlement:
+            withholding = (
+                " once 1% of gross is withheld on each payment, as Section 194-O requires"
+                if self.withheld
+                else ""
+            )
             return (
                 f"the arithmetic holds with these columns: credit - debit "
-                f"reconstructs amount - fee - tax on all {self.checked} rows checked"
+                f"reconstructs amount - fee - tax{withholding} on all "
+                f"{self.checked} rows checked"
             )
         return self.reason
 
@@ -147,9 +173,21 @@ def _rows(source: SourceFile, columns: dict[str, str]) -> list[dict[str, str]]:
 
 
 def _evaluate(
-    records: Sequence[dict[str, str]], columns: dict[str, str], stop_after: int = 0
+    records: Sequence[dict[str, str]],
+    columns: dict[str, str],
+    *,
+    withheld: bool = False,
+    stop_after: int = 0,
 ) -> tuple[int, int]:
     """Rows the equation could be read on, and rows it failed on.
+
+    `withheld` picks which of the two deduction shapes a payment row is
+    expected to have. It is a parameter rather than an alternative allowed per
+    row, because withholding is a property of the merchant: a file where some
+    payments are withheld and others are not is not a 194-O merchant, it is a
+    mapping we have got wrong. Trying each shape over the whole file and
+    requiring one of them to hold everywhere keeps the check as strict as it
+    was with one equation.
 
     `stop_after` abandons a mapping as soon as it has failed that many times.
     A wrong arrangement of the five columns fails on the very first row it can
@@ -171,12 +209,35 @@ def _evaluate(
         checked += 1
         net = values["credit"] - values["debit"]
         settled = values["amount"] - values["fee"] - values["tax"]
+        if withheld:
+            settled -= apply_rate(values["amount"], TDS_194O_RATE)
+        # A refund or an adjustment is recovered whole and carries no
+        # withholding of its own - the tax was withheld when the money came
+        # in, not when it went back out.
         recovered = -(values["amount"] + values["fee"] + values["tax"])
         if net != settled and net != recovered:
             failed += 1
             if stop_after and failed >= stop_after:
                 return checked, failed
     return checked, failed
+
+
+def _best(
+    records: Sequence[dict[str, str]], columns: dict[str, str], stop_after: int = 0
+) -> tuple[int, int, bool]:
+    """The better of the two deduction shapes, and which one it was.
+
+    Plain first. A month with no withholding satisfies the plain shape and
+    fails the withheld one on every payment row, so the ordering costs nothing
+    and means the common case never pays for the rarer one.
+    """
+    checked, failed = _evaluate(records, columns, stop_after=stop_after)
+    if failed == 0:
+        return checked, failed, False
+    held_checked, held_failed = _evaluate(records, columns, withheld=True, stop_after=stop_after)
+    if held_failed < failed:
+        return held_checked, held_failed, True
+    return checked, failed, False
 
 
 def check(source: SourceFile, kind: RecordKind, columns: dict[str, str]) -> Verdict:
@@ -205,7 +266,7 @@ def check(source: SourceFile, kind: RecordKind, columns: dict[str, str]) -> Verd
             f"conclude anything from",
         )
 
-    checked, failed = _evaluate(records, columns)
+    checked, failed, withheld = _best(records, columns)
 
     if checked < MINIMUM_ROWS:
         return Verdict(
@@ -223,7 +284,7 @@ def check(source: SourceFile, kind: RecordKind, columns: dict[str, str]) -> Verd
             f"the arithmetic does not hold with these columns: credit - debit does not "
             f"reconstruct amount - fee - tax on {failed} of {checked} rows",
         )
-    return Verdict(True, checked, 0, "")
+    return Verdict(True, checked, 0, "", withheld=withheld)
 
 
 MOST_UNKNOWN = 3
@@ -308,15 +369,15 @@ def solve(
     if len(records) < MINIMUM_ROWS:
         return None, Verdict(False, len(records), 0, f"only {len(records)} rows to check against")
 
-    solutions: list[dict[str, str]] = []
+    solutions: list[tuple[dict[str, str], bool]] = []
     for arrangement in permutations(free, len(wanted)):
         columns = {**known, **dict(zip(wanted, arrangement, strict=True))}
-        if _evaluate(head, columns, stop_after=1)[1]:
+        if _best(head, columns, stop_after=1)[1]:
             continue
-        checked, failed = _evaluate(records, columns)
+        checked, failed, withheld = _best(records, columns)
         if failed or checked < MINIMUM_ROWS:
             continue
-        solutions.append(columns)
+        solutions.append((columns, withheld))
         if len(solutions) > 1:
             break
 
@@ -333,9 +394,12 @@ def solve(
             f"so the file cannot say which",
         )
 
-    columns = solutions[0]
-    checked, _ = _evaluate(records, columns)
-    return {name: columns[name] for name in wanted}, Verdict(True, checked, 0, "")
+    columns, withheld = solutions[0]
+    checked, _, _ = _best(records, columns)
+    return (
+        {name: columns[name] for name in wanted},
+        Verdict(True, checked, 0, "", withheld=withheld),
+    )
 
 
 def _numeric(source: SourceFile, column: str) -> bool:
@@ -527,13 +591,18 @@ def proven(reason: str) -> bool:
 # ------------------------------------------------------------ dates in order
 
 
-STRICTLY_EARLIER = 0.5
-"""How much of a date column must fall *before* the one it is checked against.
+STRICTLY_EARLIER = MINIMUM_ROWS
+"""How many rows must fall *before* the column they are checked against.
 
-A column that merely never exceeds `settled_at` could be `settled_at` itself,
-copied. Requiring that half the rows are strictly earlier separates the two
-without demanding it of every row - a payment captured and settled on the same
-day is ordinary, and an instant settlement makes every row that shape.
+A count, not a share, and that distinction was a bug. What this rules out is
+one thing: a column that merely never exceeds `settled_at` could be
+`settled_at` itself under another header, and a copy is never earlier on any
+row. A dozen rows that are genuinely earlier rules that out completely.
+
+A share ruled out much more than that. A merchant on instant settlement has
+most of their payouts land the same day they were captured, so the share of
+strictly-earlier rows falls with the share of instant batches - and at a high
+enough share the check would refuse a month for being *too* promptly settled.
 """
 
 
@@ -587,8 +656,13 @@ def earliest_date(
     alive: list[tuple[str, int]] = []
     for name in real:
         column = _dates(source, name)
+        # Days, not instants. A settlement date has no time of day in it, so
+        # comparing a capture timestamp against it reads midnight - and a
+        # payment captured at half past two and settled the same day by
+        # instant settlement looks like a payout that happened before the
+        # money arrived. It is not; they are the same day.
         pairs = [
-            (value, settled)
+            (value.date(), settled.date())
             for value, settled in zip(column, payout, strict=False)
             if value is not None and settled is not None
         ]
@@ -597,7 +671,7 @@ def earliest_date(
         if any(value > settled for value, settled in pairs):
             continue
         earlier = sum(1 for value, settled in pairs if value < settled)
-        if earlier < len(pairs) * STRICTLY_EARLIER:
+        if earlier < STRICTLY_EARLIER:
             continue
         alive.append((name, len(pairs)))
 

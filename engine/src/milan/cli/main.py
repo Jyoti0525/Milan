@@ -841,6 +841,9 @@ def samples(
     ] = Path("milan-samples"),
     seed: SeedOption = 42,
     orders: Annotated[int, typer.Option("--orders", help="How many orders the month holds.")] = 400,
+    withholding: WithholdingOption = False,
+    route: RouteOption = 0.0,
+    instant: InstantOption = 0.0,
 ) -> None:
     """Write sample merchant files, in other people's formats.
 
@@ -854,11 +857,25 @@ def samples(
     `Withdrawal Amount (INR )`, Kotak's `Cr` suffix - because test data
     invented by whoever wrote the reader tends to be data the reader happens
     to handle.
+
+    The three fee-stack switches are here for the same reason they are on
+    `generate`: Route, Section 194-O withholding and instant settlement are
+    facts about which merchant this is rather than tiers of difficulty, so
+    they default off and turning them on is one flag each. A folder written
+    with all three carries transfer rows, a 1% gap on every payout and
+    same-day batches, and reconciles exactly as the plain one does.
     """
     from milan.samples import write_all
 
     root = to.expanduser().resolve()
-    built = write_all(root, seed=seed, orders=orders)
+    built = write_all(
+        root,
+        seed=seed,
+        orders=orders,
+        withholding=withholding,
+        route=route,
+        instant=instant,
+    )
 
     console.print(f"Wrote [bold]{len(built)}[/bold] folders to [dim]{root}[/dim]\n")
     for folder in built:

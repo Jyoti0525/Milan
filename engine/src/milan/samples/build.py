@@ -55,7 +55,14 @@ class Folder:
     files: tuple[str, ...]
 
 
-def month(seed: int = 42, orders: int = 400) -> Dataset:
+def month(
+    seed: int = 42,
+    orders: int = 400,
+    *,
+    withholding: bool = False,
+    route: float = 0.0,
+    instant: float = 0.0,
+) -> Dataset:
     """The month every folder is written from.
 
     The realistic tier rather than the adversarial one. These files exist to
@@ -63,6 +70,21 @@ def month(seed: int = 42, orders: int = 400) -> Dataset:
     engineered to be maximally hostile would make the exception list the
     story - when the story here is that a merchant's own files can be read at
     all.
+
+    The three keyword arguments default off and that is not caution about
+    whether they work. Each is a fact about *which merchant this is*, not a
+    difficulty setting: Section 194-O withholds 1% only from an e-commerce
+    operator, Route exists only for a merchant with linked accounts, and
+    instant settlement is asked for per payout. A month with all three on is
+    as ordinary as a month with none, and defaulting them on would state that
+    every Indian merchant is an operator running a marketplace.
+
+    They default off here for a second reason too. This function produces the
+    corpus every accuracy figure in the project is measured against, so its
+    defaults are the baseline - and a baseline that moves whenever a knob
+    looks interesting is not one. `milan samples --withholding --route ...`
+    turns them on for a folder somebody is about to look at, which is where
+    seeing them matters.
     """
     return ChaosEngine(
         GenerationConfig(
@@ -70,7 +92,9 @@ def month(seed: int = 42, orders: int = 400) -> Dataset:
             difficulty=Difficulty.REALISTIC,
             order_count=orders,
             span_days=28,
-            rates=RateCard(),
+            route_probability=route,
+            instant_settlement_probability=instant,
+            rates=RateCard(tds_applies=withholding),
         )
     ).generate()
 
@@ -295,9 +319,17 @@ BUILDERS = (
 )
 
 
-def write_all(root: Path, *, seed: int = 42, orders: int = 400) -> tuple[Folder, ...]:
+def write_all(
+    root: Path,
+    *,
+    seed: int = 42,
+    orders: int = 400,
+    withholding: bool = False,
+    route: float = 0.0,
+    instant: float = 0.0,
+) -> tuple[Folder, ...]:
     """Build every sample folder under `root`, and return what each one is."""
-    data = month(seed=seed, orders=orders)
+    data = month(seed=seed, orders=orders, withholding=withholding, route=route, instant=instant)
     built: list[Folder] = []
     for name, builder in BUILDERS:
         folder = root / name
