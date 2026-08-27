@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"order_id\": \"PO Number\", \"amount\": \"Value\", \"created_at\": \"Raised On\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.4727928000065731,
+  "prompt_tokens": 385,
+  "completion_tokens": 26
+}

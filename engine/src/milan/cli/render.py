@@ -24,6 +24,7 @@ from milan.evaluation.twice import Twice
 from milan.leaks.clusters import LeakReport
 from milan.llm.pricing import RATES
 from milan.llm.registry import Status
+from milan.samples.measure import Accuracy
 
 console = Console()
 
@@ -639,3 +640,79 @@ def control_markdown(result: Comparison) -> str:
         + " |"
     )
     return "\n".join((CONTROL_OPEN, *header, *rows, MARKDOWN_CLOSE))
+
+
+def accuracy_report(scored: Accuracy) -> Table:
+    """The import marked against an answer key, with the failures named.
+
+    `wrong` is printed first and in red whatever its value, because a report
+    whose worst figure is only visible when it is bad trains people not to
+    look for it. Zero is the result; zero shown plainly is the point.
+
+    Every rate carries the population it was measured over. A bare percentage
+    over an unstated denominator is a mistake this project has already made
+    once, and the fix travels with the figure rather than living in a docstring.
+    """
+    table = Table(
+        box=None, pad_edge=False, title=f"Scored against the answer key ({scored.provider})"
+    )
+    table.add_column("")
+    table.add_column("", justify="right")
+    table.add_column("", style="dim")
+
+    wrong = len(scored.wrong)
+    table.add_row(
+        "settled wrongly",
+        f"[bold red]{wrong}[/bold red]" if wrong else "[bold green]0[/bold green]",
+        "settled without asking, and not what the file holds",
+    )
+    table.add_section()
+    table.add_row(
+        "files placed",
+        f"{scored.kinds_right}/{len(scored.kinds)}",
+        "including the ones that should be left alone",
+    )
+    table.add_row(
+        "columns settled",
+        str(len(scored.settled_right)),
+        scored.rate(scored.settled_right, scored.outcomes),
+    )
+    table.add_row("columns asked about", str(len(scored.asked)), "put to a person")
+    table.add_row(
+        "columns not found",
+        str(len(scored.missed)),
+        "the file has them; the import concluded it had none",
+    )
+
+    if scored.suggested:
+        table.add_section()
+        table.add_row(
+            "suggestions offered",
+            str(len(scored.suggested)),
+            "a question led with a proposed answer",
+        )
+        table.add_row(
+            "suggestions correct",
+            f"{len(scored.suggested_right)}/{len(scored.suggested)}",
+            scored.rate(scored.suggested_right, scored.suggested),
+        )
+
+    for outcome in scored.wrong:
+        table.add_section()
+        table.add_row(
+            f"[red]{outcome.file}[/red]",
+            outcome.field,
+            f"read as {outcome.got!r}, the file holds it in {outcome.expected!r}",
+        )
+
+    for name, expected, got in scored.kinds:
+        if expected == got:
+            continue
+        table.add_section()
+        table.add_row(
+            f"[yellow]{name}[/yellow]",
+            "placed",
+            f"as {got or 'nothing'}, not {expected or 'nothing'}",
+        )
+
+    return table

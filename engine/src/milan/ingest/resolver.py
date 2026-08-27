@@ -29,10 +29,11 @@ Three things get a say, in this order:
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from pathlib import Path
 
+from milan.ingest import identity
 from milan.ingest.parsing import ISO, normalise, parse_temporal
 from milan.ingest.plan import (
     ABSENT,
@@ -752,6 +753,115 @@ def replace_pattern(resolution: FieldResolution, pattern: str) -> FieldResolutio
 # ----------------------------------------------------------------- the plan
 
 
+# ------------------------------------------------------- proving a proposal
+
+
+def _proved_bank(
+    source: SourceFile,
+    resolutions: list[FieldResolution],
+    questions: list[Question],
+    proposer: str,
+) -> tuple[list[FieldResolution], list[Question]] | None:
+    """Settle a statement's amount column where elimination settles it.
+
+    One field, because on a bank statement only one is at risk in this way.
+    `narration` being wrong is visible to anybody reading the output, and
+    `value_date` is the ambiguity nothing can resolve - two real date columns
+    that disagree, where the answer is a fact about the bank rather than about
+    the file. Those keep their questions.
+    """
+    asked = next(
+        (question for question in questions if question.blocking and question.subject == "amount"),
+        None,
+    )
+    if asked is None or not asked.suggested:
+        return None
+
+    verdict = identity.bank_amount(
+        source, asked.suggested, tuple(choice.value for choice in asked.choices)
+    )
+    if not verdict.holds:
+        return None
+
+    settled = [
+        replace(
+            resolution,
+            certainty=Certainty.UNCONFIRMED,
+            column=asked.suggested,
+            reason=verdict.account,
+            proposed_by=proposer,
+        )
+        if resolution.target.name == "amount"
+        else resolution
+        for resolution in resolutions
+    ]
+    return settled, [question for question in questions if question is not asked]
+
+
+def _proved(
+    source: SourceFile,
+    kind: RecordKind,
+    resolutions: list[FieldResolution],
+    questions: list[Question],
+    proposer: str,
+) -> tuple[list[FieldResolution], list[Question]] | None:
+    """Settle the money columns where the file's own arithmetic settles them.
+
+    A settlement export with a processor's own headers reaches this point with
+    `credit`, `debit` and the rest unresolved and a model's suggestion against
+    each - which the resolver would otherwise put to a person one at a time.
+    That is the right default and it is the wrong outcome here, because these
+    five columns are not five independent guesses. They are an equation, and
+    the file states it on every row.
+
+    So the suggestions are taken together, the equation is evaluated on the
+    merchant's own numbers, and if it holds the questions are answered by that
+    rather than by anybody's confidence. If it does not hold - or cannot be
+    run - nothing is settled and every question stands.
+
+    `unconfirmed` rather than `confirmed`, deliberately. The equation proves
+    the set is coherent, not that each column is individually what it says;
+    `fee` and `tax` could be the other way round and it would hold just the
+    same. The screen goes on saying a model chose these and offering to change
+    them.
+    """
+    if kind is RecordKind.BANK_CREDITS:
+        return _proved_bank(source, resolutions, questions, proposer)
+    if kind is not RecordKind.SETTLEMENT_ROWS:
+        return None
+
+    pending = {
+        question.subject: question.suggested
+        for question in questions
+        if question.blocking and question.subject in identity.MONEY_FIELDS and question.suggested
+    }
+    if not pending:
+        return None
+
+    columns = {
+        resolution.target.name: resolution.column
+        for resolution in resolutions
+        if resolution.column is not None
+    }
+    verdict = identity.check(source, kind, {**columns, **pending})
+    if not verdict.holds:
+        return None
+
+    settled = [
+        replace(
+            resolution,
+            certainty=Certainty.UNCONFIRMED,
+            column=pending[resolution.target.name],
+            reason=verdict.account,
+            proposed_by=proposer,
+        )
+        if resolution.target.name in pending
+        else resolution
+        for resolution in resolutions
+    ]
+    return settled, [question for question in questions if question.subject not in pending]
+
+
 class Importer:
     """Reads a folder once, and re-plans it as often as answers arrive.
 
@@ -932,6 +1042,10 @@ class Importer:
             resolutions.append(resolution)
             if question is not None:
                 questions.append(question)
+
+        settled = _proved(source, kind, resolutions, questions, proposal.source or self.consulted)
+        if settled is not None:
+            resolutions, questions = settled
 
         if weak and any(question.blocking for question in questions):
             # A file placed on half its names, which then cannot answer

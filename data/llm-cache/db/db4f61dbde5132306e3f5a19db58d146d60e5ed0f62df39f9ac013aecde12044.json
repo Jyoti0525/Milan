@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"amount\": \"Credit\", \"value_date\": \"Tran Date\", \"narration\": \"Particulars\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 8.734482700005174,
+  "prompt_tokens": 512,
+  "completion_tokens": 29
+}

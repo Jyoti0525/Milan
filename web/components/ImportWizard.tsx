@@ -39,10 +39,11 @@ import {
   askDetail,
   askTitle,
   blockerHelp,
-  CERTAINTY_WORDS,
   fieldName,
   kindMeans,
   kindName,
+  proven,
+  settledBy,
   whyNotUsed,
 } from "@/lib/words";
 import { Badge, type Tone } from "./Badge";
@@ -395,7 +396,7 @@ function FileCard({
           </summary>
           <div className="mt-2 space-y-1 border-l-2 border-[var(--border)] pl-3">
             {mapped.map((row) => {
-              const words = CERTAINTY_WORDS[row.certainty];
+              const words = settledBy(row);
               return (
                 <div
                   key={row.field}
@@ -409,10 +410,8 @@ function FileCard({
                     is the
                   </span>
                   <span className="text-[var(--text-muted)]">{fieldName(row.field)}</span>
-                  <Badge tone={CERTAINTY[row.certainty] ?? "neutral"}>
-                    {row.certainty === "unconfirmed" && row.proposed_by
-                      ? `${row.proposed_by} suggested`
-                      : (words?.label ?? row.certainty)}
+                  <Badge tone={proven(row.reason) ? "good" : (CERTAINTY[row.certainty] ?? "neutral")}>
+                    {words.label}
                   </Badge>
                 </div>
               );

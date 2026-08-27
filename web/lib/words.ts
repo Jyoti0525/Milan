@@ -215,3 +215,41 @@ export function askTitle(subject: string, file: string): string {
 export function askDetail(asks: string, file: string): string {
   return asks.startsWith(`${file}: `) ? asks.slice(file.length + 2) : asks;
 }
+
+/**
+ * A column the file's own arithmetic settled, rather than a person or a name.
+ *
+ * `unconfirmed` used to mean one thing — a model said so and the values did
+ * not object — and the screen said "suggested", which was honest. It now also
+ * covers columns the import *proved*: a settlement report's five money
+ * columns satisfying `credit - debit == amount - fee - tax` on every row, or
+ * a deposit column left standing after the balance and the row number are
+ * eliminated.
+ *
+ * Those are a stronger claim than a suggestion and a weaker one than a
+ * person's answer, so they get their own word. Detected from the reason
+ * rather than from a new certainty value, because the certainty is genuinely
+ * the same — what changed is what backs it.
+ */
+export function proven(reason: string): boolean {
+  return reason.startsWith("the arithmetic holds") || reason.startsWith("it is the only money");
+}
+
+/** The badge for one mapped column, and the sentence behind it. */
+export function settledBy(row: {
+  certainty: string;
+  reason: string;
+  proposed_by: string;
+}): { label: string; means: string } {
+  if (proven(row.reason)) {
+    return { label: "checked", means: row.reason };
+  }
+  if (row.certainty === "unconfirmed" && row.proposed_by) {
+    return {
+      label: `${row.proposed_by} suggested`,
+      means: CERTAINTY_WORDS.unconfirmed.means,
+    };
+  }
+  const words = CERTAINTY_WORDS[row.certainty];
+  return { label: words?.label ?? row.certainty, means: words?.means ?? row.reason };
+}

@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"payment_id\": \"pay_6ov3isy0x4knsf\", \"order_id\": \"order_1soa9xm091zpky\", \"amount\": \"4079.00\", \"captured_at\": \"2026-07-01 10:55:15\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.2165291999990586,
+  "prompt_tokens": 504,
+  "completion_tokens": 78
+}

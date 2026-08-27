@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"utr\": \"Reference No\", \"debit\": \"Amount\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.32958200000575744,
+  "prompt_tokens": 483,
+  "completion_tokens": 17
+}

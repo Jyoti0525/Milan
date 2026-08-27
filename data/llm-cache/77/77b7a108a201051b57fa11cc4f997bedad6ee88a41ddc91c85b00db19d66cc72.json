@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"method\": \"Mode\", \"order_id\": \"Order Ref\", \"on_hold\": \"Held\", \"settlement_utr\": \"Payout UTR\", \"payment_id\": \"Payment Ref\", \"order_receipt\": \"Order Ref\", \"card_type\": \"Card Class\", \"settled\": \"Settled\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.1116822000039974,
+  "prompt_tokens": 1075,
+  "completion_tokens": 71
+}

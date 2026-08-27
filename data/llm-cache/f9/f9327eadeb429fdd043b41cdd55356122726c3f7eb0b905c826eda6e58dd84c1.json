@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"order_receipt\": \"receipt\", \"currency\": \"currency\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.2982990000018617,
+  "prompt_tokens": 479,
+  "completion_tokens": 17
+}

@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"method\": \"method\", \"card_type\": \"card_type\", \"order_id\": \"order_id\", \"settlement_utr\": \"settlement_utr\", \"payment_id\": \"payment_id\", \"order_receipt\": null, \"card_network\": null, \"card_issuer\": null, \"dispute_id\": null, \"on_hold\": \"on_hold\", \"settled\": \"settled\", \"currency\": null}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.4211180999991484,
+  "prompt_tokens": 1075,
+  "completion_tokens": 93
+}

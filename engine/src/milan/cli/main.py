@@ -858,5 +858,44 @@ def samples(
     console.print(f"[dim]uv run milan import --from {root / built[0].name}[/dim]")
 
 
+@app.command(name="measure")
+def measure_command(
+    provider: Annotated[
+        str,
+        typer.Option(
+            "--provider",
+            help="Which model to put the unfamiliar columns to. Omit for none.",
+        ),
+    ] = "",
+    seed: SeedOption = 42,
+    orders: Annotated[int, typer.Option("--orders", help="Orders in the generated month.")] = 400,
+) -> None:
+    """Score the import against files whose answer we already know.
+
+    Every other claim this tool makes is about a merchant's data, where there
+    is no answer key and the honest thing is to prove or refuse. The sample
+    files are the exception: they are generated, so what each column holds is
+    a matter of record, and the import can be marked.
+
+    Two figures, pulling opposite ways. **Wrong** is a column settled without
+    asking, where the answer key says otherwise - the one failure nothing
+    downstream can catch, because reading a debit as a credit balances
+    perfectly upside down. It is required to be zero. **Asked** is how often a
+    person is interrupted, which is the cost of keeping the first at zero and
+    is worth spending arithmetic to reduce.
+
+    With no provider this reports what column names and value shapes achieve
+    alone, which is the configuration every graded number in this project is
+    measured under. With one, the difference is the model's contribution,
+    stated as a count of columns rather than as an adjective.
+    """
+    from milan.llm import registry
+    from milan.samples.measure import measure
+
+    chosen = registry.resolve(provider) if provider else None
+    scored = measure(chosen, seed=seed, orders=orders)
+    console.print(render.accuracy_report(scored))
+
+
 if __name__ == "__main__":
     app()

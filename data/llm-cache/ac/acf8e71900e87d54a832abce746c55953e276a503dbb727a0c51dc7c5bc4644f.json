@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"entity_id\": \"Record ID\", \"type\": \"Record Type\", \"amount\": \"Gross Amount\", \"credit\": \"Amount Paid In\", \"debit\": \"Amount Taken Out\", \"fee\": \"Processing Fee\", \"tax\": \"GST On Fee\", \"created_at\": \"Booked On\", \"settlement_id\": \"Settlement Ref\", \"settled_at\": \"Settled On\"}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 1.5118015999905765,
+  "prompt_tokens": 947,
+  "completion_tokens": 88
+}

@@ -1,0 +1,9 @@
+{
+  "text": "{\"columns\": {\"method\": \"method\", \"card_type\": \"card_type\", \"card_network\": null}}",
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "cached": false,
+  "latency_seconds": 0.3966041000094265,
+  "prompt_tokens": 511,
+  "completion_tokens": 24
+}
