@@ -26,6 +26,11 @@
  * being read, trap focus, and need its own close affordance; this is the same
  * panel in the same place with the other one out of the way, and Escape puts
  * it back.
+ *
+ * Whatever the maximised panel hides, it has to carry. A case at full size
+ * has no queue beside it to click, so `Stepper` and `BackTo` below are not
+ * extras - without them, maximising a case is a dead end you can only leave
+ * by undoing it.
  */
 
 export type Panel = "list" | "detail";
@@ -88,6 +93,71 @@ export function ExpandButton({
       className="grid size-6 shrink-0 place-items-center rounded-[5px] text-[var(--text-subtle)] transition-colors hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
     >
       <Arrows inward={expanded} />
+    </button>
+  );
+}
+
+/**
+ * Moving through the list from inside the case, because the list is not there.
+ *
+ * Maximising the detail hides the queue, which is the point and is also the
+ * problem: working through nine exceptions meant collapsing back to the
+ * split, clicking the next row, and maximising again, nine times. The panel
+ * that took over the screen has to carry the one thing the list was for.
+ *
+ * Position is shown rather than implied. "3 of 9" is what tells somebody they
+ * are working a queue and roughly where they are in it — a bare pair of
+ * arrows says neither, and the ends of the list arrive as a surprise.
+ */
+export function Stepper({
+  at,
+  total,
+  onStep,
+}: {
+  at: number;
+  total: number;
+  onStep: (delta: number) => void;
+}) {
+  if (total < 2 || at < 0) return null;
+  const arrow = (delta: number, glyph: string, label: string) => (
+    <button
+      type="button"
+      onClick={() => onStep(delta)}
+      disabled={at + delta < 0 || at + delta >= total}
+      aria-label={label}
+      title={`${label} (${delta < 0 ? "↑" : "↓"})`}
+      className="grid size-6 place-items-center rounded-[5px] text-[13px] text-[var(--text-subtle)] transition-colors hover:bg-[var(--surface-sunken)] hover:text-[var(--text)] disabled:pointer-events-none disabled:opacity-30"
+    >
+      {glyph}
+    </button>
+  );
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      {arrow(-1, "‹", "Previous")}
+      <span className="tnum px-1 text-[12px] whitespace-nowrap text-[var(--text-subtle)]">
+        {at + 1} of {total}
+      </span>
+      {arrow(1, "›", "Next")}
+    </div>
+  );
+}
+
+/**
+ * The way back to the list, named as the list rather than as an arrow.
+ *
+ * Somebody who maximised a case and wants the queue again has no queue on
+ * screen to click, and the restore control returns the split rather than the
+ * list they were reading. This is the third state made reachable.
+ */
+export function BackTo({ what, onBack }: { what: string; onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-[var(--text-subtle)] transition-colors hover:text-[var(--text)]"
+    >
+      <span aria-hidden="true">&larr;</span>
+      <span className="truncate">{what}</span>
     </button>
   );
 }

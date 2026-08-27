@@ -44,7 +44,7 @@ import {
   type RunView,
 } from "@/lib/api";
 import { ExceptionPanel } from "@/components/ExceptionPanel";
-import { ExpandButton, type Panel } from "@/components/Expand";
+import { BackTo, ExpandButton, type Panel, Stepper } from "@/components/Expand";
 import { ImportWizard } from "@/components/ImportWizard";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { Position } from "@/components/Position";
@@ -336,7 +336,26 @@ export default function Workspace() {
   const selected =
     picked?.key === key && picked.selection.kind === wanted ? picked.selection : null;
 
-  const pick = useCallback((selection: Selection) => setPicked({ key, selection }), [key]);
+  /*
+    Picking a row, and where that leaves the screen.
+
+    A maximised queue hides the panel the case appears in, so clicking a row
+    highlighted it and showed nothing - the bug that shipped with maximising.
+    Restoring the split would answer it and would also undo, on every click,
+    the thing somebody had just asked for.
+
+    So the mode is kept and the subject changes: a big list becomes a big
+    case, and `BackTo` in its header returns the big list. Reading a queue at
+    full size and reading one case at full size are the same intent, and this
+    is the sequence it wants.
+  */
+  const pick = useCallback(
+    (selection: Selection) => {
+      setPicked({ key, selection });
+      setBig((current) => (current === "list" ? "detail" : current));
+    },
+    [key]
+  );
 
   /*
     Re-list rather than push the new import onto the array we hold. The list
@@ -393,6 +412,66 @@ export default function Workspace() {
   }, [view, tab]);
 
   const shown = selected ?? fallback;
+
+  /*
+    Every selectable row on this tab, in the order the list puts them.
+
+    Needed because a maximised case has no list beside it: stepping to the
+    next exception has to mean the next one *as sorted*, and the queue is
+    sorted worst-first rather than by index. Deriving it here rather than
+    inside the list keeps one ordering for both, so "3 of 9" and the third row
+    are the same case.
+  */
+  const ordered = useMemo((): Selection[] => {
+    if (!view) return [];
+    if (tab === "queue") {
+      return sortQueue(view.queue).map(({ index }) => ({ kind: "exception", index }));
+    }
+    if (tab === "proved") {
+      return view.proofs.map((_, index) => ({ kind: "proof", index }));
+    }
+    if (tab === "leaks") {
+      return view.leaks.findings.map((_, index) => ({ kind: "leak", index }));
+    }
+    return [];
+  }, [view, tab]);
+
+  const at = useMemo(
+    () =>
+      shown === null
+        ? -1
+        : ordered.findIndex(
+            (item) => item.kind === shown.kind && item.index === shown.index
+          ),
+    [ordered, shown]
+  );
+
+  const step = useCallback(
+    (delta: number) => {
+      const next = ordered[at + delta];
+      if (next) setPicked({ key, selection: next });
+    },
+    [ordered, at, key]
+  );
+
+  /*
+    Arrow keys, once a case has the screen to itself.
+
+    Bound only while the case is maximised, where there is no list to click
+    and the arrows cannot be what somebody meant by scrolling one. `preventDefault`
+    because the alternative is the panel scrolling *and* the case changing.
+  */
+  useEffect(() => {
+    if (big !== "detail") return;
+    const move = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea")) return;
+      event.preventDefault();
+      step(event.key === "ArrowDown" ? 1 : -1);
+    };
+    window.addEventListener("keydown", move);
+    return () => window.removeEventListener("keydown", move);
+  }, [big, step]);
 
   const detail = useMemo(() => {
     if (tab === "provenance") {
@@ -581,13 +660,27 @@ export default function Workspace() {
               big === "list" ? "hidden" : big === "detail" ? "flex" : "hidden xl:flex"
             }`}
           >
-            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-4 py-2.5">
-              <h2 className="truncate text-[13.5px] font-semibold">{HEADINGS[tab].panel}</h2>
-              <ExpandButton
-                expanded={big === "detail"}
-                onToggle={() => setBig(big === "detail" ? null : "detail")}
-                what={HEADINGS[tab].one}
-              />
+            <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] px-4 py-2.5">
+              {/*
+                At full size the heading gives way to the way back. "The case"
+                is a label for a panel sitting beside its list; with the list
+                gone, the useful thing in that corner is the list.
+              */}
+              {big === "detail" ? (
+                <BackTo what={HEADINGS[tab].title} onBack={() => setBig("list")} />
+              ) : (
+                <h2 className="truncate text-[13.5px] font-semibold">{HEADINGS[tab].panel}</h2>
+              )}
+              <div className="ml-auto flex items-center gap-2">
+                {big === "detail" && (
+                  <Stepper at={at} total={ordered.length} onStep={step} />
+                )}
+                <ExpandButton
+                  expanded={big === "detail"}
+                  onToggle={() => setBig(big === "detail" ? null : "detail")}
+                  what={HEADINGS[tab].one}
+                />
+              </div>
             </div>
             {/*
               A reading width, once there is a screen to spare.
