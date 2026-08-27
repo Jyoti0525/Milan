@@ -54,6 +54,22 @@ def widest_deduction(rates: RateCard) -> Decimal:
     The worst legitimate case is an international card at 3%, the GST charged
     on that fee, and Section 194-O withholding on gross. Anything short by
     more than that is not a fee stack, whatever else it may be.
+
+    What it is a share *of* is worth stating, because it is not what it looks
+    like. The gap this bounds is measured against `expected_net`, which is the
+    sum of the settlement rows' own `credit - debit` - already net of fee, GST
+    and any withholding. So the band is not "how much of the fee stack is
+    missing"; the report has already shown all of it. It is a ceiling on a
+    deduction the report does *not* show, sized by the largest one that could
+    legitimately exist, and the fee stack is the right ruler for that even
+    though it is not the thing being measured.
+
+    The withholding term therefore covers one specific shape: a settlement
+    report written before the tax came off, paid out by a bank that took it.
+    That leaves a credit short by exactly 1% of gross with nothing in the
+    report to explain it. A merchant whose report already nets the withholding
+    - which is the ordinary case, and the one the generator produces - never
+    reaches this rung on account of it.
     """
     worst_fee = max(rates.standard, rates.corporate_card, rates.international_card)
     return worst_fee * (Decimal(1) + rates.gst) + (rates.tds if rates.tds_applies else Decimal(0))

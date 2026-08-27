@@ -28,6 +28,7 @@ first-come. Order of iteration is not evidence.
 
 from __future__ import annotations
 
+from milan.domain.rates import RateCard
 from milan.domain.records import BankCredit
 from milan.recon.batches import BatchGroup, GatewayBatch
 from milan.recon.matching.base import Attempt, Strategy, Verifier, always_valid
@@ -39,7 +40,7 @@ from milan.recon.matching.subset import SubsetSumStrategy
 from milan.recon.matching.tolerance import AmountDateStrategy
 
 
-def default_strategies() -> tuple[Strategy, ...]:
+def default_strategies(rates: RateCard | None = None) -> tuple[Strategy, ...]:
     """The rungs, cheapest and most certain first.
 
     Order is a claim about evidence, not about cost. A reference identifies a
@@ -59,13 +60,20 @@ def default_strategies() -> tuple[Strategy, ...]:
     behind it" into "this is settlement A and it is short by exactly refund R".
     Putting it any earlier would let a near miss claim a settlement that an
     exact rung could have proved.
+
+    `rates` reaches exactly one rung and has to. The shortfall band is the
+    widest deduction the rate card permits, and for a merchant with 1% of
+    gross withheld under Section 194-O that band is a full percentage point
+    wider. Building the rung with a default card while the pipeline runs on a
+    withheld one is how a payout short by exactly the tax the government took
+    comes out as a payout short for no reason.
     """
     return (
         ExactUtrStrategy(),
         AmountDateStrategy(),
         SubsetSumStrategy(),
         FuzzyNarrationStrategy(),
-        ShortfallStrategy(),
+        ShortfallStrategy(rates),
     )
 
 

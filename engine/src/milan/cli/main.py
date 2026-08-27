@@ -36,10 +36,20 @@ from milan.ingest.resolver import Decisions, Importer, decisions_from
 from milan.ingest.schema import RecordKind
 from milan.leaks.clusters import summarise
 from milan.leaks.detector import detect
+from milan.llm.keyfile import load_keyfile
 from milan.llm.provider import NullProvider
 from milan.llm.registry import available, direct, resolve, status, unpinned
 from milan.persistence import store
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
+
+load_keyfile()
+"""Read `engine/.env` before any command runs.
+
+At import rather than inside a callback, because `milan providers` and
+`milan ablate` both reach the registry through module-level defaults, and a
+key loaded after those are evaluated is a key that is not there. Anything
+already exported wins, and nothing here prints a value - see `llm.keyfile`.
+"""
 
 app = typer.Typer(
     add_completion=False,
@@ -662,6 +672,13 @@ def ablate_command(
         str,
         typer.Option("--provider", help="Which model to put the questions to."),
     ] = "ollama",
+    every: Annotated[
+        bool,
+        typer.Option(
+            "--all/--one",
+            help="Put the same shortfalls to every provider that could answer.",
+        ),
+    ] = False,
     seeds: Annotated[int, typer.Option("--seeds", help="How many seeds to run.")] = 5,
     difficulty: DifficultyOption = Difficulty.ADVERSARIAL,
     orders: Annotated[int, typer.Option("--orders", help="Orders per seed.")] = 600,
@@ -689,7 +706,19 @@ def ablate_command(
     runs unchanged; the model is asked afterwards about the same shortfalls,
     and every answer it gives is put through the same arithmetic the rules
     use before it counts for anything.
+
+    `--all` puts the identical shortfalls to every provider that can answer
+    and prints one column each. It is the companion to `milan measure --all`,
+    and it exists because those two commands have different answers: schema
+    resolution stopped depending on a model once the file's own arithmetic
+    could settle it, and this is the part of the system where a model is still
+    load-bearing. A claim that two providers perform the same is a claim, and
+    this is the instrument that would catch it becoming false.
     """
+    if every:
+        _ablate_everything(seeds, difficulty, orders, max_tokens)
+        return
+
     if provider not in available():
         console.print(
             f"[red]No provider called {provider!r}.[/] Registered: {', '.join(available())}."
@@ -729,6 +758,61 @@ def ablate_command(
             "looks exactly like a model that declined."
         )
     console.print(render.ablation_table(result))
+
+
+def _ablate_everything(seeds: int, difficulty: Difficulty, orders: int, max_tokens: int) -> None:
+    """The same shortfalls, put to every provider that could answer them.
+
+    `none` is deliberately absent, and that is the difference from
+    `measure --all`. There, the no-model column is the baseline every graded
+    number is measured under and belongs in the table. Here the question is
+    what a model adds to an explanation, and a provider that returns nothing
+    has no explanation to score - a column of dashes labelled `none` would
+    read as a result rather than as the absence of one.
+    """
+    from milan.llm import registry
+
+    results = []
+    for found in registry.status():
+        if not found.ready or found.name == "none":
+            continue
+        results.append(
+            ablate(
+                registry.resolve(found.name),
+                difficulty,
+                tuple(range(1, seeds + 1)),
+                orders,
+                # From the status rather than from the built provider: what
+                # `resolve` returns is wrapped in its cache, and the wrapper
+                # has no model of its own. Reading it off the wrapper printed
+                # a dash in the column whose whole job is to say which model
+                # a row's numbers belong to.
+                found.model,
+                max_tokens=max_tokens,
+            )
+        )
+
+    if not results:
+        console.print(
+            "[yellow]No provider is ready, so there is nothing to compare.[/] "
+            "`milan providers` says what each one needs, and "
+            "`engine/.env.example` says where a key goes."
+        )
+        return
+
+    short = [result.provider for result in results if result.answered < result.asked]
+    if short:
+        # The dangerous case, because it still prints a rate. Groq's free tier
+        # is eight thousand tokens a minute, and the first run of this against
+        # it answered ten of a hundred and ten and reported 2.7% agreement - a
+        # measurement of a rate limit wearing the model's name.
+        console.print(
+            f"[yellow]{', '.join(short)} left questions unanswered.[/] Those are "
+            "scored as disagreements, so their rates below are floors rather "
+            "than estimates - a free tier that ran out of budget looks exactly "
+            "like a model that declined."
+        )
+    console.print(render.ablation_parity(results))
 
 
 @app.command(name="twice")

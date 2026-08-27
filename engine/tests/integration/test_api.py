@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 from milan.api.app import create_app
 from milan.chaos.config import Difficulty, GenerationConfig
 from milan.chaos.generator import ChaosEngine
+from milan.domain.rates import RateCard
 from milan.evaluation.metrics import Scorecard
 from milan.persistence import store
 
@@ -42,6 +43,28 @@ def populated(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.fixture(scope="module")
 def client(populated: Path) -> TestClient:
     return TestClient(create_app(populated))
+
+
+@pytest.fixture(scope="module")
+def operator(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A month belonging to an e-commerce operator who also uses Route.
+
+    Kept apart from `populated` rather than folded into it. The ordinary
+    merchant is the common case and is what the empty-findings test needs, and
+    one fixture carrying every feature at once would leave nothing to check
+    that absence against.
+    """
+    root = tmp_path_factory.mktemp("api-operator")
+    config = GenerationConfig(
+        seed=7,
+        difficulty=Difficulty.REALISTIC,
+        order_count=200,
+        route_probability=0.30,
+        instant_settlement_probability=0.35,
+        rates=RateCard(tds_applies=True),
+    )
+    store.save_dataset(ChaosEngine(config).generate(), root, config)
+    return root
 
 
 class TestTheRunsItCanSee:
@@ -96,10 +119,42 @@ class TestOneRun:
         """One response, because they are one consistent picture of one run."""
         body = client.get("/api/runs/adversarial/42").json()
 
-        assert set(body) == {"summary", "queue", "proofs", "leaks"}
+        assert set(body) == {"summary", "queue", "proofs", "leaks", "merchant"}
         assert body["summary"]["seed"] == 42
         assert body["queue"]
         assert body["proofs"]
+
+    def test_an_ordinary_merchant_produces_no_findings_about_themselves(
+        self, client: TestClient
+    ) -> None:
+        """Empty is the right answer, and it has to be sent rather than omitted.
+
+        Nothing withheld, nothing routed onward, nothing settled the same day
+        is what almost every merchant looks like, and the screen shows no strip
+        at all for it. A field that vanished when there was nothing to say
+        would make "we did not look" and "we looked and found nothing"
+        indistinguishable on the wire.
+        """
+        body = client.get("/api/runs/adversarial/42").json()
+
+        assert body["merchant"] == []
+
+    def test_a_finding_carries_the_population_it_was_counted_over(self, operator: Path) -> None:
+        """`278` is a number and `278 of 278` is the evidence.
+
+        The browser is not trusted to know which denominator applies, because
+        the three findings are counted over three different populations -
+        settled payments, every row in the report, and payments carrying both
+        dates. Sending the count alone would put a plausible fraction on screen
+        with the wrong bottom half.
+        """
+        run = TestClient(create_app(operator)).get("/api/runs/realistic/7").json()
+
+        assert run["merchant"], "an operator using Route should have findings"
+        for finding in run["merchant"]:
+            assert set(finding) == {"name", "held", "rows", "of", "because"}
+            assert finding["of"] >= finding["rows"]
+            assert finding["because"]
 
     def test_every_proof_rebuilds_exactly_what_the_bank_paid(self, client: TestClient) -> None:
         """The running total is computed server-side precisely so this can be

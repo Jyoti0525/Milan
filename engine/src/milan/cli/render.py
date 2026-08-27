@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 from rich.console import Console
 from rich.table import Table
 
+from milan.domain.merchant import MerchantProfile
 from milan.domain.money import Paise, format_inr
 from milan.domain.results import Proof, ReconReport
 from milan.evaluation.ablation import Ablation
@@ -33,6 +34,38 @@ console = Console()
 _NUMERIC = {"justify": "right", "no_wrap": True}
 
 
+def merchant_table(profile: MerchantProfile) -> Table | None:
+    """Who the files say this merchant is, or nothing if they say nothing.
+
+    Only the facts that turned out to be true, plus anything the rows could
+    not settle. A list of three lines saying `no` is not a finding, and a
+    screen that prints one trains the reader to stop looking at it.
+    """
+    shown = [*profile.named, *profile.questions]
+    if not shown:
+        return None
+
+    table = Table(
+        title="Who this merchant is, read from their own rows",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Finding")
+    table.add_column("Rows", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Because")
+
+    for finding in shown:
+        name = (
+            f"[yellow]{finding.name}?[/yellow]"
+            if finding.held is None
+            else f"[green]{finding.name}[/green]"
+        )
+        table.add_row(name, finding.share, finding.because)
+    return table
+
+
 def report_summary(report: ReconReport) -> None:
     """What one reconciliation run did."""
     table = Table(title=None, box=None, pad_edge=False, show_header=False)
@@ -47,6 +80,11 @@ def report_summary(report: ReconReport) -> None:
     table.add_row("Throughput", f"{report.records_per_second:,.0f} records/s")
 
     console.print(table)
+
+    merchant = merchant_table(report.profile)
+    if merchant is not None:
+        console.print()
+        console.print(merchant)
 
     if report.exceptions:
         console.print()
@@ -413,6 +451,92 @@ def curve_markdown(result: Curve) -> str:
         for measure in result.measures()
     )
     return "\n".join((CURVE_OPEN, *header, *rows, MARKDOWN_CLOSE))
+
+
+def ablation_parity(results: Sequence[Ablation]) -> Table:
+    """The same shortfalls, the same verifier, one column per provider.
+
+    `milan measure --all` answers whether a model helps decide what a column
+    is, and the answer there is that the file's own arithmetic decides it, so
+    every provider reaches the same mapping. This answers the other question,
+    and it is the one where a model can still earn its place: given a payout
+    that arrived short and a report the rules could not explain, does this
+    model name the reason - and does the name survive the arithmetic.
+
+    Read the rows in this order.
+
+    **Identifiers invented** is the one that must be zero. A proposal naming a
+    refund that is not in the report sends a finance team through their ledger
+    looking for something that never existed, and it is the only failure here
+    that costs a person time rather than a token.
+
+    **Agreement** is scored on shortfalls the rules already named, so it is a
+    competence check and nothing more. It cannot move a graded number, because
+    the rules had already answered.
+
+    **Contribution** is the only figure that could justify a model being in
+    the pipeline at all: shortfalls the rules could *not* name, where the
+    model proposed something that then passed the same arithmetic the rules
+    use. A zero here with a healthy agreement rate is a model that is
+    competent and unnecessary, which is a real and reportable result.
+
+    **Rejected by arithmetic** is not a failure column. It is the veto
+    working: every one of these was discarded before anything reached a
+    screen, and a provider with a high count is being caught rather than
+    trusted.
+
+    **Answered** guards all of it. A free tier that ran out of budget looks
+    exactly like a model that declined, and both are scored as disagreements -
+    so a rate underneath an incomplete `answered` is a floor, not an estimate.
+    """
+    table = Table(
+        title="The same shortfalls, scored per provider",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Measure")
+    for result in results:
+        table.add_column(result.provider, justify="right")
+
+    def row(label: str, cell: Callable[[Ablation], str]) -> None:
+        table.add_row(label, *(cell(result) for result in results))
+
+    table.add_row(
+        "identifiers invented",
+        *(
+            f"[bold red]{result.invented_ids}[/bold red]"
+            if result.invented_ids
+            else "[bold green]0[/bold green]"
+            for result in results
+        ),
+    )
+    table.add_section()
+    row("model", lambda result: result.model or "-")
+    row("questions answered", lambda result: f"{result.answered}/{result.asked}")
+    row(
+        "agreement with the rules",
+        lambda result: (
+            f"{result.agreement_rate:.1%} of {result.agreement_cases}"
+            if result.agreement_cases
+            else "-"
+        ),
+    )
+    row(
+        "contribution beyond them",
+        lambda result: (
+            f"{result.contribution_rate:.1%} of {result.open_cases}"
+            if result.open_cases
+            else "0 of 0"
+        ),
+    )
+    row("rejected by arithmetic", lambda result: str(result.rejected))
+    table.add_section()
+    row("tokens", lambda result: f"{result.tokens:,}")
+    row("replayed from cache", lambda result: f"{result.replayed}/{result.asked}")
+    row("model time, as measured", lambda result: f"{result.seconds:,.1f}s")
+    return table
 
 
 def ablation_table(result: Ablation) -> Table:

@@ -31,16 +31,33 @@ from milan.domain.calendar import (
     add_working_days,
 )
 from milan.domain.enums import CardType
+from milan.domain.merchant import MerchantProfile, profile_of
 from milan.domain.rates import RateCard
-from milan.domain.records import BankCredit, Payment, SettlementRow
+from milan.domain.records import Payment, SettlementRow
 from milan.domain.results import Proof, ReconException, ReconReport, UnprovenCredit
 from milan.leaks.detector import detect
 from milan.recon.batches import BatchGroup, GatewayBatch, rebuild_batches
 from milan.recon.inputs import ReconInput
 from milan.recon.matching.base import Attempt, Matcher
-from milan.recon.matching.cascade import Cascade
+from milan.recon.matching.cascade import Cascade, default_strategies
 from milan.recon.triage import Categoriser
 from milan.recon.waterfall import provable, prove
+
+
+@dataclass(frozen=True, slots=True)
+class Reading:
+    """What one run decided about the merchant before it started matching.
+
+    Bundled rather than passed as three arguments because they are one
+    decision: the profile is what was read, the rate card is what that means
+    for the arithmetic, and the categoriser is the thing that will explain a
+    failure in those terms. Splitting them is how two of the three end up
+    describing a different merchant from the third.
+    """
+
+    profile: MerchantProfile
+    rates: RateCard
+    categoriser: Categoriser
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,38 +78,55 @@ class ReconciliationPipeline:
         an adaptive policy and have every number downstream produced by the
         same code. A benchmark that reimplements the pipeline to run its
         alternative arm is measuring two pipelines.
+
+        `rates` left unset means "read the merchant off their own files", and
+        that is the setting every real import runs under - nobody hands a
+        finance team a rate card along with their bank statement. Passing one
+        explicitly means "I know this merchant's contract", which is what
+        every measured number in this project does, so that a graded figure
+        cannot move because a detector changed its mind. That distinction is
+        why this is `None` rather than a `RateCard()` default.
         """
-        self._rates = rates if rates is not None else RateCard()
-        self._cascade = cascade if cascade is not None else Cascade()
-        self._categoriser = Categoriser(self._rates)
+        self._rates = rates
+        self._cascade = cascade
 
     def run(self, data: ReconInput, metadata: RunMetadata) -> ReconReport:
         started = time.perf_counter()
 
+        # Read before anything else runs. The shortfall rung derives its
+        # tolerance from the rate card, so a merchant identified after the
+        # cascade has finished would have been identified too late to matter.
+        reading = self._read(data)
+
         batches = rebuild_batches(data.settlement_rows)
         by_id = {batch.settlement_id: batch for batch in batches}
-        cascade = self._cascade.with_verifier(self._provable)
+        cascade = self._cascade_for(reading).with_verifier(
+            lambda credit, group: provable(credit, group, reading.rates)
+        )
         attempts = cascade.run(data.bank_credits, batches)
 
-        proofs, exceptions, claimed, shortfalls = self._prove_matches(data, by_id, attempts)
+        proofs, exceptions, claimed, shortfalls = self._prove_matches(
+            data, by_id, attempts, reading
+        )
         withdrawn_explanations, withdrawn_shortfalls = self._explain_unmatched(
-            data, batches, by_id, attempts
+            data, batches, by_id, attempts, reading
         )
         exceptions.extend(withdrawn_explanations)
         shortfalls.extend(withdrawn_shortfalls)
         exceptions.extend(
-            self._categoriser.missing_settlement(batch)
+            reading.categoriser.missing_settlement(batch)
             for batch in batches
             if batch.settlement_id not in claimed
         )
-        exceptions.extend(self._find_unsettled_payments(data))
+        exceptions.extend(self._find_unsettled_payments(data, reading))
 
         return ReconReport(
+            profile=reading.profile,
             # Run last and kept apart from the exceptions. Every row this
             # finds reconciled perfectly, which is the whole point of it -
             # filing these among the things that failed to reconcile would
             # bury the only finding that survives the books balancing.
-            leaks=detect(data.settlement_rows, self._rates),
+            leaks=detect(data.settlement_rows, reading.rates),
             seed=metadata.seed,
             difficulty=metadata.difficulty,
             records_processed=data.record_count,
@@ -104,15 +138,31 @@ class ReconciliationPipeline:
 
     # ------------------------------------------------------------- internals
 
-    def _provable(self, credit: BankCredit, group: BatchGroup) -> bool:
-        """The veto the cascade consults before accepting any rung's claim."""
-        return provable(credit, group, self._rates)
+    def _read(self, data: ReconInput) -> Reading:
+        """Identify the merchant, unless someone has already said who they are."""
+        profile = profile_of(data.settlement_rows)
+        rates = self._rates if self._rates is not None else profile.rates()
+        return Reading(profile=profile, rates=rates, categoriser=Categoriser(rates))
+
+    def _cascade_for(self, reading: Reading) -> Matcher:
+        """The rungs, built against the rate card this run settled on.
+
+        A cascade handed in from outside is used as it arrived. The benchmark
+        builds one policy and compares it against another, and rebuilding it
+        here would silently swap out the very thing being measured - so the
+        one caller that supplies a cascade is also the one that supplies a
+        rate card, and neither is second-guessed.
+        """
+        if self._cascade is not None:
+            return self._cascade
+        return Cascade(default_strategies(reading.rates))
 
     def _prove_matches(
         self,
         data: ReconInput,
         by_id: dict[str, GatewayBatch],
         attempts: dict[str, Attempt],
+        reading: Reading,
     ) -> tuple[list[Proof], list[ReconException], set[str], list[UnprovenCredit]]:
         """Reconstruct every claimed credit, and drop the ones that will not.
 
@@ -136,11 +186,11 @@ class ReconciliationPipeline:
             group = BatchGroup.of(*(by_id[sid] for sid in attempt.settlement_ids))
             claimed.update(group.settlement_ids)
 
-            result = prove(credit, group, attempt.strategy, attempt.confidence, self._rates)
+            result = prove(credit, group, attempt.strategy, attempt.confidence, reading.rates)
             if isinstance(result, UnprovenCredit):
                 shortfalls.append(result)
                 exceptions.append(
-                    self._categoriser.unproven_credit(result, group, data.settlement_rows)
+                    reading.categoriser.unproven_credit(result, group, data.settlement_rows)
                 )
             else:
                 proofs.append(result)
@@ -153,6 +203,7 @@ class ReconciliationPipeline:
         batches: tuple[GatewayBatch, ...],
         by_id: dict[str, GatewayBatch],
         attempts: dict[str, Attempt],
+        reading: Reading,
     ) -> tuple[list[ReconException], list[UnprovenCredit]]:
         """Say what is wrong with each credit nothing could claim.
 
@@ -182,18 +233,18 @@ class ReconciliationPipeline:
             withdrawn = [by_id[sid] for sid in attempt.withdrawn_ids if sid in by_id]
             if withdrawn:
                 group = BatchGroup.of(*withdrawn)
-                result = prove(credit, group, attempt.strategy, attempt.confidence, self._rates)
+                result = prove(credit, group, attempt.strategy, attempt.confidence, reading.rates)
                 if isinstance(result, UnprovenCredit):
                     shortfalls.append(result)
                     explanations.append(
-                        self._categoriser.unproven_credit(result, group, data.settlement_rows)
+                        reading.categoriser.unproven_credit(result, group, data.settlement_rows)
                     )
                     continue
 
-            explanations.append(self._categoriser.unmatched_credit(credit, attempt, batches))
+            explanations.append(reading.categoriser.unmatched_credit(credit, attempt, batches))
         return explanations, shortfalls
 
-    def _find_unsettled_payments(self, data: ReconInput) -> list[ReconException]:
+    def _find_unsettled_payments(self, data: ReconInput, reading: Reading) -> list[ReconException]:
         """Captured money the settlement report never accounts for."""
         cutoff = _report_complete_to(data.settlement_rows)
         if cutoff is None:
@@ -204,7 +255,7 @@ class ReconciliationPipeline:
         } | {row.entity_id for row in data.settlement_rows}
 
         return [
-            self._categoriser.unsettled_payment(payment, cutoff)
+            reading.categoriser.unsettled_payment(payment, cutoff)
             for payment in data.payments
             if payment.payment_id not in reported and _due_by(payment) <= cutoff
         ]

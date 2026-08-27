@@ -148,10 +148,38 @@ export interface RunSummary {
   explained_rate: number;
 }
 
+/**
+ * One fact about the merchant, read off their own settlement rows.
+ *
+ * `held` is three-valued on purpose. `true` and `false` are conclusions;
+ * `null` means the rows disagree with each other, which is neither, and is
+ * the only case where a person has to be asked.
+ *
+ * `rows` never travels without `of`. A finding that says "278" says nothing;
+ * one that says "278 of 278" is the evidence.
+ */
+export interface Finding {
+  name: string;
+  held: boolean | null;
+  rows: number;
+  of: number;
+  because: string;
+}
+
 export interface RunView {
   summary: RunSummary;
   queue: QueueItem[];
   proofs: Proof[];
+  /**
+   * Who this merchant turned out to be. Empty for an ordinary one, which is
+   * the common case and reads correctly as one — nothing withheld, nothing
+   * routed, nothing settled early.
+   *
+   * Already filtered by the engine to what is true plus what is unsettled, so
+   * the browser renders the list rather than deciding what belongs in it. Two
+   * copies of that rule is two answers to "is this an e-commerce operator".
+   */
+  merchant: Finding[];
   /** Charges above contract, on rows that reconciled. Empty on a clean tier,
    *  and the screen says so rather than showing nothing. */
   leaks: LeakFindings;
@@ -272,6 +300,7 @@ export interface ImportView {
   provenance: ImportProvenance;
   queue: QueueItem[];
   proofs: Proof[];
+  merchant: Finding[];
   leaks: LeakFindings;
 }
 

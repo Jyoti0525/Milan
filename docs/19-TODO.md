@@ -74,6 +74,23 @@ untested end to end is the most serious gap found.
 - [x] Confirm the oracle test still passes with withholding present
 - [x] Confirm the "TDS" label appears only at the statutory rate, and the
       fallback label appears otherwise
+- [x] Read it off the merchant's own rows instead of asking anyone.
+      `domain/merchant.py` concludes an e-commerce operator only from
+      unanimity - every settled payment short by exactly 1% of its own gross -
+      and refuses when the rows disagree, because a majority is the shape of
+      both an operator with anomalies and a merchant being overcharged.
+- [x] Carry the reading into the reconciliation. The shortfall rung derived
+      its band from a rate card the cascade never received, so a pipeline told
+      about a withholding had one rung that could not hear it.
+
+**Closed.** A month with all three of 194-O, Route and instant settlement on
+reconciles at 100% match, 100% precision, 100% refusal, and names all three on
+screen without being configured. What has *not* been shown is the withholding
+changing a graded number: `expected_net` is the settlement rows' own net, so
+the withholding is already inside it, and reading the merchant leaves every
+figure on this corpus exactly where it was. It changes what is on screen and
+what the tolerance is derived from, and saying otherwise would be inventing a
+result.
 
 ### 2. "UTR corrupted" actually means "UTR deleted"
 

@@ -31,7 +31,12 @@ from milan.api.service import (
 )
 from milan.api.staging import StagingError, UnknownStagingError
 from milan.ingest.build import NotReadyError
+from milan.llm.keyfile import load_keyfile
 from milan.persistence.store import StaleDatasetError
+
+load_keyfile()
+"""Read `engine/.env` before the app is built, for the same reason the CLI
+does: anything already exported wins, and nothing here prints a value."""
 
 DEV_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
 """The Next.js dev server on its usual port, and nothing else.

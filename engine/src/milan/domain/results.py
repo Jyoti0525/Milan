@@ -15,6 +15,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from milan.domain.enums import ExceptionCode, MatchStrategy
+from milan.domain.merchant import MerchantProfile, profile_of
 from milan.domain.money import ZERO, Paise
 
 
@@ -195,6 +196,20 @@ class ReconReport(BaseModel):
     proofs: tuple[Proof, ...]
     exceptions: tuple[ReconException, ...]
     duration_seconds: float
+
+    profile: MerchantProfile = Field(default_factory=lambda: profile_of(()))
+    """Who the merchant turned out to be, read off their own settlement rows.
+
+    Carried on the report rather than recomputed by whoever displays it,
+    because it is not a presentation detail: the withholding finding decides
+    how wide a legitimate shortfall may be, so a screen that worked it out
+    again could disagree with the run it is describing.
+
+    It defaults to a profile of no rows, so a report deserialised from an
+    archive written before this existed still loads. Every finding in that
+    default is `False` over a population of zero, which reads as "nothing was
+    read" rather than as a conclusion - the count is printed beside every
+    finding for exactly this reason."""
 
     leaks: tuple[Leak, ...] = ()
     """Rows charged above the merchant's contracted rate.

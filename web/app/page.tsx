@@ -46,6 +46,7 @@ import {
 import { ExceptionPanel } from "@/components/ExceptionPanel";
 import { BackTo, ExpandButton, type Panel, Stepper } from "@/components/Expand";
 import { ImportWizard } from "@/components/ImportWizard";
+import { Merchant } from "@/components/Merchant";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { Position } from "@/components/Position";
 import { TopBar } from "@/components/TopBar";
@@ -582,6 +583,14 @@ export default function Workspace() {
           ) : (
             view && <Metrics summary={view.summary} />
           )}
+          {/*
+            Under the figures, above the queue, and gone entirely when there
+            is nothing to say. It answers a question the metrics cannot —
+            *why* is this payout smaller than these sales — and it belongs
+            beside them rather than in a tab, because it is context for every
+            row in the run rather than a list of its own.
+          */}
+          {view && <Merchant findings={view.merchant} />}
           {loading && (
             <div className="card px-5 py-4 text-[13px] text-[var(--text-subtle)]">Reconciling…</div>
           )}

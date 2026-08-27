@@ -1024,3 +1024,52 @@ If a decision is not here, it is not settled.
      who owns it knows. Recorded as a decision rather than as the absence of
      one, because the column names that placed it have not changed and would
      place it again on the next re-plan.
+222. **Who the merchant is, is read rather than configured.** Section 194-O
+     withholding, Route and instant settlement were three generator flags that
+     defaulted off, and the reason they defaulted off was right - each is a
+     fact about *which merchant this is*, not a tier of difficulty, and
+     defaulting them on would state that every Indian merchant is an operator
+     running a marketplace. What was wrong was that nothing on the reading
+     side could tell. `domain/merchant.py` reads all three off the settlement
+     rows: a transfer row says `transfer` in its own type column, a same-day
+     payout is a date beside a date, and a withholding is the gap between what
+     a row was worth and what it credited. Nobody is asked, because the file
+     already said.
+223. **A finding is three-valued, and the third value is the point.** Every
+     payment short by exactly 1% of its own gross is an operator. None of them
+     is an ordinary merchant. *Most* of them is neither: it is the shape of a
+     194-O merchant with anomalous payouts and of an ordinary merchant being
+     overcharged a percent, and those two want opposite responses - a wider
+     tolerance, or an exception on every affected row. So `held is None` is a
+     real answer that reaches the screen as a question, rather than a coin
+     flip with a confident caption on it.
+224. **The shortfall rung was built on a rate card nobody handed it.** The
+     cascade constructed `ShortfallStrategy()` with a default card, so the
+     pipeline could be told a merchant was withheld from and the one rung
+     whose tolerance depends on it would not hear. Found by wiring the profile
+     through and asking what actually consumes `tds_applies`. It changes no
+     measured number on this corpus and is still a defect: the band was
+     independent of the card in a function whose docstring derives it from
+     one.
+225. **The band is a ceiling on what the report does *not* show.** Same
+     function, a second thing wrong with it - the gap it bounds is measured
+     against `expected_net`, which is the settlement rows' own `credit -
+     debit` and therefore already net of fee, GST and any withholding. So the
+     fee stack is the ruler and not the thing being measured, and the
+     docstring read as though the whole stack could be missing. Corrected in
+     place, because a comment about a tolerance is load-bearing.
+226. **A key belongs in a file the repository ignores.** Exporting it leaves
+     it in shell history, putting it on a command line leaves it in the
+     process table, and pasting it anywhere leaves it somewhere backed up and
+     outside your control. `engine/.env` was already in `.gitignore`;
+     `llm/keyfile.py` reads it, never overrides a key already exported, and
+     returns names rather than values so no caller can print one.
+227. **`measure --all` and `ablate --all` have different answers, and both are
+     worth printing.** Schema resolution stopped depending on a model once the
+     file's own arithmetic could settle it, so every provider reaches the same
+     mapping and the parity table is a row of identical columns - which is a
+     result, and the instrument that would catch it becoming false. Shortfall
+     triage is where a model is still load-bearing, and there the local 3B
+     model agrees with the rules 14.5% of the time over ten adversarial seeds.
+     Reporting one number for "how good is the model" would have averaged a
+     part that no longer needs one with a part that does.

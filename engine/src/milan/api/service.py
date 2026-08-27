@@ -25,6 +25,7 @@ from milan.api.staging import Staged, StagingArea
 from milan.chaos.config import Difficulty
 from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType, ExceptionCode
+from milan.domain.merchant import Finding
 from milan.domain.money import Paise
 from milan.domain.records import BankCredit
 from milan.domain.results import Proof, ReconException, ReconReport
@@ -263,6 +264,20 @@ class RunSummary(BaseModel):
     explained_rate: float
 
 
+def _merchant(report: ReconReport) -> tuple[Finding, ...]:
+    """The findings worth putting on a screen, in one place for both screens.
+
+    Only what turned out to be true of this merchant, plus anything their rows
+    could not settle. Three lines saying `no` is not a finding, and a panel
+    that shows one trains the reader to stop looking at it.
+
+    Applied here rather than in the browser so the terminal and the web agree
+    about what counts as a finding. Two copies of that rule is two answers to
+    "is this merchant an e-commerce operator", eventually.
+    """
+    return (*report.profile.named, *report.profile.questions)
+
+
 class RunView(BaseModel):
     """Everything one screen needs, in one response.
 
@@ -276,6 +291,14 @@ class RunView(BaseModel):
     summary: RunSummary
     queue: tuple[QueueItem, ...]
     proofs: tuple[ProofView, ...]
+    merchant: tuple[Finding, ...] = ()
+    """Who this merchant turned out to be, read off their own rows.
+
+    Empty for an ordinary merchant, which is the common case and reads
+    correctly as one - nothing was withheld, nothing was routed, nothing
+    settled early. Each finding carries the population it was counted over,
+    because a count with no denominator is not a measurement."""
+
     leaks: LeakFindings
     """Charges above contract, on rows that reconciled. Always present, and
     empty on a clean tier - a run that found none has to be able to say so,
@@ -427,6 +450,7 @@ class ImportView(BaseModel):
     provenance: ImportProvenance
     queue: tuple[QueueItem, ...]
     proofs: tuple[ProofView, ...]
+    merchant: tuple[Finding, ...] = ()
     leaks: LeakFindings
 
 
@@ -595,6 +619,7 @@ class Service:
             summary=self._summary(dataset, data, report),
             queue=self._queue(report, data, credits, batches),
             proofs=self._proofs(report, credits),
+            merchant=_merchant(report),
             leaks=self._leaks(data, report),
         )
 
@@ -765,6 +790,7 @@ class Service:
 
         credits, batches = _index(data)
         return ImportView(
+            merchant=_merchant(report),
             summary=_import_summary(slug, record, data, report),
             provenance=ImportProvenance(
                 source_root=record.source_root,
