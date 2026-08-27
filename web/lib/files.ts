@@ -138,23 +138,36 @@ export async function fromDrop(transfer: DataTransfer): Promise<File[]> {
 }
 
 /**
- * The other folder picker, and why there are two.
+ * Asking for a whole folder, and why it is no longer what we ask for.
  *
- * `<input webkitdirectory>` makes Chrome raise a centred modal — "Upload 7
- * files to this site? Only do this if you trust the site." — over the dialog
- * a merchant is halfway through. It cannot be restyled, replaced or
- * suppressed by the page, and it should not be: it is the browser asking
- * about *us*, and a site that could skin that prompt could forge it.
+ * Both folder paths raise a prompt of the browser's own, and neither can be
+ * restyled, replaced or suppressed by the page — nor should it be, since a
+ * site that could skin that prompt could forge it.
  *
- * `showDirectoryPicker` asks differently. The permission is granted inside
- * the folder chooser itself and Chrome confirms it in a bubble under the
- * address bar, so the flow reads as "choose a folder" rather than as a
- * security warning arriving mid-task. Same access, same consent, calmer
- * shape.
+ *   `<input webkitdirectory>`  "Upload 7 files to this site?"
+ *                              Only do this if you trust the site.
+ *   `showDirectoryPicker()`    "Allow this site to view and copy files?"
  *
- * It is Chromium-only, hence `null` for "this browser cannot" — distinct from
- * `[]` for "the person cancelled". Firefox and Safari fall back to the input
- * and see the prompt, and a drag-and-drop raises nothing anywhere.
+ * The second reads more calmly and still reads as a security question, and it
+ * arrives over a dialog somebody is halfway through handing bank statements
+ * to. That is the wrong moment to be asked whether this site can be trusted,
+ * and it was arriving on the default path.
+ *
+ * So it is not the default path any more. Two ways in raise nothing at all in
+ * any browser:
+ *
+ *   dragging the folder onto the drop zone            — `fromDrop`
+ *   picking files with a plain multi-file input       — no prompt, ever
+ *
+ * A multi-file input is not a lesser folder picker. It opens inside the
+ * folder, Ctrl+A takes everything in it, and the result is the same list —
+ * without the browser interrupting to ask about us. What it cannot do is
+ * recurse into subfolders, which a books folder does not have.
+ *
+ * `pickDirectory` stays for the person who explicitly asks for it, because
+ * removing a capability to avoid a prompt would be answering the wrong
+ * question. It is Chromium-only, hence `null` for "this browser cannot" —
+ * distinct from `[]` for "the person cancelled".
  */
 export function canPickDirectory(): boolean {
   return typeof window !== "undefined" && "showDirectoryPicker" in window;

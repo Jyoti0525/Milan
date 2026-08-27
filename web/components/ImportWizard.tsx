@@ -85,7 +85,12 @@ function Dropzone({
   const folder = useRef<HTMLInputElement>(null);
 
   /**
-   * The folder button, preferring the picker that does not alarm anybody.
+   * The folder route, which is now asked for rather than defaulted to.
+   *
+   * Every way of handing a browser a whole folder raises a permission prompt
+   * of the browser's own, so this is behind a link that says so first. The
+   * two paths people are actually offered - a drop, or a multi-file picker -
+   * reach the same files and raise nothing.
    *
    * `pickDirectory` returns null only where the browser has no such API, and
    * that is the one case worth falling back for. A cancelled picker returns
@@ -156,49 +161,67 @@ function Dropzone({
             type="button"
             className="btn btn-primary"
             disabled={busy}
-            onClick={choose}
-          >
-            {busy ? "Reading\u2026" : "Choose a folder"}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={busy}
             onClick={() => files.current?.click()}
           >
-            Or pick files
+            {busy ? "Reading…" : adding ? "Choose a file" : "Choose the files"}
           </button>
         </div>
 
         {/*
-          The browser's own confirmation.
+          The prompt, and how it stopped arriving.
 
-          Picking a folder makes Chrome put up "Upload 4 files to this site?"
-          in its own chrome, and a page cannot restyle it, replace it or
-          suppress it - which is the point of it. What we can do is stop it
-          being a surprise, because an unexplained security prompt in the
-          middle of handing over bank statements is exactly where somebody
-          sensible stops.
+          Both ways of handing over a *folder* make the browser interrupt with
+          a question about this site - "Upload 7 files to this site?" from the
+          input, "Allow this site to view and copy files?" from the directory
+          picker. A page cannot restyle either, and a page that could would be
+          able to forge one.
 
-          It is only shown on the first screen: by the time you are adding a
-          second file you have already seen it once.
+          What a page can do is not be on that path by default. Dragging the
+          folder raises nothing, and a plain multi-file input raises nothing -
+          it opens inside the folder and Ctrl+A takes everything in it. Both
+          produce the same list of files as the folder picker did.
+
+          So the folder picker is still here, one line down, for somebody who
+          wants it and is told what it costs. It is the offer, not the route.
         */}
         {!adding && (
-          <p className="mt-2.5 max-w-md text-[11.5px] leading-relaxed text-[var(--text-subtle)]">
-            <strong className="font-medium">
-              Dragging the folder onto this box asks nothing at all.
+          <p className="mt-2.5 max-w-md text-[12px] leading-relaxed text-[var(--text-subtle)]">
+            <strong className="font-medium text-[var(--text-muted)]">
+              Drag the folder onto this box, or open it and press Ctrl+A.
             </strong>{" "}
-            The buttons below go through your browser&apos;s own folder permission - that is your
-            browser asking about us, and not something a page can skip. Either way, nothing is read
-            until you approve the plan on the next screen.
+            Neither asks your browser for anything.
           </p>
         )}
 
         {/*
-          `webkitdirectory` is non-standard, unprefixed nowhere, and supported
-          everywhere. React does not know the attribute, hence the cast - and
-          the plain file input beside it is the fallback for anything that
-          ignores it, rather than a second-best offered for its own sake.
+          Offered rather than defaulted to, and the prompt is named before it
+          arrives rather than explained after. Somebody who wants subfolders
+          walked can still have that; nobody is sent through a security
+          question to hand over three CSVs.
+        */}
+        {!adding && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={choose}
+              className="mt-2 text-[11.5px] text-[var(--text-subtle)] underline decoration-dotted underline-offset-4 transition-colors hover:text-[var(--text-muted)] disabled:opacity-50"
+            title="Your browser will ask permission for the folder before anything is read"
+          >
+            Or hand over the whole folder — your browser will ask first
+          </button>
+        )}
+
+        {/*
+          Two inputs, and only the second one is ever reached by default.
+
+          `webkitdirectory` is non-standard, unprefixed nowhere, supported
+          everywhere, and unknown to React - hence the cast. It backs the
+          folder link for browsers without `showDirectoryPicker`, and it is
+          the input that makes Chrome ask "Upload 7 files to this site?".
+
+          The plain one below it is the button somebody actually presses. A
+          multi-file picker raises no prompt in any browser, which is the
+          whole reason it leads.
         */}
         <input
           ref={folder}
