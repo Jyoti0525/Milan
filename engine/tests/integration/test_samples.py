@@ -248,12 +248,12 @@ class TestARealHandover:
         from milan.ingest.reading import SHEET
         from milan.ingest.resolver import Decisions
 
+        # Only what the folder cannot answer for itself. The workbook's
+        # `Amount Paid In` and `Booked On` used to be here and are not any
+        # more - the settlement equation and the capture-before-payout
+        # ordering settle those - so this list is now the honest shape of what
+        # a person is asked, and it shrinking is the thing worth noticing.
         answers = {
-            f"{self.WB}{SHEET}Payouts": {
-                "credit": "Amount Paid In",
-                "debit": "Amount Taken Out",
-                "created_at": "Booked On",
-            },
             f"{self.WB}{SHEET}Transactions": {
                 "payment_id": "Payment Ref",
                 "order_id": "Order Ref",
@@ -297,13 +297,66 @@ class TestARealHandover:
         assert RecordKind.SETTLEMENT_ROWS in placed
         assert RecordKind.PAYMENTS in placed
 
-    def test_the_unfamiliar_headers_are_asked_about_not_guessed(self, samples: Path) -> None:
+    def test_the_unfamiliar_money_headers_are_proved_and_not_guessed(self, samples: Path) -> None:
         """`Amount Paid In` and `Amount Taken Out` are a credit and a debit to
         a person and nothing to an alias list. Getting them the wrong way round
-        balances every row to zero and inverts the month."""
+        balances every row to zero and inverts the month.
+
+        They were a question, which was safe and was not the best available.
+        The rows state `credit - debit == amount - fee - tax`, and with the
+        gross and the two charges already recognised there is exactly one way
+        to fill the other two - so the file answers it, with no model running
+        and nobody interrupted.
+
+        `unconfirmed` on purpose. The equation proves the set is coherent, not
+        that each column is individually what it says, and the screen goes on
+        offering to change them."""
+        from milan.ingest.identity import proven
+        from milan.ingest.plan import Certainty
+
         plan = Importer(None).plan(samples / self.ROOT)
+        payouts = next(m for m in plan.placed if m.name.endswith("Payouts"))
+        by = {r.target.name: r for r in payouts.resolutions}
+
+        assert by["credit"].column == "Amount Paid In"
+        assert by["debit"].column == "Amount Taken Out"
+        for field in ("credit", "debit"):
+            assert proven(by[field].reason), by[field].reason
+            assert by[field].certainty is Certainty.UNCONFIRMED
+            assert by[field].proposed_by == "", "no model was running"
+
         asked = {q.subject for q in plan.questions if q.blocking}
-        assert {"credit", "debit"} <= asked
+        assert not {"credit", "debit"} & asked
+
+    def test_the_capture_date_is_settled_by_the_order_of_the_two_columns(
+        self, samples: Path
+    ) -> None:
+        """`Booked On` against `Settled On`, decided by which comes first.
+
+        A gateway cannot settle money it has not taken, so the capture date is
+        the column that never runs ahead of the payout date. That is a fact
+        the file states on every row, and it used to be a question."""
+        from milan.ingest.identity import proven
+
+        plan = Importer(None).plan(samples / self.ROOT)
+        payouts = next(m for m in plan.placed if m.name.endswith("Payouts"))
+        created = next(r for r in payouts.resolutions if r.target.name == "created_at")
+
+        assert created.column == "Booked On"
+        assert proven(created.reason), created.reason
+        assert created.pattern, "a date column with no format parses as nothing downstream"
+
+    def test_only_what_the_folder_cannot_answer_is_still_asked(self, samples: Path) -> None:
+        """The whole point of the identity checks, stated as a list.
+
+        Three questions on the fullest folder in the corpus, with no model
+        running. Two are opaque reference columns in a workbook that is the
+        only file naming those ids - nothing else in the folder can confirm
+        them. The third is `value_date` against a transaction date, which is a
+        fact about the merchant's bank."""
+        plan = Importer(None).plan(samples / self.ROOT)
+        asked = sorted({q.subject for q in plan.questions if q.blocking})
+        assert asked == ["order_id", "payment_id", "value_date"]
 
     def test_two_files_are_left_alone_and_neither_is_an_error(self, samples: Path) -> None:
         """The purchase ledger is not asserted here, and that is deliberate:

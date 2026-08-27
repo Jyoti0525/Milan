@@ -28,7 +28,7 @@ Three things get a say, in this order:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from pathlib import Path
@@ -774,22 +774,28 @@ def _proved_bank(
         (question for question in questions if question.blocking and question.subject == "amount"),
         None,
     )
-    if asked is None or not asked.suggested:
+    if asked is None:
         return None
 
-    verdict = identity.bank_amount(
-        source, asked.suggested, tuple(choice.value for choice in asked.choices)
-    )
-    if not verdict.holds:
+    column, verdict = identity.only_deposit(source, tuple(choice.value for choice in asked.choices))
+    if column is None:
+        return None
+
+    # A model that says something else than the arithmetic does is the one
+    # case worth interrupting for. Not because the model is likelier to be
+    # right - it is not - but because a disagreement between a guess and a
+    # proof means one of them is about a file we have misread, and settling it
+    # silently either way throws that away.
+    if asked.suggested and asked.suggested != column:
         return None
 
     settled = [
         replace(
             resolution,
             certainty=Certainty.UNCONFIRMED,
-            column=asked.suggested,
+            column=column,
             reason=verdict.account,
-            proposed_by=proposer,
+            proposed_by=proposer if asked.suggested else "",
         )
         if resolution.target.name == "amount"
         else resolution
@@ -798,7 +804,7 @@ def _proved_bank(
     return settled, [question for question in questions if question is not asked]
 
 
-def _proved(
+def _proved_money(
     source: SourceFile,
     kind: RecordKind,
     resolutions: list[FieldResolution],
@@ -808,16 +814,21 @@ def _proved(
     """Settle the money columns where the file's own arithmetic settles them.
 
     A settlement export with a processor's own headers reaches this point with
-    `credit`, `debit` and the rest unresolved and a model's suggestion against
-    each - which the resolver would otherwise put to a person one at a time.
-    That is the right default and it is the wrong outcome here, because these
-    five columns are not five independent guesses. They are an equation, and
-    the file states it on every row.
+    `credit`, `debit` and the rest unresolved - which the resolver would
+    otherwise put to a person one at a time. That is the right default and it
+    is the wrong outcome here, because these five columns are not five
+    independent guesses. They are an equation, and the file states it on every
+    row.
 
-    So the suggestions are taken together, the equation is evaluated on the
-    merchant's own numbers, and if it holds the questions are answered by that
-    rather than by anybody's confidence. If it does not hold - or cannot be
-    run - nothing is settled and every question stands.
+    So the equation is solved rather than consulted. The unknown columns are
+    filled from the file's own money columns every way round, and the
+    merchant's rows accept one arrangement or they accept none. Nothing has to
+    have been proposed for that to work, which is the point: this settles the
+    same columns with no provider running at all.
+
+    A model, where one is running, is not the source of the answer. It is a
+    second opinion, and the only thing it can do here is disagree - which puts
+    the question back to a person rather than deciding it either way.
 
     `unconfirmed` rather than `confirmed`, deliberately. The equation proves
     the set is coherent, not that each column is individually what it says;
@@ -825,41 +836,297 @@ def _proved(
     same. The screen goes on saying a model chose these and offering to change
     them.
     """
-    if kind is RecordKind.BANK_CREDITS:
-        return _proved_bank(source, resolutions, questions, proposer)
-    if kind is not RecordKind.SETTLEMENT_ROWS:
-        return None
-
-    pending = {
-        question.subject: question.suggested
+    open_questions = {
+        question.subject: question
         for question in questions
-        if question.blocking and question.subject in identity.MONEY_FIELDS and question.suggested
+        if question.blocking and question.subject in identity.MONEY_FIELDS
     }
-    if not pending:
+    if not open_questions:
         return None
 
-    columns = {
+    known = {
         resolution.target.name: resolution.column
         for resolution in resolutions
         if resolution.column is not None
     }
-    verdict = identity.check(source, kind, {**columns, **pending})
-    if not verdict.holds:
+    # Every column any of the open questions was prepared to offer. A field
+    # unknown to one question is exactly a field the others could claim, so
+    # the search is over the union rather than over each question's own list.
+    candidates = {
+        choice.value for question in open_questions.values() for choice in question.choices
+    }
+
+    answer, verdict = identity.solve(source, kind, known, tuple(open_questions), sorted(candidates))
+    if answer is None:
+        return None
+
+    # The one case worth interrupting for: a model that named a column the
+    # arithmetic then ruled out. Not because the model is likelier to be right
+    # - it is not - but because a guess contradicting a proof means one of
+    # them is about a file we have misread, and settling it silently either
+    # way throws that away.
+    proposed = {
+        subject: question.suggested
+        for subject, question in open_questions.items()
+        if question.suggested
+    }
+    if any(answer[subject] != column for subject, column in proposed.items()):
         return None
 
     settled = [
         replace(
             resolution,
             certainty=Certainty.UNCONFIRMED,
-            column=pending[resolution.target.name],
+            column=answer[resolution.target.name],
             reason=verdict.account,
-            proposed_by=proposer,
+            proposed_by=proposer if resolution.target.name in proposed else "",
         )
-        if resolution.target.name in pending
+        if resolution.target.name in answer
         else resolution
         for resolution in resolutions
     ]
-    return settled, [question for question in questions if question.subject not in pending]
+    return settled, [question for question in questions if question.subject not in answer]
+
+
+def _proved_dates(
+    source: SourceFile,
+    profiles: dict[str, ColumnProfile],
+    resolutions: list[FieldResolution],
+    questions: list[Question],
+    proposer: str,
+) -> tuple[list[FieldResolution], list[Question]] | None:
+    """Settle `created_at` from the one thing a settlement file cannot get wrong.
+
+    Money is not the only identity in the file. A payout also has an order to
+    it: the gateway captured the money before it settled it, on every row,
+    without exception - so a column that ever runs ahead of the payout date is
+    not the capture date, whatever it is called.
+
+    No proposal is needed and none is required. Elimination over the columns
+    the question was going to offer reaches the answer on its own, and a model
+    only enters where it disagrees with the result - which is the one outcome
+    worth putting to a person, because a guess contradicting a proof means one
+    of them is about a file we have misread.
+
+    Only this one field, and only against `settled_at`. The pair that cannot
+    be resolved this way is a statement's `value_date` against its transaction
+    date, where both are real, both are dates the bank means, and which one
+    the merchant reconciles on is a fact about their bank rather than about
+    the file. Ordering says nothing there and this does not pretend it does.
+
+    The format has to be settled again afterwards. A column proved here has
+    never been through `_settle_format`, and a date column with no pattern
+    parses as nothing at all downstream - so this hands the newly settled
+    resolution back through it, and a genuinely ambiguous format becomes a
+    question about the format rather than a silent misreading.
+    """
+    asked = next(
+        (
+            question
+            for question in questions
+            if question.blocking and question.subject == "created_at"
+        ),
+        None,
+    )
+    if asked is None:
+        return None
+
+    settled_at = next(
+        (
+            resolution.column
+            for resolution in resolutions
+            if resolution.target.name == "settled_at" and resolution.column is not None
+        ),
+        None,
+    )
+    if settled_at is None:
+        return None
+
+    column, verdict = identity.earliest_date(
+        source, settled_at, [choice.value for choice in asked.choices]
+    )
+    if column is None:
+        return None
+    if asked.suggested and asked.suggested != column:
+        return None
+
+    kept = [question for question in questions if question is not asked]
+    settled: list[FieldResolution] = []
+    for resolution in resolutions:
+        if resolution.target.name != "created_at":
+            settled.append(resolution)
+            continue
+        proved = replace(
+            resolution,
+            certainty=Certainty.UNCONFIRMED,
+            column=column,
+            reason=verdict.account,
+            proposed_by=proposer if asked.suggested else "",
+        )
+        proved, question = _settle_format(proved, profiles, None, source.name)
+        settled.append(proved)
+        if question is not None:
+            kept.append(question)
+    return settled, kept
+
+
+def _proved(
+    source: SourceFile,
+    kind: RecordKind,
+    profiles: dict[str, ColumnProfile],
+    resolutions: list[FieldResolution],
+    questions: list[Question],
+    proposer: str,
+) -> tuple[list[FieldResolution], list[Question]] | None:
+    """Every check the file itself can answer, applied in turn.
+
+    Separate functions rather than one, because they are separate claims about
+    separate identities and a file can satisfy one and fail the other. Each
+    returns `None` for "nothing settled" and the caller keeps whatever the
+    previous one arrived at, so a settlement report whose money proves and
+    whose dates do not still loses five questions instead of none.
+    """
+    if kind is RecordKind.BANK_CREDITS:
+        return _proved_bank(source, resolutions, questions, proposer)
+    if kind is not RecordKind.SETTLEMENT_ROWS:
+        return None
+
+    changed = False
+
+    money = _proved_money(source, kind, resolutions, questions, proposer)
+    if money is not None:
+        resolutions, questions = money
+        changed = True
+
+    dates = _proved_dates(source, profiles, resolutions, questions, proposer)
+    if dates is not None:
+        resolutions, questions = dates
+        changed = True
+
+    return (resolutions, questions) if changed else None
+
+
+# ------------------------------------------------- one file proving another
+
+
+JOINABLE = ("payment_id", "order_id")
+"""Fields an identifier column can be recognised by, and nothing else can.
+
+Both are foreign keys into a file the merchant exported beside this one, which
+is what makes them checkable. `settlement_utr` is deliberately not here: it
+joins to the bank statement, and the whole premise of this project is that a
+payout can be reported and never arrive - so a settlement UTR missing from the
+statement is the finding, not a failed match, and a threshold over that
+overlap would be measuring our own exception rate.
+"""
+
+
+def _known_ids(mappings: Sequence[FileMapping]) -> dict[str, dict[str, frozenset[str]]]:
+    """Identifier values, per field, from columns settled by their own header.
+
+    Only `confirmed` columns with no proposer behind them. A model's guess
+    cannot become the reference another file is then checked against - that
+    would launder one unverified proposal into two.
+    """
+    known: dict[str, dict[str, frozenset[str]]] = {field: {} for field in JOINABLE}
+    for mapping in mappings:
+        for resolution in mapping.resolutions:
+            name = resolution.target.name
+            if name not in known or resolution.column is None:
+                continue
+            if resolution.certainty is not Certainty.CONFIRMED or resolution.proposed_by:
+                continue
+            values = {
+                value.strip() for value in mapping.source.column(resolution.column) if value.strip()
+            }
+            if values:
+                known[name][mapping.name] = frozenset(values)
+    return known
+
+
+def _joined(mapping: FileMapping, known: dict[str, dict[str, frozenset[str]]]) -> FileMapping:
+    """Fill in identifier columns this file gave up on, from the folder around it.
+
+    The gap this closes was not a wrong answer and was not a question either.
+    An unfamiliar export's `Merchant Ref` column reads as an identifier and as
+    nothing more specific, so the import concluded the file had no payment id
+    and moved on - quietly, with the column sitting there in plain sight, and
+    every downstream check that wanted it going without.
+
+    The folder answers it. A payments export names its own `payment_id` in
+    words the schema knows, so those ids are established; a column of this
+    file whose values are all drawn from that set is the same field. Never the
+    file's own columns as its own reference, and never a column already
+    spoken for by another field.
+    """
+    if mapping.kind is None or not mapping.resolutions:
+        return mapping
+
+    taken = {
+        resolution.column for resolution in mapping.resolutions if resolution.column is not None
+    }
+    asked = {question.subject for question in mapping.questions}
+    resolutions = list(mapping.resolutions)
+    answered: set[str] = set()
+
+    for field in JOINABLE:
+        index = next(
+            (
+                position
+                for position, resolution in enumerate(resolutions)
+                if resolution.target.name == field
+            ),
+            None,
+        )
+        if index is None:
+            continue
+        resolution = resolutions[index]
+        if resolution.column is not None and field not in asked:
+            continue
+
+        # `union` of nothing is the empty set, which `identity.joined`
+        # refuses outright - so a folder with no reference file settles
+        # nothing here rather than matching against emptiness.
+        elsewhere = frozenset().union(
+            *(values for name, values in known[field].items() if name != mapping.name)
+        )
+        column, verdict = identity.joined(mapping.source, elsewhere, frozenset(taken))
+        if column is None:
+            continue
+
+        resolutions[index] = replace(
+            resolution,
+            certainty=Certainty.UNCONFIRMED,
+            column=column,
+            reason=verdict.account,
+            proposed_by="",
+        )
+        taken.add(column)
+        answered.add(field)
+
+    if not answered:
+        return mapping
+    return replace(
+        mapping,
+        resolutions=tuple(resolutions),
+        questions=tuple(
+            question for question in mapping.questions if question.subject not in answered
+        ),
+    )
+
+
+def join_identifiers(mappings: Sequence[FileMapping]) -> tuple[FileMapping, ...]:
+    """Let every file in the folder answer what the others could not.
+
+    A second pass, because the first one cannot do this: a file is mapped
+    before its neighbours are, and the reference set this depends on only
+    exists once all of them have been. Running it after costs one more sweep
+    over columns already in memory and needs no model at all.
+    """
+    known = _known_ids(mappings)
+    if not any(known[field] for field in JOINABLE):
+        return tuple(mappings)
+    return tuple(_joined(mapping, known) for mapping in mappings)
 
 
 class Importer:
@@ -916,8 +1183,8 @@ class Importer:
     def plan(self, root: Path, decisions: dict[str, Decisions] | None = None) -> IngestPlan:
         self.load(root)
         given = decisions or {}
-        mappings = tuple(
-            self._map(source, given.get(source.name, Decisions())) for source in self._sources
+        mappings = join_identifiers(
+            [self._map(source, given.get(source.name, Decisions())) for source in self._sources]
         )
         return IngestPlan(
             root=root,
@@ -1043,7 +1310,9 @@ class Importer:
             if question is not None:
                 questions.append(question)
 
-        settled = _proved(source, kind, resolutions, questions, proposal.source or self.consulted)
+        settled = _proved(
+            source, kind, profiles, resolutions, questions, proposal.source or self.consulted
+        )
         if settled is not None:
             resolutions, questions = settled
 

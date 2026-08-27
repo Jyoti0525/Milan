@@ -102,15 +102,60 @@ def test_the_two_files_that_are_none_of_ours_are_left_alone(scored: Accuracy) ->
             assert got is None
 
 
-def test_the_header_names_alone_carry_most_of_the_corpus(scored: Accuracy) -> None:
+def test_the_file_carries_most_of_the_corpus_with_no_model_at_all(scored: Accuracy) -> None:
     """What the import achieves before any model is involved.
 
-    Not a floor to be defended - a description. If this drops, the aliases in
-    `schema.py` lost something; if it rises, they learned a dialect.
+    Two sources, and neither is a provider. The header dictionary in
+    `schema.py` recognises the names it knows; the checks in `identity.py`
+    work out the rest from the merchant's own rows - the settlement equation
+    solved for its unknown columns, a deposit column left standing once the
+    balance and the row number are eliminated, a capture date that never runs
+    ahead of its payout, an opaque reference column whose values are ids the
+    file beside it names.
+
+    Not a floor to be defended - a description. If this drops, something that
+    used to be derivable stopped being derived.
     """
     settled = len(scored.settled_right)
-    assert settled >= 60, f"only {settled} of {len(scored.outcomes)} columns settled on names"
+    assert settled >= 70, f"only {settled} of {len(scored.outcomes)} columns settled with no model"
     assert scored.rate(scored.settled_right, scored.outcomes).endswith(f"of {len(scored.outcomes)}")
+
+
+def test_what_is_still_asked_is_what_nothing_in_the_file_can_answer(scored: Accuracy) -> None:
+    """The list this design is trying to reduce to, rather than to empty.
+
+    Three fields, and each is genuinely undecidable from the file:
+
+    `value_date` against a transaction date - two real date columns that
+    disagree, where which one a merchant reconciles on is a fact about their
+    bank. `entity_id` and `settlement_id` on an export that names neither -
+    two columns of opaque strings, one per row and one per batch, with no
+    arithmetic over them and no file beside them holding either.
+
+    A question appearing here that is *not* one of these means something
+    became underivable that used to be derived. A question disappearing from
+    here means either a real improvement or a guess dressed as a proof, and
+    `test_nothing_is_settled_wrongly` is the one that tells them apart.
+    """
+    unanswerable = {"value_date", "entity_id", "settlement_id"}
+    surprising = sorted({outcome.field for outcome in scored.asked} - unanswerable)
+    assert surprising == [], f"asked about {', '.join(surprising)}, which the file can answer"
+
+
+def test_an_identifier_column_is_named_by_the_folder_around_it(scored: Accuracy) -> None:
+    """The check that reads outside the file it is deciding about.
+
+    `Merchant Ref` and `Order Ref` on a processor's export are opaque, and
+    before this the import concluded the file simply had no payment id - not
+    as a question, but silently, with the column sitting there. Every
+    downstream check that wanted it went without.
+    """
+    joined = {
+        (outcome.file, outcome.field)
+        for outcome in scored.settled_right
+        if outcome.field in ("payment_id", "order_id") and not outcome.by_name
+    }
+    assert len(joined) >= 4, f"only {len(joined)} identifier columns came from another file"
 
 
 def test_every_question_names_a_column_the_file_actually_has(scored: Accuracy) -> None:

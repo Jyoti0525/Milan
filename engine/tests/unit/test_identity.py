@@ -187,3 +187,253 @@ def test_nothing_is_proved_while_two_candidates_remain(tmp_path: Path) -> None:
     assert not verdict.holds
     assert "not the only candidate" in verdict.reason
     assert "Debit" in verdict.reason
+
+
+# ------------------------------------------- solving rather than checking
+
+
+MONEY_COLUMNS = (
+    "Gross Amount",
+    "Commission",
+    "Service Tax (GST)",
+    "Amount Credited",
+    "Amount Debited",
+)
+
+
+def test_the_equation_is_solved_with_nothing_proposed(settlement: SourceFile) -> None:
+    """The case the whole search exists for.
+
+    With no provider there is no suggestion to endorse, and a workbook whose
+    credit column is called `Amount Paid In` used to become two questions. The
+    equation does not need the suggestion: three known columns and four
+    hundred rows leave exactly one way to fill the other two.
+    """
+    known = {
+        field: column
+        for field, column in UNFAMILIAR.columns.items()
+        if field in ("amount", "fee", "tax")
+    }
+
+    answer, verdict = identity.solve(
+        settlement, RecordKind.SETTLEMENT_ROWS, known, ("credit", "debit"), MONEY_COLUMNS
+    )
+
+    assert answer == {"credit": "Amount Credited", "debit": "Amount Debited"}
+    assert verdict.holds
+    assert verdict.checked >= identity.MINIMUM_ROWS
+
+
+def test_fee_and_tax_together_have_no_unique_solution(settlement: SourceFile) -> None:
+    """Refusing here is the check working, not failing.
+
+    Both are subtracted, so swapping them satisfies the equation exactly as
+    well. Two arrangements survive, the file cannot say which is which, and
+    the honest outcome is the question - a GST figure split the wrong way
+    between two columns that sum to the same total is invisible downstream.
+    """
+    known = {
+        field: column
+        for field, column in UNFAMILIAR.columns.items()
+        if field in ("amount", "credit", "debit")
+    }
+
+    answer, verdict = identity.solve(
+        settlement, RecordKind.SETTLEMENT_ROWS, known, ("fee", "tax"), MONEY_COLUMNS
+    )
+
+    assert answer is None
+    assert not verdict.holds
+    assert "more than one arrangement" in verdict.reason
+
+
+def test_no_arrangement_at_all_is_not_rounded_up_to_one(settlement: SourceFile) -> None:
+    """A search that finds nothing must not return its closest attempt."""
+    known = {
+        "amount": UNFAMILIAR.columns["fee"],
+        "fee": UNFAMILIAR.columns["amount"],
+        "tax": UNFAMILIAR.columns["tax"],
+    }
+
+    answer, _ = identity.solve(
+        settlement, RecordKind.SETTLEMENT_ROWS, known, ("credit", "debit"), MONEY_COLUMNS
+    )
+
+    assert answer is None
+
+
+def test_too_many_unknowns_is_a_search_and_not_a_proof(settlement: SourceFile) -> None:
+    """Five unknowns would be asking arithmetic to invent the whole mapping."""
+    answer, verdict = identity.solve(
+        settlement, RecordKind.SETTLEMENT_ROWS, {}, identity.MONEY_FIELDS, MONEY_COLUMNS
+    )
+
+    assert answer is None
+    assert "too many" in verdict.reason
+
+
+def test_only_a_settlement_report_has_an_equation_to_solve(settlement: SourceFile) -> None:
+    answer, verdict = identity.solve(settlement, RecordKind.ORDERS, {}, ("credit",), MONEY_COLUMNS)
+
+    assert answer is None
+    assert "no arithmetic identity" in verdict.reason
+
+
+# ------------------------------------------------- naming the deposit column
+
+
+def test_the_deposit_column_is_named_with_nothing_proposed(icici: SourceFile) -> None:
+    column, verdict = identity.only_deposit(
+        icici,
+        ("S No.", "Withdrawal Amount (INR )", "Deposit Amount (INR )", "Balance (INR )"),
+    )
+
+    assert column == "Deposit Amount (INR )"
+    assert verdict.holds
+    assert "running balance" in verdict.account
+
+
+# ------------------------------------------------------------ dates in order
+
+
+def test_the_capture_date_is_the_one_that_never_runs_ahead(settlement: SourceFile) -> None:
+    """A gateway cannot settle money it has not taken yet.
+
+    Which makes `created_at` the column that precedes the payout date on every
+    row - not the likelier of two guesses, but the only one the file's own
+    rows permit.
+    """
+    column, verdict = identity.earliest_date(
+        settlement,
+        UNFAMILIAR.columns["settled_at"],
+        ("Txn Date & Time", "Payout Date", "Txn Ref No"),
+    )
+
+    assert column == "Txn Date & Time"
+    assert verdict.holds
+    assert "never runs ahead" in verdict.account
+
+
+def test_two_columns_that_both_precede_settle_nothing(tmp_path: Path) -> None:
+    """A capture date and an authorisation date are both always earlier.
+
+    Which of them the merchant means is a fact about their gateway, and
+    ordering has nothing to say about it. Naming the first one found would be
+    picking, not proving.
+    """
+    lines = ["Authorised,Captured,Paid Out,Amount"]
+    for index in range(40):
+        day = 1 + index % 20
+        lines.append(f"2026-07-{day:02d},2026-07-{day:02d},2026-07-{day + 2:02d},{100 + index}.00")
+    path = tmp_path / "two-earlier.csv"
+    path.write_text(chr(10).join(lines), encoding="utf-8")
+
+    column, verdict = identity.earliest_date(
+        read(path), "Paid Out", ("Authorised", "Captured", "Paid Out")
+    )
+
+    assert column is None
+    assert "more than one column always precedes" in verdict.reason
+    assert "Authorised" in verdict.reason and "Captured" in verdict.reason
+
+
+# ---------------------------------------------------- the same IDs elsewhere
+
+
+def _ids(count: int) -> list[str]:
+    return [f"pay_{index:012d}" for index in range(count)]
+
+
+def _with_columns(path: Path, headers: list[str], columns: list[list[str]]) -> SourceFile:
+    lines = [",".join(headers)]
+    for row in zip(*columns, strict=True):
+        lines.append(",".join(row))
+    path.write_text(chr(10).join(lines), encoding="utf-8")
+    return read(path)
+
+
+def test_an_opaque_column_is_named_by_the_file_beside_it(tmp_path: Path) -> None:
+    """The check that reads outside the file, and why it has to.
+
+    Nothing about `pay_000000000007` says which field it belongs to. What says
+    so is a payments export that names its own column in words the schema
+    already knows.
+    """
+    known = _ids(40)
+    source = _with_columns(
+        tmp_path / "payouts.csv",
+        ["Merchant Ref", "Payout Batch", "Gross"],
+        [known, [f"setl_{index // 4:04d}" for index in range(40)], ["100.00"] * 40],
+    )
+
+    column, verdict = identity.joined(source, frozenset(known), frozenset())
+
+    assert column == "Merchant Ref"
+    assert verdict.holds
+    assert "40 of 40 matched" in verdict.account
+
+
+def test_a_column_already_spoken_for_is_not_taken_twice(tmp_path: Path) -> None:
+    """Proving one identifier must not steal the column that proved another."""
+    known = _ids(40)
+    source = _with_columns(
+        tmp_path / "payouts.csv",
+        ["Merchant Ref", "Gross"],
+        [known, ["100.00"] * 40],
+    )
+
+    column, verdict = identity.joined(source, frozenset(known), frozenset({"Merchant Ref"}))
+
+    assert column is None
+    assert "no column here holds those identifiers" in verdict.reason
+
+
+def test_two_columns_holding_the_same_identifiers_settle_nothing(tmp_path: Path) -> None:
+    """A settlement report carries the payment id twice, under two names.
+
+    `entity_id` *is* the payment id on payment rows. Where a file's refund
+    rows do not dilute it enough to tell the two apart, the honest outcome is
+    that neither is claimed.
+    """
+    known = _ids(40)
+    source = _with_columns(
+        tmp_path / "payouts.csv",
+        ["Txn Ref No", "Merchant Ref", "Gross"],
+        [known, known, ["100.00"] * 40],
+    )
+
+    column, verdict = identity.joined(source, frozenset(known), frozenset())
+
+    assert column is None
+    assert "more than one column holds those identifiers" in verdict.reason
+
+
+def test_a_handful_of_known_identifiers_proves_nothing(tmp_path: Path) -> None:
+    """Overlap with a short list is coincidence, not evidence."""
+    known = _ids(40)
+    source = _with_columns(
+        tmp_path / "payouts.csv", ["Merchant Ref", "Gross"], [known, ["100.00"] * 40]
+    )
+
+    column, verdict = identity.joined(source, frozenset(known[:5]), frozenset())
+
+    assert column is None
+    assert "known identifiers to compare against" in verdict.reason
+
+
+def test_a_mostly_matching_column_is_not_mostly_the_field(tmp_path: Path) -> None:
+    """The column this has to be told apart from matches about four fifths.
+
+    An `entity_id` column on a settlement report holds the payment id on
+    payment rows and a refund or adjustment id on the others. Four fifths is
+    not a payment id column, and the threshold sits well above it.
+    """
+    known = _ids(40)
+    mixed = [*known[:30], *[f"rfnd_{index:04d}" for index in range(10)]]
+    source = _with_columns(
+        tmp_path / "payouts.csv", ["Txn Ref No", "Gross"], [mixed, ["100.00"] * 40]
+    )
+
+    column, _ = identity.joined(source, frozenset(known), frozenset())
+
+    assert column is None
