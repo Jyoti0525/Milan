@@ -68,6 +68,15 @@ RouteOption = Annotated[
         help="Share of payments split to a linked account through Route.",
     ),
 ]
+InstantOption = Annotated[
+    float,
+    typer.Option(
+        "--instant",
+        min=0.0,
+        max=1.0,
+        help="Share of payouts settled the same day, on request, instead of T+2.",
+    ),
+]
 RootOption = Annotated[
     Path | None, typer.Option("--data-root", help="Where runs are stored.", show_default=False)
 ]
@@ -99,6 +108,7 @@ def generate(
     span: SpanOption = 21,
     withholding: WithholdingOption = False,
     route: RouteOption = 0.0,
+    instant: InstantOption = 0.0,
     root: RootOption = None,
 ) -> None:
     """Generate a merchant's month, with the answer key."""
@@ -108,6 +118,7 @@ def generate(
         order_count=orders,
         span_days=span,
         route_probability=route,
+        instant_settlement_probability=instant,
         rates=RateCard(tds_applies=withholding),
     )
     dataset = ChaosEngine(config).generate()
