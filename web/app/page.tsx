@@ -50,6 +50,7 @@ import { BackTo, ExpandButton, type Panel, Stepper } from "@/components/Expand";
 import { ImportWizard } from "@/components/ImportWizard";
 import { Ask } from "@/components/Ask";
 import { Merchant } from "@/components/Merchant";
+import { WhatToDo } from "@/components/WhatToDo";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { Position } from "@/components/Position";
 import { TopBar } from "@/components/TopBar";
@@ -89,6 +90,9 @@ const isImport = (view: RunView | ImportView | null): view is ImportView =>
 
 /** Which sort of selection each list makes. */
 const KIND: Record<Tab, Selection["kind"]> = {
+  // The overview holds figures rather than a list of cases, so there is
+  // nothing in it to select. Mapped anyway so the record stays total.
+  overview: "exception",
   queue: "exception",
   proved: "proof",
   leaks: "leak",
@@ -110,6 +114,14 @@ const HEADINGS: Record<
   Tab,
   { title: string; blurb: string; empty: string; absent: string; panel: string; one: string }
 > = {
+  overview: {
+    title: "Overview",
+    blurb: "Where the money went, and what to do about what is left.",
+    empty: "",
+    absent: "",
+    panel: "",
+    one: "",
+  },
   provenance: {
     title: "Column mapping",
     blurb: "What every column in these files was read as, and who decided.",
@@ -231,7 +243,7 @@ export default function Workspace() {
   const [listFailure, setListFailure] = useState<ApiError | null>(null);
   const [current, setCurrent] = useState<Source | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [chosen, setTab] = useState<Tab>("queue");
+  const [chosen, setTab] = useState<Tab>("overview");
   /*
     Which panel, if either, has the work area to itself.
 
@@ -408,7 +420,7 @@ export default function Workspace() {
   */
   const fallback = useMemo((): Selection | null => {
     if (!view) return null;
-    if (tab === "provenance") return null;
+    if (tab === "overview" || tab === "provenance") return null;
     if (tab === "proved") return view.proofs.length > 0 ? { kind: "proof", index: 0 } : null;
     if (tab === "leaks") return view.leaks.findings.length > 0 ? { kind: "leak", index: 0 } : null;
     const first = sortQueue(view.queue)[0];
@@ -502,6 +514,9 @@ export default function Workspace() {
   // Keyed by tab name, so the navigation counts and the empty-state copy
   // read the same number.
   const counts: Record<Tab, number> = {
+    // A destination rather than a population. Nothing is counted here and
+    // nothing is shown beside it.
+    overview: 0,
     queue: view?.queue.length ?? 0,
     proved: view?.proofs.length ?? 0,
     // Findings, not affected rows. Forty-seven small charges is a report
@@ -563,41 +578,62 @@ export default function Workspace() {
           Keeping them would spend a fifth of the height they asked for on
           figures they had already read.
         */}
-        <div
-          key={key}
-          className={`settle shrink-0 space-y-3 px-5 pt-4 ${big === null ? "" : "hidden"}`}
-        >
-          {view && (
-            <Position
-              credited={view.summary.credited}
-              proved={view.summary.proved_amount}
-              awaited={view.summary.awaited}
-              records={view.summary.records_processed}
-              seconds={view.summary.duration_seconds}
-            />
-          )}
-          {isImport(view) ? (
-            <ImportMetrics
-              summary={view.summary}
-              consulted={view.provenance.consulted}
-              columnsProposed={view.provenance.columns_proposed}
-              columnsChecked={view.provenance.columns_checked}
-            />
-          ) : (
-            view && <Metrics summary={view.summary} />
-          )}
-          {/*
-            Under the figures, above the queue, and gone entirely when there
-            is nothing to say. It answers a question the metrics cannot —
-            *why* is this payout smaller than these sales — and it belongs
-            beside them rather than in a tab, because it is context for every
-            row in the run rather than a list of its own.
-          */}
-          {view && <Merchant findings={view.merchant} />}
-          {loading && (
-            <div className="card px-5 py-4 text-[13px] text-[var(--text-subtle)]">Reconciling…</div>
-          )}
-        </div>
+        {/*
+          The overview is a view now, not a strip.
+
+          These figures used to sit above every list permanently, which cost
+          a third of the screen on a laptop and pushed the queue - the thing
+          people actually work in - below the fold. An orientation is
+          somewhere you go, read, and leave.
+
+          Keyed on the run so the animation replays on a switch. Swapping
+          every figure with no sign anything happened reads as a screen that
+          did not respond.
+        */}
+        {tab === "overview" && (
+          <div key={key} className="settle min-h-0 flex-1 space-y-3 overflow-auto p-5">
+            {view && (
+              <Position
+                credited={view.summary.credited}
+                proved={view.summary.proved_amount}
+                awaited={view.summary.awaited}
+                records={view.summary.records_processed}
+                seconds={view.summary.duration_seconds}
+              />
+            )}
+            {isImport(view) ? (
+              <ImportMetrics
+                summary={view.summary}
+                consulted={view.provenance.consulted}
+                columnsProposed={view.provenance.columns_proposed}
+                columnsChecked={view.provenance.columns_checked}
+              />
+            ) : (
+              view && <Metrics summary={view.summary} />
+            )}
+            {/*
+              Context for every row in the run rather than a list of its own,
+              which is why it belongs beside the figures and not in a tab. It
+              answers a question the metrics cannot: *why* is this payout
+              smaller than these sales.
+            */}
+            {view && <Merchant findings={view.merchant} />}
+            {/* Last, because it is the only thing here that asks for an
+                action, and it hands the reader into the queue. */}
+            {view && (
+              <WhatToDo
+                causes={view.causes}
+                exceptions={view.queue.length}
+                onOpen={() => setTab("queue")}
+              />
+            )}
+            {loading && (
+              <div className="card px-5 py-4 text-[13px] text-[var(--text-subtle)]">
+                Reconciling…
+              </div>
+            )}
+          </div>
+        )}
 
         {/*
           Outside every column, because it overlays rather than flows. It sat
@@ -619,6 +655,7 @@ export default function Workspace() {
           />
         )}
 
+        {tab !== "overview" && (
         <div className="flex min-h-0 flex-1 gap-4 p-5">
           <section
             className={`card flex min-w-0 flex-1 flex-col overflow-hidden ${
@@ -756,6 +793,7 @@ export default function Workspace() {
             </div>
           </section>
         </div>
+        )}
       </div>
     );
   })();

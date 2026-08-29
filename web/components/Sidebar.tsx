@@ -36,7 +36,7 @@ import type { ImportRef, RunRef } from "@/lib/api";
 import { inr, type Paise } from "@/lib/money";
 import { Badge } from "./Badge";
 
-export type Tab = "queue" | "proved" | "leaks" | "provenance";
+export type Tab = "overview" | "queue" | "proved" | "leaks" | "provenance";
 
 const TIER_ORDER = ["clean", "realistic", "messy", "adversarial"];
 
@@ -62,14 +62,17 @@ function Item({
 }: {
   label: string;
   hint: string;
-  count: number;
+  /** Omitted where an item is a destination rather than a population — the
+   *  overview has nothing to count, and a `0` beside it would read as a
+   *  finding that nothing is there. */
+  count?: number;
   amount?: Paise;
   /** Colour for the count when there is something in it. */
   tone?: string;
   active: boolean;
   onClick: () => void;
 }) {
-  const live = count > 0 && tone !== undefined;
+  const live = count !== undefined && count > 0 && tone !== undefined;
   return (
     <button
       onClick={onClick}
@@ -88,15 +91,17 @@ function Item({
           not, so a person scanning three items sees which one wants them
           without reading a word.
         */}
-        <span
-          className="tnum shrink-0 rounded-full px-1.5 text-[11.5px] leading-[18px] font-medium"
-          style={{
-            background: live ? `var(${tone}-wash)` : "transparent",
-            color: live ? `var(${tone})` : "var(--text-subtle)",
-          }}
-        >
-          {count}
-        </span>
+        {count !== undefined && (
+          <span
+            className="tnum shrink-0 rounded-full px-1.5 text-[11.5px] leading-[18px] font-medium"
+            style={{
+              background: live ? `var(${tone}-wash)` : "transparent",
+              color: live ? `var(${tone})` : "var(--text-subtle)",
+            }}
+          >
+            {count}
+          </span>
+        )}
       </span>
       {/*
         The rupee figure stays, because it is a fact rather than a caption and
@@ -141,6 +146,24 @@ export function Sidebar({
   return (
     <aside className="hidden w-[228px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] lg:flex">
       <div className="pt-3">
+        {/*
+          Its own destination rather than a strip above every list.
+
+          The figures used to sit permanently on top of the work area, which
+          pushed the queue - the thing somebody actually works in - below the
+          fold on a laptop. An orientation belongs somewhere you go once,
+          not somewhere that costs a third of the screen every time you look
+          at a case.
+        */}
+        <Group title="This book">
+          <Item
+            label="Overview"
+            hint="Where the money went, who this merchant is, and what to do first."
+            active={tab === "overview"}
+            onClick={() => onTab("overview")}
+          />
+        </Group>
+
         <Group title="Review">
           {/*
             No rupee figure on this one, deliberately. The queue holds two

@@ -6,8 +6,7 @@
  * A panel rather than a strip, and that was a correction. It began as a row
  * wedged between the metrics and the queue, where it read as one more card
  * of figures — nobody could tell it was a thing you *type into*, which is
- * the only thing it is for. It now opens from a launcher, keeps the
- * conversation, and puts the input where an input belongs.
+ * the only thing it is for.
  *
  * What makes this different from a chat box bolted onto a finance tool is
  * what it will not do. There is no model writing the reply. A model — when
@@ -33,15 +32,15 @@ import { Amount } from "@/components/Amount";
  * Not decoration and not the menu. An empty box gives no clue what a closed
  * vocabulary accepts, and somebody guessing at it gives up on the second
  * refusal — but these are examples of the *shape* of question that works,
- * not the list of permitted ones, which is why the placeholder invites
- * typing and these sit underneath it.
+ * not the list of permitted ones, which is why the field invites typing and
+ * these sit under it as suggestions rather than as a form.
  */
 const OPENERS = [
   "why was my payout short?",
   "am I being overcharged?",
   "how much came in on UPI?",
-  "what's the biggest problem here?",
   "how long do payouts take?",
+  "what's the biggest problem here?",
   "what hasn't been settled yet?",
 ];
 
@@ -63,7 +62,7 @@ function Reply({ answer }: { answer: AnswerView }) {
       </p>
 
       {answer.lines.length > 0 && (
-        <ul className="mt-2.5 space-y-2">
+        <ul className="mt-3 space-y-2.5">
           {answer.lines.map((line, index) => (
             <li key={`${line.label}-${index}`} className="flex gap-3 text-[12px]">
               <span className="min-w-0 flex-1 leading-relaxed">
@@ -85,13 +84,16 @@ function Reply({ answer }: { answer: AnswerView }) {
       )}
 
       {refused && answer.suggestions.length > 0 && (
-        <ul className="mt-2.5 space-y-1">
-          {answer.suggestions.map((suggestion) => (
-            <li key={suggestion} className="text-[12px] text-[var(--text-subtle)]">
-              — {suggestion}
-            </li>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {answer.suggestions.slice(0, 6).map((suggestion) => (
+            <span
+              key={suggestion}
+              className="rounded-full bg-[var(--surface-sunken)] px-2.5 py-1 text-[11.5px] text-[var(--text-muted)]"
+            >
+              {suggestion}
+            </span>
           ))}
-        </ul>
+        </div>
       )}
 
       {/*
@@ -101,9 +103,12 @@ function Reply({ answer }: { answer: AnswerView }) {
         reasonably want to second-guess.
       */}
       {!refused && (
-        <p className="mt-2.5 text-[11px] text-[var(--text-subtle)]">
-          read as <code>{answer.intent}</code> by {answer.routed_by} · every figure
-          computed from the report
+        <p className="mt-3 text-[11px] text-[var(--text-subtle)]">
+          read as{" "}
+          <code className="rounded bg-[var(--surface-sunken)] px-1 py-0.5">
+            {answer.intent}
+          </code>{" "}
+          by {answer.routed_by} · every figure computed from the report
         </p>
       )}
     </>
@@ -138,7 +143,7 @@ export function Ask({
   }, [open]);
 
   useEffect(() => {
-    tail.current?.scrollIntoView({ block: "end" });
+    tail.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [thread, thinking]);
 
   async function submit(text: string) {
@@ -173,82 +178,99 @@ export function Ask({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-[13px] font-medium shadow-lg transition-colors hover:bg-[var(--surface-hover)]"
+        // `btn-primary` rather than a restatement of it. The accent lightens
+        // in dark mode and the white-on-accent contrast trade is one this
+        // design system has already made once, in one place.
+        className="btn btn-primary fixed bottom-5 right-5 z-40 gap-2.5 rounded-full px-4 py-3 shadow-lg transition-transform hover:scale-[1.02]"
       >
-        <span aria-hidden className="text-[15px] leading-none">
-          ?
+        <span aria-hidden className="text-[14px] leading-none">
+          ✦
         </span>
-        Ask about this month
+        Ask about this book
       </button>
     );
   }
 
   return (
     <section
-      aria-label="Ask a question about this month"
-      className="card fixed bottom-5 right-5 z-40 flex max-h-[76vh] w-[min(30rem,calc(100vw-2.5rem))] flex-col overflow-hidden shadow-2xl"
+      aria-label="Ask a question about this book"
+      className="card fixed bottom-5 right-5 z-40 flex max-h-[78vh] w-[min(31rem,calc(100vw-2.5rem))] flex-col overflow-hidden shadow-2xl"
     >
-      <header className="flex shrink-0 items-baseline gap-3 border-b border-[var(--border)] px-4 py-2.5">
-        <h2 className="text-[13px] font-semibold">Ask about this month</h2>
-        {/*
-          The scope, named. The answers are computed from one reconciled run
-          and nothing else, and a reader with several runs open needs to know
-          which one is being described before they trust a figure.
-        */}
-        <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-subtle)]">
-          {scope}
-        </span>
+      <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[13px] font-semibold leading-tight">Ask about this book</h2>
+          {/*
+            The scope, named. Answers are computed from one reconciled run and
+            nothing else, and a reader with several books open needs to know
+            which one is being described before they trust a figure.
+          */}
+          <p className="truncate text-[11px] text-[var(--text-subtle)]">{scope}</p>
+        </div>
         <button
           type="button"
           onClick={() => setOpen(false)}
           aria-label="Close"
-          className="shrink-0 text-[13px] text-[var(--text-subtle)] hover:text-[var(--text)]"
+          className="grid size-6 shrink-0 place-items-center rounded-[5px] text-[var(--text-subtle)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
         >
           ✕
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-3">
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
         {thread.length === 0 && (
-          <div>
-            <p className="text-[13px] leading-relaxed text-[var(--text-subtle)]">
-              Type any question about these books. Every figure comes back computed
-              from the reconciled rows — nothing is written by a model. If the
-              question cannot be answered from these files, it will say so rather
-              than guess.
+          <div className="py-1">
+            <p className="text-[13px] leading-relaxed">
+              Ask anything about these books.
             </p>
-            <ul className="mt-3 space-y-1.5">
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-subtle)]">
+              Every figure comes back computed from the reconciled rows — nothing here
+              is written by a model. If a question cannot be answered from these
+              files, it says so rather than guessing.
+            </p>
+            <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
+              For example
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {OPENERS.map((opener) => (
-                <li key={opener}>
-                  <button
-                    type="button"
-                    onClick={() => void submit(opener)}
-                    className="text-left text-[12px] text-[var(--accent)] underline underline-offset-2"
-                  >
-                    {opener}
-                  </button>
-                </li>
+                <button
+                  key={opener}
+                  type="button"
+                  onClick={() => void submit(opener)}
+                  className="rounded-full border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                >
+                  {opener}
+                </button>
               ))}
-            </ul>
-          </div>
-        )}
-
-        {thread.map((exchange, index) => (
-          <div key={index} className={index > 0 ? "border-t border-[var(--border)] pt-4" : ""}>
-            <p className="text-[13px] font-medium">{exchange.question}</p>
-            <div className="mt-2">
-              {exchange.failed !== null ? (
-                <p className="text-[13px] text-[var(--bad)]">{exchange.failed}</p>
-              ) : (
-                exchange.answer !== null && <Reply answer={exchange.answer} />
-              )}
             </div>
           </div>
-        ))}
-
-        {thinking && (
-          <p className="text-[13px] text-[var(--text-subtle)]">Working it out…</p>
         )}
+
+        <div className="space-y-5">
+          {thread.map((exchange, index) => (
+            <div key={index}>
+              {/*
+                The question, marked by a rule rather than a bubble. A chat
+                transcript of alternating alignments would make a page of
+                settlement figures read like a messaging app, which is the
+                wrong register for money.
+              */}
+              <p className="border-l-2 border-[var(--accent)] pl-2.5 text-[13px] font-medium">
+                {exchange.question}
+              </p>
+              <div className="mt-2.5">
+                {exchange.failed !== null ? (
+                  <p className="text-[13px] text-[var(--bad)]">{exchange.failed}</p>
+                ) : (
+                  exchange.answer !== null && <Reply answer={exchange.answer} />
+                )}
+              </div>
+            </div>
+          ))}
+
+          {thinking && (
+            <p className="text-[13px] text-[var(--text-subtle)]">Working it out…</p>
+          )}
+        </div>
         <div ref={tail} />
       </div>
 
@@ -257,27 +279,35 @@ export function Ask({
           event.preventDefault();
           void submit(question);
         }}
-        className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 py-2.5"
+        className="shrink-0 border-t border-[var(--border)] p-3"
       >
         <label className="sr-only" htmlFor="ask">
           Your question
         </label>
-        <input
-          id="ask"
-          ref={field}
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask anything about these books…"
-          maxLength={500}
-          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-subtle)]"
-        />
-        <button
-          type="submit"
-          disabled={thinking || question.trim() === ""}
-          className="chip shrink-0 disabled:opacity-40"
-        >
-          {thinking ? "…" : "Ask"}
-        </button>
+        {/*
+          The border is on the wrapper rather than the input, so the send
+          control sits inside the field. An input and a button side by side
+          read as two things; one bordered row reads as somewhere to type.
+        */}
+        <div className="flex items-center gap-2 rounded-[var(--r-control)] border border-[var(--border)] px-3 py-2 transition-colors focus-within:border-[var(--accent)]">
+          <input
+            id="ask"
+            ref={field}
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="Ask anything about these books…"
+            maxLength={500}
+            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-subtle)]"
+          />
+          <button
+            type="submit"
+            disabled={thinking || question.trim() === ""}
+            aria-label="Ask"
+            className="btn btn-primary grid size-6 shrink-0 place-items-center rounded-full p-0 text-[12px] leading-none transition-opacity disabled:opacity-25"
+          >
+            {thinking ? "·" : "↑"}
+          </button>
+        </div>
       </form>
     </section>
   );

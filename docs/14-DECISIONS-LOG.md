@@ -1294,3 +1294,37 @@ If a decision is not here, it is not settled.
      for the same reason: figures from one month under a heading naming
      another is exactly the kind of quiet wrongness this project spends its
      effort avoiding.
+253. **The overview was costing the queue a third of the screen.** The cash
+     position, four metric cards and the merchant strip sat permanently above
+     every list, so on a 900px laptop the exception queue - the thing people
+     actually work in - opened below the fold with two rows visible. They are
+     now their own destination in the sidebar, under "This book", and the
+     lists get the whole work area. An orientation is somewhere you go, read
+     and leave; it is not rent charged against every screen after it.
+254. **The overview needed an action, not just figures.** Everything else on
+     it reports a state. `WhatToDo` is the last card and the only one that
+     asks for something: the largest few causes, the count, the money, and
+     the one question that closes each - then a link into the queue. It shows
+     three rather than all of them, because an orientation that lists
+     everything is the list it was built to replace, and it states how many
+     it left out.
+255. **A question box has to look like something you type into.** The panel's
+     empty state was a three-line grey paragraph over six blue underlined
+     links, which reads as an unstyled form rather than a place to ask
+     something. Now: one plain sentence, one line of provenance, and the
+     examples as bordered chips under a "for example" label - suggestions
+     rather than a menu. The composer puts its border on the wrapper and the
+     send control inside the field, because an input and a button side by
+     side read as two things while one bordered row reads as somewhere to
+     type.
+256. **The launcher reuses `btn-primary` rather than restating it.** The
+     first version wrote `bg-[var(--accent)] text-white` inline, which is
+     exactly what that class already is. The accent lightens in dark mode, so
+     the white-on-accent contrast is a trade this design system has already
+     made once - and a second copy of it is a second place for it to be made
+     differently.
+257. **A transcript, not a chat.** Answers stack under their question with an
+     accent rule down the left rather than in alternating bubbles. A page of
+     settlement figures set like a messaging app is the wrong register for
+     money, and the rule costs nothing while keeping the reply attached to
+     what was asked.
