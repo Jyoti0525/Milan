@@ -535,27 +535,70 @@ sound exactly like what this tool is for, which is what makes them dangerous.
 A confident paragraph about the wrong thing is worse than useless, because a
 merchant has no way to tell it from a right one.
 
+### Fourteen questions, not ten
+
+Ten was too narrow a surface for somebody typing their own question, so
+there are now fourteen: what each **payment method** brought in and what it
+cost to accept, everything that happened **on one named date**, the
+**largest payouts**, and how long payouts **actually take** — measured off
+the rows rather than quoting T+2, because what a merchant wants to know is
+whether they get T+2.
+
+```
+> how much came in on UPI?
+upi brought in ₹4,30,641.56 across 171 settled payments over 2026-07-01 to
+2026-07-28, and cost ₹10,163.19 in fees and GST to accept.
+
+> break it down by payment method
+  upi         ₹4,30,641.56   171 payments, 2.360% of what it brought in
+  card        ₹2,67,883.81   122 payments, 2.563% of what it brought in
+```
+
+A date the rules cannot otherwise place routes to the day itself, because
+somebody who typed a date was being specific about the one thing a refusal
+would ignore.
+
+### Why not RAG
+
+The obvious reach for "let people ask anything" is retrieval — and it would
+undo the only property that makes this defensible. RAG retrieves chunks and
+has **a model write the number**. Every figure here is computed from the
+report and carries the record ids behind it.
+
+There is a plain engineering reason too. RAG exists for answers buried in
+unstructured prose; this data is structured, complete, in memory and exact.
+Retrieving a fuzzy top-k of settlement rows and asking a model to add them
+up is a lossy, non-deterministic approximation of `sum()`.
+
 ### How well the rules do, measured twice
 
 | | routed correctly | misrouted | unrouted |
 |---|---|---|---|
-| corpus the triggers were tuned against | 96.4% | 0 | 2 |
-| **held-out set, measured once** | **60.0%** | 12% | 28% |
-| held-out, after fixing only the misroutes | 68.0% | **0** | 32% |
+| corpus the triggers were tuned against | 97.0% | 0 | 2 |
+| **held-out set, measured once** | **70.0%** | **0** | 30% |
 
-The middle row is the honest one. The held-out phrasings were written after
-the triggers were finished and scored once before anything changed, and they
-are twenty-eight points worse than the corpus that produced the rules — which
-is roughly what "I wrote the test and the code" is worth.
+Adding four intents is exactly when misroutes appear — four more ways to
+grab a question that belonged somewhere else. There were none, and that is
+the number worth watching rather than the 70%.
 
-Only the *misroutes* were then fixed, because the two failures are not the
-same failure. An unrouted question is refused, or handed to a model, and the
-person is told either way. A misrouted one is answered confidently, in detail,
-with real figures about a question nobody asked. `received` was triggering on
-the bare noun "deposit", which answered "there is a gap between the report and
-the deposit" with a month's deposit total. It now needs a word saying money
-*arrived*. That cost 3.6 points on the tuned corpus and took misroutes to zero
-on both sets.
+The round before this one is why: at ten intents the held-out set read 60.0%
+with **12% misrouted**, and those three misroutes were fixed while the eight
+unrouted ones were deliberately left alone.
+
+The second row is the honest one. The held-out phrasings were written after
+the triggers were finished and scored **once**, before anything changed in
+response — twenty-seven points worse than the corpus that produced the rules,
+which is roughly what "I wrote the test and the code" is worth.
+
+The two failures are not the same failure. An unrouted question is refused, or
+handed to a model, and the person is told either way. A misrouted one is
+answered confidently, in detail, with real figures about a question nobody
+asked — and that is the reply a finance team cannot tell from a right one. So
+only misroutes get fixed. `received` was triggering on the bare noun
+"deposit", which answered "there is a gap between the report and the deposit"
+with a month's deposit total; it now needs a word saying money *arrived*. The
+unrouted phrasings are left exactly where they fell, which is what keeps the
+figure a measurement rather than a target.
 
 ## Where the model earns its place
 

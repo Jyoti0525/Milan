@@ -13,12 +13,13 @@ question with a number nobody can trace.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
-from milan.domain.enums import EntityType, ExceptionCode
+from milan.domain.enums import EntityType, ExceptionCode, PaymentMethod
 from milan.domain.money import ZERO, Paise, format_inr
 from milan.domain.results import ReconReport
 from milan.leaks.clusters import summarise
@@ -78,6 +79,13 @@ class Asked(BaseModel):
     words: frozenset[str]
     on: date | None = None
     subject: str | None = None
+    method: PaymentMethod | None = None
+    """A payment method the question names, if it names one.
+
+    Extracted by rules like the date and the id, and for the same reason. A
+    model that mis-picks an intent is visibly wrong; a model that decides a
+    question about UPI was about cards produces a correct-looking total for
+    the wrong instrument."""
 
 
 def _clip(lines: list[Line], noun: str) -> tuple[Line, ...]:
@@ -480,6 +488,240 @@ def biggest(books: Books, asked: Asked) -> Answer:
     )
 
 
+# ------------------------------------------------------- slicing the month
+
+
+def by_method(books: Books, asked: Asked) -> Answer:
+    """What each instrument brought in, and what it cost to accept.
+
+    The question a merchant asks when deciding what to promote. UPI is nearly
+    free and cards are not, so "which of these is worth having" is a fee
+    question rather than a volume question - and the answer is both columns
+    side by side rather than either one alone.
+    """
+    rows = [
+        row
+        for row in books.data.settlement_rows
+        if row.type is EntityType.PAYMENT and row.method is not None
+    ]
+    if not rows:
+        return _nothing(asked, "by_method", "No settled payments carry a method in this report.")
+
+    wanted = asked.method
+    if wanted is not None:
+        rows = [row for row in rows if row.method is wanted]
+        if not rows:
+            return _nothing(
+                asked, "by_method", f"Nothing settled by {wanted.value} in this period."
+            )
+
+    gross: dict[str, int] = defaultdict(int)
+    cost: dict[str, int] = defaultdict(int)
+    count: Counter[str] = Counter()
+    for row in rows:
+        name = row.method.value if row.method is not None else "unknown"
+        gross[name] += row.amount
+        cost[name] += row.fee + row.tax
+        count[name] += 1
+
+    def describe(name: str) -> str:
+        if not gross[name]:
+            return f"{count[name]} payments"
+        share = Decimal(cost[name]) / Decimal(gross[name])
+        return (
+            f"{count[name]} payments, {format_inr(Paise(cost[name]))} in fees and GST "
+            f"- {share:.3%} of what it brought in"
+        )
+
+    lines = [
+        Line(label=name, amount=Paise(gross[name]), detail=describe(name))
+        for name in sorted(gross, key=lambda name: -gross[name])
+    ]
+
+    total = Paise(sum(gross.values()))
+    charged = Paise(sum(cost.values()))
+    if wanted is not None:
+        headline = (
+            f"{wanted.value} brought in {format_inr(total)} across {len(rows)} settled "
+            f"payments over {_period(books)}, and cost {format_inr(charged)} in fees "
+            "and GST to accept."
+        )
+    else:
+        headline = (
+            f"{format_inr(total)} settled across {len(gross)} payment methods over "
+            f"{_period(books)}, costing {format_inr(charged)} in fees and GST. "
+            f"{lines[0].label} is the largest."
+        )
+    return Answer(asked=asked.text, intent="by_method", headline=headline, lines=tuple(lines))
+
+
+def on_a_day(books: Books, asked: Asked) -> Answer:
+    """Everything this run knows about one date.
+
+    Deliberately broad rather than precise, and it is the fallback for any
+    question that names a day and nothing else this can place. Somebody who
+    typed a date wants that date; answering with the whole month would be
+    answering something they did not ask.
+    """
+    if asked.on is None:
+        span = books.period
+        where = f" The statement runs {_period(books)}." if span is not None else ""
+        return _nothing(
+            asked, "on_a_day", f"Name a date and I will say what happened on it.{where}"
+        )
+
+    day = asked.on
+    credits = [credit for credit in books.data.bank_credits if credit.value_date == day]
+    settled = {
+        row.settlement_id
+        for row in books.data.settlement_rows
+        if row.settled_at is not None and row.settled_at.date() == day and row.settlement_id
+    }
+    captured = [payment for payment in books.data.payments if payment.captured_at.date() == day]
+    # Matched on the evidence rather than on a date field, because different
+    # exception kinds record their date under different keys - `settled_on`,
+    # `captured_on`, `raised_on` - and a reader asking about a day means all
+    # of them.
+    raised = [
+        item
+        for item in books.report.exceptions
+        if day.isoformat() in " ".join(item.evidence.values())
+    ]
+
+    if not (credits or settled or captured or raised):
+        return _nothing(asked, "on_a_day", f"Nothing in these files happened on {day}.")
+
+    arrived = Paise(sum(credit.amount for credit in credits))
+    taken = Paise(sum(payment.amount for payment in captured))
+    lines = []
+    if credits:
+        lines.append(
+            Line(
+                label=f"Arrived in the bank ({len(credits)})",
+                amount=arrived,
+                sources=tuple(credit.credit_id for credit in credits),
+            )
+        )
+    if settled:
+        lines.append(
+            Line(
+                label=f"Payout runs dated this day ({len(settled)})",
+                detail="what the gateway says it sent",
+                sources=tuple(sorted(settled)),
+            )
+        )
+    if captured:
+        lines.append(
+            Line(
+                label=f"Captured from customers ({len(captured)})",
+                amount=taken,
+                detail="settles two working days later unless taken instantly",
+            )
+        )
+    if raised:
+        lines.append(
+            Line(
+                label=f"Unresolved cases naming this day ({len(raised)})",
+                amount=Paise(sum(abs(item.amount) for item in raised)),
+                sources=tuple(item.subject_id for item in raised)[:20],
+            )
+        )
+
+    return Answer(
+        asked=asked.text,
+        intent="on_a_day",
+        headline=(
+            f"On {day}: {format_inr(arrived)} arrived across {len(credits)} bank "
+            f"credits, {format_inr(taken)} was captured from customers, and "
+            f"{len(raised)} unresolved cases name that date."
+        ),
+        lines=tuple(lines),
+        subjects=tuple(credit.credit_id for credit in credits[:MOST_LINES]),
+    )
+
+
+def largest(books: Books, asked: Asked) -> Answer:
+    """The biggest payouts.
+
+    Not the same question as `biggest`, which is the largest *problem*. A
+    merchant asking which payouts were biggest is doing cash planning; one
+    asking what is biggest wrong is working a queue.
+    """
+    credits = sorted(books.data.bank_credits, key=lambda credit: -credit.amount)
+    if not credits:
+        return _nothing(asked, "largest", "No bank credits in this period.")
+
+    proved = {one.credit_id for one in books.report.proofs if one.balances}
+    shown = credits[:MOST_LINES]
+    lines = [
+        Line(
+            label=credit.credit_id,
+            amount=credit.amount,
+            detail=(
+                f"{credit.value_date} - "
+                + ("proved to the paisa" if credit.credit_id in proved else "not proved")
+            ),
+            sources=(credit.credit_id,),
+        )
+        for credit in shown
+    ]
+    top = Paise(sum(credit.amount for credit in shown))
+    everything = Paise(sum(credit.amount for credit in credits))
+    return Answer(
+        asked=asked.text,
+        intent="largest",
+        headline=(
+            f"The largest single credit was {format_inr(credits[0].amount)} on "
+            f"{credits[0].value_date}. The top {len(shown)} together are "
+            f"{format_inr(top)} of {format_inr(everything)} received."
+        ),
+        lines=tuple(lines),
+        subjects=tuple(credit.credit_id for credit in shown),
+    )
+
+
+def timing(books: Books, asked: Asked) -> Answer:
+    """How long money actually took to arrive, measured rather than quoted.
+
+    The published answer is T+2 working days. What a merchant wants to know
+    is whether that is what *they* get, and the only way to say so is to
+    measure the gap on their own rows.
+    """
+    lags = [
+        (row.settled_at.date() - row.created_at.date()).days
+        for row in books.data.settlement_rows
+        if row.settled_at is not None and row.type is EntityType.PAYMENT
+    ]
+    if not lags:
+        return _nothing(asked, "timing", "Nothing in this report has settled yet.")
+
+    spread = Counter(lags)
+    lines = [
+        Line(
+            label=("same day" if days == 0 else f"{days} calendar day{'s' if days > 1 else ''}"),
+            detail=f"{count} payments, {count / len(lags):.0%} of settled volume",
+        )
+        for days, count in sorted(spread.items())
+    ]
+    typical = spread.most_common(1)[0][0]
+    same_day = spread[0]
+    instant = (
+        f" {same_day} settled the same day, which is instant settlement rather than "
+        "the ordinary cycle."
+        if same_day
+        else ""
+    )
+    return Answer(
+        asked=asked.text,
+        intent="timing",
+        headline=(
+            f"Payments in this report take {min(lags)} to {max(lags)} calendar days to "
+            f"settle, most commonly {typical}.{instant}"
+        ),
+        lines=_clip(lines, "settlement lags"),
+    )
+
+
 # -------------------------------------------------------------- the merchant
 
 
@@ -558,6 +800,10 @@ def proof(books: Books, asked: Asked) -> Answer:
 
 
 ANSWERS = {
+    "by_method": by_method,
+    "on_a_day": on_a_day,
+    "largest": largest,
+    "timing": timing,
     "charges": charges,
     "refunds": refunds,
     "received": received,

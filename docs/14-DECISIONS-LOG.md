@@ -1245,3 +1245,52 @@ If a decision is not here, it is not settled.
      thing, which a merchant has no way to tell from a right one, and one of
      those is how a finance team stops trusting every other answer in the
      system.
+247. **RAG was considered for the question answerer and rejected.** It is the
+     obvious reach for "let people ask anything", and it would undo the one
+     property that makes this defensible. RAG retrieves chunks and has a
+     *model write the number*; every figure in `milan.qa` is computed from
+     the report and carries the record ids behind it. There is a plain
+     engineering reason as well: RAG exists for answers buried in
+     unstructured prose, and this data is structured, complete, in memory
+     and exact. Retrieving a fuzzy top-k of settlement rows and asking a
+     model to add them up is a lossy, non-deterministic approximation of
+     `sum()`. The real complaint behind the suggestion was that ten
+     questions is too narrow a surface, and the answer to that is more
+     things the arithmetic can compute, not a model that computes.
+248. **Ten questions was too narrow, so there are fourteen.** `by_method`
+     (what each instrument brought in and what it cost to accept),
+     `on_a_day`, `largest` and `timing` - the last measured off the rows
+     rather than quoting T+2, because what a merchant wants to know is
+     whether they get T+2. `on_a_day` also runs as a fallback: a date the
+     rules could not otherwise place routes there, because somebody who
+     typed a date was being specific about the one thing a refusal would
+     ignore.
+249. **Adding intents is when misroutes appear, and none did.** Four new ways
+     to grab a question that belonged elsewhere, measured once on the
+     held-out corpus before anything was tuned: 70.0% routed, **zero**
+     misrouted, 30% unrouted. The tuned corpus reads 97.0%. Nothing was
+     changed in response to round two - the nine unrouted phrasings are left
+     exactly where they fell, which is what keeps the figure a measurement
+     rather than a target.
+250. **The causes were the least legible thing on the screen.** Eight cards
+     of prose in a column capped at 58% width gave every cause four cramped
+     words and a wall of grey text, so the panel built to make a queue
+     readable was harder to read than the queue. Now a ranked list: one line
+     each - count, name, money, and the action - with the reasoning opening
+     only for the cause being looked at. The count carries the most visual
+     weight because it is the whole proposition.
+251. **A question box has to look like something you type into.** The asker
+     sat between the metric strip and the queue, where it read as one more
+     card of figures; the four example questions read as the only four
+     permitted. It is now a launcher and a panel that keeps the
+     conversation, names the run it is scoped to in its header, and puts the
+     input where an input belongs. The examples are shown only while the
+     panel is empty, because they illustrate the *shape* of a question that
+     works rather than the menu.
+252. **The panel is scoped to one run, and says so.** Answers are computed
+     from a single reconciled month, so a header naming that month is not
+     decoration - a reader with several runs open needs to know which one a
+     figure describes before trusting it. Switching runs clears the thread
+     for the same reason: figures from one month under a heading naming
+     another is exactly the kind of quiet wrongness this project spends its
+     effort avoiding.

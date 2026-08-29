@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 
+from milan.domain.enums import PaymentMethod
 from milan.llm.provider import Completion, Provider, Request
 from milan.qa.answering import Asked, Books
 from milan.qa.intents import BY_NAME, CATALOGUE, Intent
@@ -104,13 +105,40 @@ def _subject(text: str, books: Books) -> str | None:
     return None
 
 
+_METHODS: dict[str, PaymentMethod] = {
+    "upi": PaymentMethod.UPI,
+    "card": PaymentMethod.CARD,
+    "cards": PaymentMethod.CARD,
+    "netbanking": PaymentMethod.NETBANKING,
+    "wallet": PaymentMethod.WALLET,
+    "wallets": PaymentMethod.WALLET,
+    "emi": PaymentMethod.EMI,
+    "paylater": PaymentMethod.PAYLATER,
+}
+
+
+def _instrument(words: frozenset[str]) -> PaymentMethod | None:
+    """A payment method the question names, if it names exactly one.
+
+    Exactly one, on purpose. "How do cards compare to UPI" names two, and
+    answering it about whichever appeared first would be picking a side of a
+    comparison the reader asked to see both halves of - so it falls through
+    to the breakdown across every method, which is the honest answer to a
+    question about two of them.
+    """
+    found = {_METHODS[word] for word in words if word in _METHODS}
+    return found.pop() if len(found) == 1 else None
+
+
 def read(text: str, books: Books) -> Asked:
     """Pull out of the question everything the rules can be sure of."""
+    words = _words(text)
     return Asked(
         text=text.strip(),
-        words=_words(text),
+        words=words,
         on=_when(text, books),
         subject=_subject(text, books),
+        method=_instrument(words),
     )
 
 
@@ -129,6 +157,14 @@ def by_rules(asked: Asked) -> Intent | None:
         for trigger in intent.triggers:
             if all(group & asked.words for group in trigger):
                 return intent
+
+    # A date nothing else claimed is a question about that date. Last, so it
+    # never takes a question another intent understood - "how much did I
+    # receive on 14 July" is a `received` question that happens to name a
+    # day - and present at all because somebody who typed a date wants that
+    # date rather than a refusal.
+    if asked.on is not None:
+        return BY_NAME["on_a_day"]
     return None
 
 

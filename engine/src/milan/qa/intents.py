@@ -106,6 +106,69 @@ CATALOGUE: tuple[Intent, ...] = (
         ),
     ),
     Intent(
+        name="largest",
+        asks="The biggest payouts of the period, for cash planning rather than triage.",
+        example="what were my biggest payouts?",
+        triggers=(
+            _t(
+                {"biggest", "largest", "top", "highest"},
+                {
+                    "payout",
+                    "payouts",
+                    "credit",
+                    "credits",
+                    "deposit",
+                    "deposits",
+                    "settlement",
+                    "settlements",
+                },
+            ),
+        ),
+    ),
+    Intent(
+        name="by_method",
+        asks=(
+            "What each payment method brought in and what it cost to accept - "
+            "UPI, cards, netbanking, wallets, EMI, pay later."
+        ),
+        example="how much came in on UPI?",
+        triggers=(
+            _t({"upi", "card", "cards", "netbanking", "wallet", "wallets", "emi", "paylater"}),
+            _t({"method", "methods", "instrument", "instruments"}),
+        ),
+    ),
+    Intent(
+        name="timing",
+        asks=(
+            "How long money actually takes to reach the bank on these rows, "
+            "rather than the published T+2."
+        ),
+        example="how long do payouts take?",
+        triggers=(
+            _t(
+                {"long", "lag", "delay", "delayed", "slow", "quick", "quickly", "soon", "cycle"},
+                {
+                    "settle",
+                    "settles",
+                    "settled",
+                    "settlement",
+                    "payout",
+                    "payouts",
+                    "paid",
+                    "pay",
+                    "take",
+                    "takes",
+                },
+            ),
+        ),
+    ),
+    Intent(
+        name="on_a_day",
+        asks="Everything that happened on one named date - money in, payouts, captures, cases.",
+        example="what happened on 14 July?",
+        triggers=(_t({"happened", "happen", "happening"}),),
+    ),
+    Intent(
         name="biggest",
         asks="The single largest thing wrong with this month, and what to do about it.",
         example="what's the biggest problem here?",

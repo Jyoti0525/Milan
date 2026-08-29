@@ -594,25 +594,30 @@ export default function Workspace() {
             row in the run rather than a list of its own.
           */}
           {view && <Merchant findings={view.merchant} />}
-          {/*
-            Below the merchant strip, because both answer questions the
-            figures above cannot — and this one has to be asked, so it sits
-            closest to the queue it is usually asked about.
-          */}
-          {view && current && (
-            <Ask
-              key={key}
-              onAsk={(question) =>
-                current.kind === "run"
-                  ? askRun(current.run.difficulty, current.run.seed, question)
-                  : askImport(current.ref.slug, question)
-              }
-            />
-          )}
           {loading && (
             <div className="card px-5 py-4 text-[13px] text-[var(--text-subtle)]">Reconciling…</div>
           )}
         </div>
+
+        {/*
+          Outside every column, because it overlays rather than flows. It sat
+          in the metric strip and was unreadable there: squeezed to one line,
+          surrounded by figures, giving no sign it was an input.
+        */}
+        {view && current && (
+          <Ask
+            scope={
+              current.kind === "run"
+                ? `${current.run.difficulty} · seed ${current.run.seed}`
+                : `${current.ref.slug} · ${current.ref.files.length} files`
+            }
+            onAsk={(question) =>
+              current.kind === "run"
+                ? askRun(current.run.difficulty, current.run.seed, question)
+                : askImport(current.ref.slug, question)
+            }
+          />
+        )}
 
         <div className="flex min-h-0 flex-1 gap-4 p-5">
           <section
