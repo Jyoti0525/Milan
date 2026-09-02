@@ -1328,3 +1328,54 @@ If a decision is not here, it is not settled.
      settlement figures set like a messaging app is the wrong register for
      money, and the rule costs nothing while keeping the reply attached to
      what was asked.
+258. **A third question corpus, because the second one had been spent.**
+     `HELD_OUT` was written after the triggers and measured once, which is
+     what made 70% worth quoting. Then nine unrouted phrasings were fixed
+     against it and it read 100% - and that figure means nothing, because the
+     rules were changed until it did. `AFTERWARDS` was written before any of
+     the round-three work was measured, and it is now the only routing number
+     in the file that is evidence rather than memory.
+259. **Widening a word list generalised to nothing, and the measurement says
+     so.** The nine fixes - "slower" beside "slow", "reconcile" beside
+     "explain", "urgently" beside "urgent" - were aimed at nine sentences and
+     reached exactly those nine. `AFTERWARDS` scored 33.3% before the
+     widening and 33.3% after it, identically, down to the same thirteen
+     unrouted phrasings. The honest reading is that trigger lists cover what
+     their author imagined and not one sentence further, which is the case
+     for offering a model rather than an argument against it.
+260. **Seven misroutes had been sitting behind a corrected corpus.**
+     `NEVER_MISROUTE = 0` had held on every corpus here, and it held because
+     round one had *fixed* the misroutes in `HELD_OUT` - the guarantee was
+     being read off a paper that had been marked and then rewritten. On a
+     corpus nobody had corrected there were seven. Recorded rather than
+     quietly repaired, because the previous claim was stated publicly and was
+     wrong in a way worth being explicit about.
+261. **An action guard ahead of both the rules and the model.** Two of the
+     seven were the dangerous kind: "draft a dispute letter to razorpay" came
+     back as a refund summary, and "set up an alert when a payout is short"
+     came back as a correct account of this month's shortfalls, handed to
+     somebody who then believed a notification existed. An action request is
+     *made of* the right domain nouns, so matching on nouns can never
+     separate the two - the verb can. Verbs of doing (draft, email, schedule,
+     forecast) refuse before any trigger or model runs; verbs of asking
+     (show, give, list, break down) are deliberately absent, because those
+     are how people request the figures this is for.
+262. **`refunds` moved above `charges`.** Both are questions about money the
+     merchant did not keep, and `charges` owned the word "cost" - so "how
+     much did returns cost me" was answered with the gateway's fees, a real
+     figure about the wrong money. A sentence naming a refund is a question
+     about refunds whatever verb it uses, and a sentence about fees never
+     names one, so the order is safe in the direction it now runs.
+263. **Four triggers that matched on a noun alone now need the word that says
+     which question it is.** "Split" without a Route noun took "revenue split
+     across payment modes"; "deduction" beside a size word took "sum of every
+     deduction the gateway took" as a complaint; `received` counted "the
+     amount in my account" as money having arrived when the sentence was
+     saying two figures disagree. Naming where money lives is not the same as
+     saying it got there, and a noun on its own cannot tell those apart.
+264. **What can and cannot be claimed after all this.** 53.3% routed is a
+     real measurement, because not one unrouted phrasing was touched. The
+     zero misroutes is not independently measured any more - those seven are
+     what the fixes were written against - so the claim worth making is the
+     narrow one: seven known ways to answer the wrong question are closed,
+     not that none remain. A fourth corpus is what it would take to say more.

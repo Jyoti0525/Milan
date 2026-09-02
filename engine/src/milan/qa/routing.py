@@ -142,6 +142,69 @@ def read(text: str, books: Books) -> Asked:
     )
 
 
+_DOING = frozenset(
+    {
+        # Produce a document.
+        "draft",
+        "write",
+        "compose",
+        "letter",
+        "summarise",
+        "summarize",
+        # Move it somewhere.
+        "email",
+        "mail",
+        "send",
+        "forward",
+        "download",
+        "export",
+        "share",
+        # Do it later, or repeatedly.
+        "alert",
+        "alerts",
+        "notify",
+        "remind",
+        "schedule",
+        "subscribe",
+        # Say what has not happened yet.
+        "forecast",
+        "forecasting",
+        "predict",
+        "projection",
+        "project",
+    }
+)
+"""Words that mean the sentence is a request rather than a question.
+
+The most valuable rule in this module, and it was added because of one
+sentence: "set up an alert when a payout is short". Every trigger in the
+catalogue reads that as `shortfall` - the word is right there - and the
+reply was a correct, confident account of this month's shortfalls to
+somebody who had asked for a notification and now believes they have one.
+
+That is the failure this package exists to avoid, arriving through a door
+nothing was watching. Domain nouns are exactly what an action request
+contains, so matching on nouns can never tell the two apart; the verb can.
+Anything here is refused before a trigger or a model sees it, because a
+model handed "draft a dispute letter" will pick `refunds` for the same
+reason the rules did, and be just as wrong.
+
+Deliberately verbs of *doing*, never of *asking*. "Show", "give", "break
+down" and "list" are how people ask for figures they are owed, and pulling
+any of them in here would refuse the questions this is for.
+"""
+
+
+def asks_for_an_action(asked: Asked) -> bool:
+    """Whether the sentence asks this to *do* something rather than say one.
+
+    This package computes figures from rows that already exist. It cannot
+    send, schedule, draft or predict, and the honest reply to all four is to
+    say so rather than to answer the nearest question it recognises.
+    """
+    return bool(_DOING & asked.words)
+
+
 def by_rules(asked: Asked) -> Intent | None:
     """The first intent every one of whose trigger groups is satisfied.
 

@@ -23,7 +23,7 @@ from milan.llm.provider import Provider
 from milan.qa.answering import ANSWERS, Books
 from milan.qa.intents import examples
 from milan.qa.question import Answer, Line
-from milan.qa.routing import by_model, by_rules, read
+from milan.qa.routing import asks_for_an_action, by_model, by_rules, read
 
 __all__ = ["Answer", "Books", "Line", "ask"]
 
@@ -39,6 +39,21 @@ def ask(question: str, books: Books, provider: Provider | None = None) -> Answer
     asked = read(question, books)
     if not asked.text:
         return _refuse(question, "Ask me something about this month's settlements.")
+
+    # Before the rules and before any model, because both of them route on
+    # nouns and an action request is full of the right ones. "Set up an alert
+    # when a payout is short" is a `shortfall` sentence by every trigger in
+    # the catalogue, and answering it hands somebody a correct account of
+    # this month while leaving them believing a notification exists.
+    if asks_for_an_action(asked):
+        return _refuse(
+            asked.text,
+            (
+                "I can work figures out from these files, but I cannot send, schedule, "
+                "draft or predict anything - so I would rather say so than answer the "
+                "nearest question I recognise. What I can tell you:"
+            ),
+        )
 
     intent = by_rules(asked)
     routed_by = "rules"

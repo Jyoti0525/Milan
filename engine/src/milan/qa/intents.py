@@ -73,9 +73,47 @@ CATALOGUE: tuple[Intent, ...] = (
         triggers=(
             _t({"overcharged", "overcharge", "overcharging", "overcharges"}),
             _t({"leak", "leaks", "leaking", "leakage"}),
+            # Doubting a rate is not the same question as totalling it. "Are
+            # you sure the MDR is 2%" reached `charges` and came back with a
+            # month's fee total, which answers a question about arithmetic
+            # with arithmetic and leaves the question about the contract
+            # untouched.
             _t(
-                {"wrong", "higher", "above", "more", "losing", "lose", "lost"},
-                {"rate", "rates", "contract", "contracted", "agreed", "agreement", "pricing"},
+                {"sure", "correct", "right", "supposed", "meant", "should"},
+                {"rate", "rates", "mdr", "pricing", "fee", "fees", "percent", "commission"},
+            ),
+            # Two halves: something that means *comparing or exceeding*, and
+            # something that means *the agreed price*. Neither half routes on
+            # its own, which is what keeps "what are my transaction charges"
+            # out of here - that names the price without questioning it.
+            _t(
+                {
+                    "wrong",
+                    "higher",
+                    "above",
+                    "more",
+                    "losing",
+                    "lose",
+                    "lost",
+                    "check",
+                    "compare",
+                    "verify",
+                    "against",
+                    "audit",
+                    "review",
+                },
+                {
+                    "rate",
+                    "rates",
+                    "contract",
+                    "contracted",
+                    "agreed",
+                    "agreement",
+                    "pricing",
+                    "signed",
+                    "quoted",
+                    "promised",
+                },
             ),
         ),
     ),
@@ -88,7 +126,46 @@ CATALOGUE: tuple[Intent, ...] = (
         example="why was my payout short?",
         triggers=(
             _t({"short", "shortfall", "shortfalls", "shorter", "less", "lower", "smaller"}),
-            _t({"deducted", "deduction", "deductions"}, WHY | MUCH),
+            # A deduction is only this question when the sentence says it was
+            # *unwarranted*. Paired with a size word instead, it caught "sum
+            # of every deduction the gateway took" - a plain request for a
+            # total, answered as a complaint about money missing. That one
+            # belongs to `charges`, which is where it now lands.
+            _t(
+                {"deducted", "deduction", "deductions"},
+                {
+                    "shouldnt",
+                    "shouldn't",
+                    "wrongly",
+                    "wrong",
+                    "extra",
+                    "unexpected",
+                    "why",
+                    "unexplained",
+                },
+            ),
+            # A word meaning "these two do not agree", tied to one of the two
+            # things that are supposed to. Both halves are required, and the
+            # second half is deliberately a list of settlement nouns rather
+            # than anything general: "the discrepancy between these two files"
+            # names no side of the identity and stays unrouted, because which
+            # two files somebody means is not something this can know.
+            _t(
+                {"gap", "difference", "differs", "discrepancy", "mismatch", "variance"},
+                {
+                    "report",
+                    "deposit",
+                    "deposits",
+                    "payout",
+                    "payouts",
+                    "settlement",
+                    "bank",
+                    "credit",
+                    "credited",
+                    "advice",
+                    "amount",
+                },
+            ),
         ),
     ),
     Intent(
@@ -103,6 +180,12 @@ CATALOGUE: tuple[Intent, ...] = (
             _t({"unsettled", "settled"}, {"not", "never", "yet", "hasnt", "hasn't", "havent"}),
             _t({"captured", "capture"}, {"missing", "never", "not"}),
             _t({"owe", "owed", "owes", "outstanding", "pending"}),
+            # "Due" needs a second word, unlike the rest of that group. On its
+            # own it swings between two questions - "everything still due to
+            # me" is this one, "when is my payout due" is `timing` - and the
+            # words that disambiguate it are the ones that say *to whom*.
+            _t({"due"}, {"me", "us", "still", "money", "payment", "payments"}),
+            _t({"stuck", "unpaid"}),
         ),
     ),
     Intent(
@@ -134,7 +217,7 @@ CATALOGUE: tuple[Intent, ...] = (
         example="how much came in on UPI?",
         triggers=(
             _t({"upi", "card", "cards", "netbanking", "wallet", "wallets", "emi", "paylater"}),
-            _t({"method", "methods", "instrument", "instruments"}),
+            _t({"method", "methods", "instrument", "instruments", "mode", "modes"}),
         ),
     ),
     Intent(
@@ -146,7 +229,22 @@ CATALOGUE: tuple[Intent, ...] = (
         example="how long do payouts take?",
         triggers=(
             _t(
-                {"long", "lag", "delay", "delayed", "slow", "quick", "quickly", "soon", "cycle"},
+                {
+                    "long",
+                    "lag",
+                    "delay",
+                    "delayed",
+                    "slow",
+                    "slower",
+                    "quick",
+                    "quicker",
+                    "quickly",
+                    "faster",
+                    "sooner",
+                    "soon",
+                    "late",
+                    "cycle",
+                },
                 {
                     "settle",
                     "settles",
@@ -173,7 +271,20 @@ CATALOGUE: tuple[Intent, ...] = (
         asks="The single largest thing wrong with this month, and what to do about it.",
         example="what's the biggest problem here?",
         triggers=(
-            _t({"biggest", "largest", "worst", "priority", "first", "urgent", "important"}),
+            _t(
+                {
+                    "biggest",
+                    "largest",
+                    "worst",
+                    "priority",
+                    "first",
+                    "urgent",
+                    "urgently",
+                    "attention",
+                    "pressing",
+                    "important",
+                }
+            ),
             # "should" plus "I" was here and had to go. It caught "should I
             # switch payment gateway" and "what will my sales be next month",
             # neither of which this can compute, and answering them with the
@@ -198,9 +309,28 @@ CATALOGUE: tuple[Intent, ...] = (
             _t({"unexplained", "unresolved", "unmatched", "exceptions", "exception"}),
             _t(
                 {"cannot", "cant", "can't", "could", "couldnt", "couldn't", "unable"},
-                {"match", "matched", "explain", "explained"},
+                {"match", "matched", "explain", "explained", "reconcile", "reconciled"},
             ),
             _t(WHY, {"problems", "problem", "issues", "issue", "queue"}),
+            # "Open" carries the sense only next to the thing that is open.
+            # Alone it is a verb - "open the queue" - and the noun is what
+            # says this is a question about what remains unresolved.
+            _t({"open", "unclosed"}, {"items", "item", "cases", "case", "queue", "list"}),
+        ),
+    ),
+    # Above `charges`, and that order is the whole point. Both questions are
+    # about money the merchant did not keep, and `charges` owns the word
+    # "cost" - so "how much did returns cost me" was answered with the
+    # gateway's fees, which is a real figure about the wrong money. A
+    # sentence that names a refund is a question about refunds whatever verb
+    # it uses; a sentence about fees never names one.
+    Intent(
+        name="refunds",
+        asks="Refunds and chargebacks over the period, and what they cost.",
+        example="how much went back in refunds?",
+        triggers=(
+            _t({"refund", "refunds", "refunded", "returns", "returned"}),
+            _t({"chargeback", "chargebacks", "dispute", "disputes"}),
         ),
     ),
     Intent(
@@ -213,21 +343,15 @@ CATALOGUE: tuple[Intent, ...] = (
         triggers=(
             _t({"fee", "fees", "commission", "mdr", "charge", "charged", "charges", "cost"}),
             _t({"gst"}),
+            # The neutral total, handed down from `shortfall`, which now only
+            # takes a deduction the sentence calls unwarranted.
+            _t({"deduction", "deductions", "deducted"}, MUCH),
             # Withholding split off with a size word attached, and the
             # `merchant` intent takes it without one. "How much TDS came off"
             # wants the figure; "is TDS being deducted" wants to know whether
             # this merchant is an operator at all, and answering the second
             # with a total is answering a question nobody asked.
             _t({"tds", "withheld", "withholding", "194", "194-o"}, MUCH),
-        ),
-    ),
-    Intent(
-        name="refunds",
-        asks="Refunds and chargebacks over the period, and what they cost.",
-        example="how much went back in refunds?",
-        triggers=(
-            _t({"refund", "refunds", "refunded"}),
-            _t({"chargeback", "chargebacks", "dispute", "disputes"}),
         ),
     ),
     Intent(
@@ -241,7 +365,14 @@ CATALOGUE: tuple[Intent, ...] = (
         triggers=(
             _t({"194", "194-o", "operator", "ecommerce", "e-commerce"}),
             _t({"tds", "withheld", "withholding"}),
-            _t({"route", "linked", "marketplace", "split", "splits"}),
+            _t({"route", "linked", "marketplace"}),
+            # "Split" needs to say what it is split *to*. On its own it took
+            # "revenue split across payment modes", which is a breakdown
+            # question, and answered it with a paragraph about Route.
+            _t(
+                {"split", "splits", "onward"},
+                {"route", "linked", "account", "accounts", "sub", "sellers", "vendors", "partners"},
+            ),
             _t({"instant"}, {"settlement", "settlements", "payout", "payouts"}),
         ),
     ),
@@ -256,7 +387,26 @@ CATALOGUE: tuple[Intent, ...] = (
             # a confident reply about something nobody asked. A question needs
             # to say that money *arrived*, not merely mention a deposit.
             _t({"received", "receive", "arrived", "arrive", "credited", "hit"}),
-            _t(MUCH, {"deposits", "deposited", "credited", "bank", "account"}),
+            # "Bank" and "account" used to sit in here beside a size word,
+            # which made "the amount in my account is not what the panel
+            # showed" a question about how much arrived. It is the opposite -
+            # a complaint that two figures disagree - and it was answered
+            # with a confident total. Naming where the money lives is not the
+            # same as saying it got there, so the group is now only words
+            # that mean it did.
+            _t(MUCH, {"deposits", "deposited", "credited", "inflow"}),
+            # The same rule as above, kept: a deposit is only this question
+            # when the sentence says it *landed*. The bare noun stays with
+            # `shortfall`, where "a gap between the report and the deposit"
+            # belongs.
+            _t(
+                {"deposit", "deposits", "money", "payout", "payouts"},
+                {"came", "come", "coming", "landed", "in"},
+            ),
+            # "Paid out to me" is receiving, and it reaches here rather than
+            # `timing` only because `timing` needs a word about speed. Both
+            # readings of "paid" are live, and the order settles it.
+            _t(MUCH, {"paid"}),
         ),
     ),
 )
