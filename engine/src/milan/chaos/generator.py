@@ -87,6 +87,20 @@ invented: these are the pairs that collide in most sans-serif faces."""
 
 _VARIANCE_KINDS = ("fee", "tax", "refund")
 
+_UNFAMILIAR_KINDS = ("bank_charge", "fx_markup", "dispute_penalty", "promo_funding")
+"""Shortfalls with no rule in `milan.recon.causes` written against them.
+
+Chosen for their arithmetic rather than their story. Each one is a shape no
+rule tests for - a constant number of paise, a rate that moves, a recovery
+with nothing behind it, a rate over part of a batch - so a rule that names
+one of these has matched on a coincidence rather than on evidence.
+
+All four are ordinary things that happen to Indian merchants, which matters:
+the test would prove nothing if these were absurd. They are simply four of
+the many real mechanisms nobody got round to writing a rule for, standing in
+for the ones a merchant will actually bring.
+"""
+
 _MERGEABLE_DEFECTS = frozenset({None, "UTR_CORRUPTED", "UTR_DAMAGED"})
 """What a credit may already be carrying and still be merged. Reference
 defects, yes - a bank sweeping two transfers together does not care whether
@@ -197,6 +211,10 @@ class ChaosEngine:
         # nothing and the tier would silently inject fewer than it claims.
         missing = self._choose_missing(batches, self._config.defects.missing_credits)
         self._inject_payout_variances(batches, rows, missing)
+        # After the familiar ones and only on what they left alone. Off in
+        # every tier - reached by setting the knob explicitly, which only the
+        # unfamiliar-defect measurement does.
+        self._inject_unfamiliar_variances(batches, missing)
         settlements = self._finalise_settlements(batches, rows)
         credits, truths = self._emit_bank_credits(batches, settlements, missing)
 
@@ -793,6 +811,74 @@ class ChaosEngine:
                 batch.variance, batch.variance_kind = self._wrong_gst(batch), "TAX"
             else:
                 batch.variance, batch.variance_kind = self._foreign_refund(batch, rows), "REFUND"
+
+    def _inject_unfamiliar_variances(self, batches: list[_Batch], missing: set[str]) -> None:
+        """Break some payouts in ways nothing was built to recognise.
+
+        Runs after the ordinary variances and only on batches they left
+        alone, so a shortfall is never two mechanisms at once - a mixed
+        member would make a wrongly-named cause look like a fair call.
+        """
+        count = self._config.defects.unfamiliar_variances
+        eligible = [
+            b
+            for b in batches
+            if b.payments and b.net_total > 0 and b.variance == 0 and b.settlement_id not in missing
+        ]
+        if count <= 0 or not eligible:
+            return
+
+        for index, batch in enumerate(self._rng.sample(eligible, k=min(count, len(eligible)))):
+            kind = _UNFAMILIAR_KINDS[index % len(_UNFAMILIAR_KINDS)]
+            if kind == "bank_charge":
+                batch.variance, batch.variance_kind = self._bank_charge(), "BANK_CHARGE"
+            elif kind == "fx_markup":
+                batch.variance, batch.variance_kind = self._fx_markup(batch), "FX_MARKUP"
+            elif kind == "dispute_penalty":
+                batch.variance, batch.variance_kind = self._penalty(), "DISPUTE_PENALTY"
+            else:
+                batch.variance, batch.variance_kind = self._promo(batch), "PROMO_FUNDING"
+
+    def _bank_charge(self) -> Paise:
+        """A flat RTGS charge the receiving bank took out of the transfer.
+
+        Fifteen rupees, the same on a batch of two lakh as on one of twenty
+        thousand. Every rate rule in the inducer works in proportions, and a
+        constant is the one thing a proportion can never be.
+        """
+        return Paise(-1500)
+
+    def _fx_markup(self, batch: _Batch) -> Paise:
+        """A conversion spread on an international card batch.
+
+        Between 2.8% and 4.2%, drawn per batch, because a spread is a price
+        on the day rather than a term in a contract. `_one_undisclosed_rate`
+        holds its members to 0.02% of each other, so a rate that wanders like
+        this cannot honestly be called one rate - which is the point.
+        """
+        spread = Decimal(str(round(self._rng.uniform(0.028, 0.042), 5)))
+        return Paise(-apply_rate(batch.gross_total, spread))
+
+    def _penalty(self) -> Paise:
+        """A chargeback handling penalty recovered out of a later payout.
+
+        Two thousand rupees, flat, per the usual card-network fee. It looks
+        exactly like a refund taken from the wrong batch and is not one:
+        there is no refund row anywhere in these files to match it against,
+        so a rule that named it would be asserting a document that does not
+        exist.
+        """
+        return Paise(-200000)
+
+    def _promo(self, batch: _Batch) -> Paise:
+        """A cashback the merchant funded on some of the orders, not all.
+
+        Ten per cent of roughly half the batch. The result is a clean-looking
+        proportion of nothing in particular: it is not a rate on the batch,
+        and it is not a flat sum either.
+        """
+        share = batch.payments[: max(1, len(batch.payments) // 2)]
+        return Paise(-apply_rate(Paise(sum(p.amount for p in share)), Decimal("0.10")))
 
     def _extra_fee(self, batch: _Batch) -> Paise:
         """Charged at a higher rate than the report shows, plus GST on it.

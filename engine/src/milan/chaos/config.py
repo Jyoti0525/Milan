@@ -113,6 +113,29 @@ class DefectRates(BaseModel):
     or a refund was taken out of a different batch than the one the report
     files it under."""
 
+    unfamiliar_variances: int = 0
+    """Shortfalls caused by mechanisms `milan.recon.causes` has no rule for.
+
+    Off in every tier, and that is the point of it. Everything else on this
+    list is a defect the inducer was built against, which makes purity a
+    measurement of whether two modules written by the same person agree with
+    each other. It says nothing about the case that is certain to arrive
+    first in production: a merchant whose money went missing for a reason
+    nobody thought to write a rule for.
+
+    So these four break the arithmetic in shapes no rule tests. A flat bank
+    charge is a constant number of paise rather than a proportion; an FX
+    markup moves between batches rather than holding to one rate; a dispute
+    penalty is a recovery with no refund row anywhere behind it; promotional
+    funding is a rate applied to part of a batch rather than all of it. Any
+    rule that claims one of these is claiming something it did not test.
+
+    The right output for all four is `uncaused` - named as nothing, left in
+    the queue to be read individually. Being unable to explain a shortfall is
+    a state this system can report. Explaining it wrongly is not, because a
+    named cause carries a `because` sentence with real arithmetic in it and
+    nothing on the screen says the story attached is invented."""
+
     unreported_payments: float = 0.0
     """Captured payments the settlement report never mentions.
 
@@ -276,9 +299,20 @@ class GenerationConfig(BaseModel):
     allowed to call that gap TDS when it matches the statutory rate on every
     affected row."""
 
+    unfamiliar_variances: int = 0
+    """Adds shortfalls no cause rule was written against, on top of the tier.
+
+    A config field rather than a fifth difficulty, because it is not a
+    harder month - it is the *same* month with defects the inducer has never
+    been shown. Left at zero everywhere except the measurement that exists to
+    ask what happens then, so no tier and no existing seed changes."""
+
     @property
     def defects(self) -> DefectRates:
-        return defects_for(self.difficulty)
+        tier = defects_for(self.difficulty)
+        if self.unfamiliar_variances <= 0:
+            return tier
+        return tier.model_copy(update={"unfamiliar_variances": self.unfamiliar_variances})
 
     @model_validator(mode="after")
     def _price_window_is_a_window(self) -> GenerationConfig:

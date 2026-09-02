@@ -1379,3 +1379,49 @@ If a decision is not here, it is not settled.
      what the fixes were written against - so the claim worth making is the
      narrow one: seven known ways to answer the wrong question are closed,
      not that none remain. A fourth corpus is what it would take to say more.
+265. **The purity figure was measuring two modules agreeing with each other.**
+     `test_causes_are_one_cause.py` grades induced causes against the
+     generator's answer key, and both were written by the same person in the
+     same fortnight. The generator injects the defects this project chose to
+     model; the inducer names the causes it chose to recognise. A high score
+     there cannot mean "right about a merchant's books", because nothing in
+     that loop has ever met a defect from outside it. Generating more months
+     from the same generator would not have fixed this - it would have given
+     a tighter confidence interval on a number measuring the wrong thing.
+266. **Four defect mechanisms with deliberately no rule to catch them.** A
+     flat bank charge (a constant number of paise where every rate rule works
+     in proportions), an FX markup (a rate that moves between batches, where
+     `_one_undisclosed_rate` holds members to 0.02% of each other), a dispute
+     penalty (a recovery with no refund row anywhere behind it) and promo
+     funding (a rate over part of a batch). Chosen by arithmetic rather than
+     story, because a rule can only match on arithmetic - and all four are
+     ordinary things that happen to Indian merchants, since the test would
+     prove nothing if they were absurd.
+267. **Off in every tier, reached by an explicit config field.** Not a fifth
+     difficulty: it is the same month with defects the inducer has never been
+     shown. Every existing seed in the suite depends on those months not
+     changing, and two tests pin the knob at zero everywhere else so it
+     cannot drift on.
+268. **100% of unfamiliar shortfalls are left uncaused** - 108 of them over
+     18 months and 3 tiers. This is the only floor in the project set at
+     exactly 1.0, and it belongs there. Every other threshold trades accuracy
+     for coverage because both are useful; this one does not trade. A cause
+     invented for a mechanism the rules have never seen is not a slightly
+     worse answer, it is a confident sentence about something that did not
+     happen, and no amount of coverage is worth buying with it.
+269. **The first run refused 105 of 108, and the three failures were one
+     rule.** `_one_counterparty_keeps_paying` groups unexplained deposits by
+     payer and concludes the money came from outside the gateway. It was
+     firing on stems reading `ACH` and `RZPY`. ACH is a clearing system
+     rather than a business, leaking through a noise list that stripped NEFT
+     and IMPS but not ACH; RZPY is Razorpay, which makes the finding "confirm
+     whether RZPY is money from outside Razorpay" - a cause asking somebody
+     to check a fact its own evidence states.
+270. **The guard is on the premise, not on the output.** The rule was not
+     made more cautious; it was stopped from making a claim its own premise
+     contradicts. A deposit whose narration says RAZORPAY SETTLEMENT has
+     already answered the question the rule exists to ask. The cost was
+     nothing measurable: purity, coverage and queue reduction are identical
+     to the paisa on the familiar tiers, and the only outputs lost were
+     false ones. A real outside payer still reaches the rule, which is
+     pinned by its own test.

@@ -67,7 +67,26 @@ argue a case the evidence does not support."""
 _PERCENT = re.compile(r"^(\d+(?:\.\d+)?)%$")
 
 _REFERENCE = re.compile(r"\b[A-Z0-9]{10,22}\b")
-_NOISE = re.compile(r"\b(?:NEFT|RTGS|IMPS|UPI|CR|DR|TRF|FROM|REF|TO|BY)\b")
+_NOISE = re.compile(r"\b(?:NEFT|RTGS|IMPS|UPI|ACH|NACH|ECS|CR|DR|TRF|FROM|REF|TO|BY)\b")
+"""The rails, which are never the payer.
+
+ACH, NACH and ECS joined this list after a measurement, not a review. They
+are as much a rail name as NEFT is, and because they were missing they
+survived into the stem and became the counterparty - producing the finding
+"Repeated deposits from ACH", which names a clearing system as though it
+were a business that pays this merchant.
+"""
+
+_GATEWAY = frozenset({"RAZORPAY", "RZPY", "SETTLEMENT", "SETTLEMENTS", "PAYOUT", "PAYOUTS"})
+"""Words that say a deposit *is* a gateway payout.
+
+A guard on the premise rather than on the output. `_one_counterparty_keeps_
+paying` exists to say "this recurring money is not a gateway payout at all",
+and a narration reading RAZORPAY SETTLEMENT has already answered that
+question the other way. Firing anyway produced the exact sentence "confirm
+whether RZPY is money from outside Razorpay", which is a cause asking
+somebody to check something its own evidence states.
+"""
 
 
 # ------------------------------------------------------------------ helpers
@@ -466,7 +485,12 @@ def _one_counterparty_keeps_paying(queue: list[ReconException]) -> Iterator[Caus
         if item.evidence.get("reason") != "no candidate":
             continue
         stem = _stem(item.evidence.get("narration", ""))
-        if stem:
+        # A stem naming the gateway fails this rule's premise before it is
+        # tested. These deposits say on their face that they are settlement
+        # payouts, so whatever is wrong with them, "money from outside
+        # Razorpay" is not it - and grouping them by payer would be grouping
+        # every unexplained payout in the month under one invented heading.
+        if stem and not (_GATEWAY & set(stem.split())):
             buckets[stem].append(item)
 
     for stem, group in buckets.items():
