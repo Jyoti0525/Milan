@@ -99,10 +99,10 @@ It is also graded against the half of the month it was not allowed to read,
 which is what separates it from a projection nobody can check.
 
 ### 7. Learning the contract instead of being handed it
-Every competitor's leak detector — if they build one — will compare charges
-against a rate card somebody typed in. Ours reads the contract off the
-merchant's own settlement rows, and is graded on the thing that makes that
-hard: whether the leak check still works against a card learned from data that
+A leak finding says a row was charged above contract, which is only as good as
+where the contract came from. Ours is read off the merchant's own settlement
+rows rather than typed in, and it is graded on the thing that makes that hard:
+whether the leak check still works against a card learned from data that
 contains leaks.
 
 48 of 48 months recover the exact contract; 693 of 693 overcharges still found;
@@ -110,9 +110,9 @@ zero missed and zero invented. Where the rows will not agree it refuses and
 names both rates, because the more popular of two is a guess wearing a
 majority.
 
-**This is the piece a judge is most likely to probe** — "aren't you just
-learning what they were charged?" — and it is the piece with the measured
-answer.
+The obvious objection — *aren't you just learning what they were charged?* —
+is the right one to raise, and it has a measured answer rather than an
+argument.
 
 ### 8. India-specific depth
 Real fee stack, real 194-O TDS rules, real T+2 timing, real ITC matching against
