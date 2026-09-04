@@ -24,6 +24,8 @@ from milan.evaluation.harness import Evaluation
 from milan.evaluation.metrics import Scorecard
 from milan.evaluation.sweep import Spread, Sweep
 from milan.evaluation.twice import Twice
+from milan.forecast.accuracy import Accuracy as ScheduleAccuracy
+from milan.forecast.schedule import Schedule
 from milan.leaks.clusters import LeakReport
 from milan.llm.pricing import RATES
 from milan.llm.registry import Status
@@ -1003,4 +1005,123 @@ def accuracy_report(scored: Accuracy) -> Table:
             f"as {got or 'nothing'}, not {expected or 'nothing'}",
         )
 
+    return table
+
+
+def schedule_table(schedule: Schedule) -> Table:
+    """Money already captured, by the day its cycle says it is due.
+
+    The running total is the column that earns its place. A merchant reading
+    this is not asking what Thursday brings, they are asking whether Friday's
+    bill is covered, and that is a cumulative question - so the answer is on
+    the row rather than left to be added up in somebody's head.
+    """
+    table = Table(
+        title=f"Committed and not yet paid out - as of {schedule.as_of:%d %b %Y}",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Due")
+    table.add_column("Pmts", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Gross", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Deducted", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Lands", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Running", **_NUMERIC)  # type: ignore[arg-type]
+
+    for landing in schedule.landings:
+        table.add_row(
+            f"{landing.on:%a %d %b}",
+            str(landing.count),
+            money(landing.gross),
+            money(Paise(landing.gross - landing.net)),
+            money(landing.net),
+            money(schedule.through(landing.on)),
+        )
+
+    if schedule.landings:
+        table.add_section()
+        table.add_row(
+            "",
+            str(schedule.payments),
+            money(schedule.gross),
+            money(schedule.deducted),
+            f"[bold]{money(schedule.committed)}[/bold]",
+            "",
+        )
+    return table
+
+
+def schedule_footnotes(schedule: Schedule) -> Table | None:
+    """The two totals that are deliberately not in the headline.
+
+    Overdue money has already failed to arrive and undated money has no date
+    to arrive on, so neither is cash flow. Printing them beneath the schedule
+    rather than inside it is the whole distinction: the bold figure above is
+    what is coming, and these are what a person still has to deal with.
+    """
+    if not schedule.overdue and not schedule.undated:
+        return None
+
+    table = Table(box=None, pad_edge=False, show_header=False)
+    table.add_column("", style="dim")
+    table.add_column("", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("", style="dim")
+
+    if schedule.overdue:
+        table.add_row(
+            f"Overdue ({len(schedule.overdue)})",
+            money(schedule.overdue_net),
+            "captured, past its settlement date, and no payout behind it",
+        )
+    if schedule.undated:
+        table.add_row(
+            f"No date ({len(schedule.undated)})",
+            money(schedule.undated_net),
+            schedule.undated[0].because,
+        )
+    return table
+
+
+def schedule_accuracy(accuracy: ScheduleAccuracy) -> Table:
+    """How the schedule did against the month it was not allowed to read.
+
+    Both denominators are on the screen for the same reason the match rate
+    carries its own: a percentage over a population nobody can see is an
+    invitation to read the flattering version of it.
+    """
+    table = Table(
+        title="Marked against the month it could not see",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+        show_header=False,
+    )
+    table.add_column("", style="dim")
+    table.add_column("", **_NUMERIC)  # type: ignore[arg-type]
+
+    table.add_row("Scheduled on", f"{accuracy.as_of:%d %b %Y}")
+    table.add_row("Commitments dated", f"{accuracy.total}")
+    table.add_row("Landed on the day scheduled", f"{accuracy.dated_exactly:.1%}")
+    table.add_row("  within a working day", f"{accuracy.within_a_working_day:.1%}")
+    table.add_row("Scheduled rupees on the day", f"{accuracy.money_on_the_day:.1%}")
+    table.add_section()
+    table.add_row("Arrived", f"{len(accuracy.arrived)}/{accuracy.total}")
+    table.add_row("  right to the paisa", f"{accuracy.to_the_paisa:.1%}")
+    table.add_row("Scheduled", money(accuracy.predicted))
+    table.add_row("Landed", money(accuracy.landed))
+    # Split because they answer different questions. The first asks whether
+    # the fee arithmetic was right; the second asks whether the merchant got
+    # the money, and a single "error" line would let a missing payout read as
+    # a rounding problem.
+    table.add_row("Short on money that came", money(accuracy.error_on_arrivals))
+    table.add_row("Never came", money(accuracy.missing))
+    if accuracy.never_arrived:
+        table.add_section()
+        table.add_row(
+            "Payments the report never mentions",
+            str(len(accuracy.never_arrived)),
+        )
     return table

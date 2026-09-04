@@ -189,6 +189,57 @@ CATALOGUE: tuple[Intent, ...] = (
         ),
     ),
     Intent(
+        name="landing",
+        asks=(
+            "When money the merchant has already captured is due to reach "
+            "the bank, day by day - the published settlement cycle applied "
+            "to their own captures, not a prediction about future sales."
+        ),
+        example="when is my money landing?",
+        triggers=(
+            # Deliberately narrow, and deliberately about money that already
+            # exists. Every trigger here needs a word naming a payout beside
+            # a word about arrival, so "when do payouts land" reaches this
+            # and "what will I make next month" reaches nothing - which is
+            # correct, because nothing in these files knows.
+            _t(
+                {"when", "coming", "incoming", "upcoming", "expect", "expected", "expecting"},
+                {
+                    "land",
+                    "lands",
+                    "landing",
+                    "arrive",
+                    "arrives",
+                    "arriving",
+                    "settle",
+                    "settles",
+                    "payout",
+                    "payouts",
+                    "money",
+                    "cash",
+                    "paid",
+                    "credited",
+                    "deposit",
+                    "deposits",
+                    "in",
+                },
+            ),
+            _t({"still"}, {"come", "coming", "arrive", "land"}),
+            _t({"pipeline", "in-flight", "inflight"}),
+            # "Due" alone belongs to `unsettled`, which sits above this and
+            # keeps it. Paired with a word about arriving it is this question
+            # instead, and it has to be here rather than left to the date
+            # fallback: "how much is due to land by Friday" carries a date,
+            # and a date nothing claims is answered as "what happened that
+            # day" - a question about the past, put by somebody asking about
+            # the future.
+            _t(
+                {"due"},
+                {"land", "lands", "landing", "arrive", "arrives", "reach", "come", "coming"},
+            ),
+        ),
+    ),
+    Intent(
         name="largest",
         asks="The biggest payouts of the period, for cash planning rather than triage.",
         example="what were my biggest payouts?",

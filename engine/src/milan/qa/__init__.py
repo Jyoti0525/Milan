@@ -49,9 +49,11 @@ def ask(question: str, books: Books, provider: Provider | None = None) -> Answer
         return _refuse(
             asked.text,
             (
-                "I can work figures out from these files, but I cannot send, schedule, "
-                "draft or predict anything - so I would rather say so than answer the "
-                "nearest question I recognise. What I can tell you:"
+                "I can work figures out from these files, but I cannot send, draft, set "
+                "up or predict anything - so I would rather say so than answer the "
+                "nearest question I recognise. I will not forecast money nobody has "
+                "paid yet, though I will tell you when money already captured is due "
+                "to land. What I can answer:"
             ),
         )
 

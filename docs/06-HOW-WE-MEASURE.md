@@ -124,6 +124,36 @@ Not a count. A categorised, exported list where every single exception has:
 - why the system could not resolve it
 - what a human would need to resolve it
 
+## Rule 6b — a forward schedule is marked against data it could not read
+
+The forward cash position is the only figure in this project about a day that
+has not happened, so it gets the strictest version of Rule 0. A schedule is
+built from payments captured on or before one chosen day and payouts already
+made by it; every settlement row written after that day is withheld, and then
+used to mark the schedule.
+
+Reading a future row would be the same failure as scoring a matcher against its
+own output. It exists in the file the function is handed, and not reading it is
+what makes the number below a measurement rather than a restatement.
+
+Measured over **4 tiers x 6 seeds x 3 vantage days at 600 orders**:
+
+| What is checked | What holds |
+| --- | --- |
+| Date | Every wrong date belongs to money that never settled at all. On money that arrived, the scheduled day has been the day it arrived. |
+| Amount | The error is the fee leak — the overcharge plus the GST on it, to the paisa. Tiers with no rate mismatch have no amount error. |
+| Control | A clean tier is exact on both, or the schedule is broken rather than cautious. |
+
+Two guards keep it from passing by having nothing to check: a floor on how many
+commitments must reach the measurement at all, and a separate class asserting
+the clean tier is perfect. Both fail before any accuracy floor does.
+
+The blind spots are generated rather than described where that is possible.
+Instant settlement was generated at 40% and 80% to cost the schedule its dates
+and cost it nothing — an instant payout is already in the bank by the time a
+schedule is drawn, so it is omitted rather than mis-dated. Route splits and
+refunds not yet raised remain uncosted, and are named as uncosted.
+
 ## Rule 7 — throughput, measured properly
 
 - Records processed

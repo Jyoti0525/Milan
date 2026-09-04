@@ -1054,3 +1054,39 @@ are now done.
   the duplication; the exception's own wording still reads as "the money never
   arrived", and fixing that properly means the pipeline knowing that a
   withdrawn claim still spoke for a settlement.
+
+## Day 12 — the half of the track title nobody had read twice
+
+Track 04 is tagged **"Run the books and the cash position"** and lists a
+forward cash forecaster among its four example directions. An audit against
+the brief found three of the four built and this one absent — and the gap was
+not in the examples, it was in the title.
+
+- [x] **The forward cash position.** `milan.forecast`, reached by
+      `milan forecast`, the `landing` question, the run screen and the import
+      screen. Money already captured, dated by Razorpay's published settlement
+      cycle and reduced by the merchant's own fee stack. Nothing extrapolates
+      a sale — see decisions 271-281.
+- [x] **Graded against the month it could not see.** A schedule built from one
+      half of a month, marked against the other half, over 4 tiers x 6 seeds x
+      3 vantage days at 600 orders. Every date it gets wrong belongs to money
+      that never settled; the amount error is the fee leak plus its GST, to
+      the paisa.
+
+### What this deliberately did not do
+
+- **It is not a forecaster and does not pretend to be one.** `forecast`,
+  `predict` and `projection` still refuse ahead of both the rules and the
+  model. What changed is that the refusal now names the distinction and offers
+  the schedule, instead of stopping at "I cannot".
+- **Route splits and refunds not yet raised are uncosted.** Both would make a
+  real payout smaller than the schedule says. Instant settlement was generated
+  at 40% and 80% to cost the dates and cost nothing, so that one is closed on
+  evidence; these two are named as open rather than assumed small.
+
+### Still open, and unchanged by any of this
+
+- **Rule induction** — learning a merchant's own fee stack from their history
+  instead of being handed a rate card. Still the one remaining item that would
+  change a graded number, and it would now change two: the schedule derives
+  its amounts from the same rate card the reconciliation does.

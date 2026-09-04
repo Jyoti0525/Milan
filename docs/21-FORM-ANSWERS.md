@@ -60,10 +60,21 @@ this leads with the problem and not with the technology.)*
 > caused them, and reports the GST separately because a registered merchant
 > recovers that part.
 >
+> And it answers the other half of the track's own title — the cash position —
+> without predicting anything. Money the merchant has already captured is dated
+> by Razorpay's published settlement cycle and reduced by their own fee stack,
+> so the output is a schedule of what is owed and when it is due rather than a
+> guess at what is likely. Money that cannot be dated is reported as undated
+> rather than given a date it did not earn, and asking Milan to *forecast* is
+> still refused outright, with the schedule offered in its place.
+>
 > Accuracy is measured against a generated answer key rather than demonstrated
 > on an example: across twenty adversarial seeds, 389/389 credits matched at
 > 100% precision, 200/200 impossible credits correctly refused, and 762/762
-> overcharges found with no false accusations.
+> overcharges found with no false accusations. The schedule is marked the same
+> way — built from one half of a month and graded against the half it was never
+> allowed to read, where every date it gets wrong turns out to belong to money
+> that never settled at all.
 
 ---
 

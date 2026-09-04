@@ -56,7 +56,7 @@ No figure appears in this README that did not come out of a seeded run.
 
 | Path | Contents |
 |---|---|
-| [engine/](engine/) | Python: chaos generator, matching, waterfall solver, eval harness, API |
+| [engine/](engine/) | Python: chaos generator, matching, waterfall solver, forward schedule, eval harness, API |
 | [web/](web/) | Next.js: exception queue, settlement view, metrics |
 | [docs/](docs/) | The plan, the money rules, the decisions log |
 | `data/` | Generated datasets. Reproducible from a seed, never committed |
@@ -71,6 +71,7 @@ uv sync
 
 uv run milan generate --seed 42 --difficulty realistic --orders 100
 uv run milan recon
+uv run milan forecast
 uv run milan eval
 ```
 
@@ -397,6 +398,106 @@ system behind the Razorpay dashboard. Its tokens are transcribed rather than
 approximated, and money is set the way Blade sets it: the ₹ small, the rupees
 large, the paise small and muted.
 
+## What is still to come
+
+The track is called "Run the books **and the cash position**". Everything above
+is the books. This is the other half, and it is the one place in the project
+that talks about a day that has not happened yet.
+
+```bash
+uv run milan forecast --seed 42 --difficulty messy --back 10
+```
+
+```
+Committed and not yet paid out - as of 11 Jul 2026
+Due         Pmts           Gross     Deducted           Lands         Running
+Mon 13 Jul    29  Rs 1,02,278.84  Rs 2,444.24    Rs 99,834.60    Rs 99,834.60
+Tue 14 Jul    67  Rs 1,27,818.81  Rs 3,019.30  Rs 1,24,799.51  Rs 2,24,634.11
+Wed 15 Jul     2     Rs 2,562.82     Rs 90.72     Rs 2,472.10  Rs 2,27,106.21
+Mon 20 Jul     2     Rs 8,616.87    Rs 305.04     Rs 8,311.83  Rs 2,35,418.04
+Tue 21 Jul     3    Rs 23,968.90    Rs 848.50    Rs 23,120.40  Rs 2,58,538.44
+             103  Rs 2,65,246.24  Rs 6,707.80  Rs 2,58,538.44
+
+Overdue (2)  Rs 3,639.75  captured, past its settlement date, and no payout behind it
+```
+
+**It is a schedule, not a forecast, and that is the whole design.** A forecast
+says what is likely and can be wrong about the world. A schedule says what is
+owed and when it is due, and can only be wrong about arithmetic. Every date
+here is Razorpay's published settlement cycle — T+2 working days, T+7 on
+international cards — applied to the merchant's own capture timestamps. Every
+amount is the merchant's own fee stack applied to money they have already
+taken. Nothing extrapolates a sale, because nothing in a month of settlement
+rows knows anything about next month's sales.
+
+That is the only kind of forecaster this project's rule permits: **a model may
+propose, only arithmetic may conclude.**
+
+### And it is marked against the month it could not see
+
+The schedule is built from payments captured on or before one day and payouts
+already made by it. A settlement row the gateway will write next Tuesday
+exists in the file and is deliberately not read — reading it would make the
+schedule a copy of the answer rather than a derivation of one, and every
+figure below a tautology.
+
+```bash
+uv run milan forecast --seed 42 --difficulty messy --back 10 --grade
+```
+
+```
+Marked against the month it could not see
+Scheduled on                           11 Jul 2026
+Commitments dated                              103
+Landed on the day scheduled                  99.0%
+Scheduled rupees on the day                  96.8%
+Arrived                                    102/103
+  right to the paisa                         98.0%
+Scheduled                           Rs 2,58,538.44
+Landed                              Rs 2,50,143.89
+Short on money that came                  -Rs 7.04
+Never came                             Rs 8,387.51
+Payments the report never mentions               1
+```
+
+Over **4 tiers x 6 seeds x 3 vantage days at 600 orders**, two things hold:
+
+**Every date it gets wrong belongs to money that never settled at all.** Not
+"98% accurate about timing" but the narrower and stronger claim — on money
+that arrived, the scheduled day has been the day it arrived, every time. The
+misses are payouts the gateway never reported, which is a different failure
+with its own exception. A clean tier is exact on date and amount, which is the
+control the figure needs.
+
+**The amount error is the fee leak, to the paisa.** On the tiers that charge
+above contract the schedule is short by exactly the overcharge plus the GST
+charged on it; on the tiers that do not, it is short by nothing. That was not
+designed. The leak detector reads settlement rows and compares charged rates
+against contracted ones; the schedule reads payments and applies a rate card
+forward. They share no code past `compute_deductions` and reach the same
+number — so each is evidence for the other, and the forward schedule turns out
+to be a second, independent way to catch a merchant being overcharged.
+
+### The two totals kept out of the headline
+
+`Overdue` is money captured, past its settlement date, with no payout behind
+it — the reconciliation queue seen from the other side. `Undated` is money the
+files prove and give no date for: a refund waiting for a payout large enough
+to absorb it, or a row flagged on hold. A refund lands in whichever batch is
+next big enough, and which one that is depends on sales nobody has made yet.
+
+Neither is added to what is coming. Both are real, and neither is cash flow.
+
+### What it cannot see, said out loud
+
+Three things move a real payout that this does not model: an instant
+settlement the merchant asks for, a Route split to a linked account, and a
+refund a customer has not requested yet. The first was generated deliberately
+to cost it — and turned out to cost nothing, because an instant payout carries
+a settlement row dated the day of capture, so by the time the schedule is
+drawn that money is already in the bank and is left out rather than mis-dated.
+The other two remain uncosted and are named here rather than left to be found.
+
 ## Bring your own books
 
 Everything above runs on a generated month. The point of generating one is that
@@ -529,16 +630,33 @@ answer a different one. Here is what I can work out from these files:
   ...
 ```
 
-A forecast is not computable from a month of reconciled rows, and neither is
-"should I switch payment gateway" or "email this to my accountant" — all three
-sound exactly like what this tool is for, which is what makes them dangerous.
-A confident paragraph about the wrong thing is worse than useless, because a
-merchant has no way to tell it from a right one.
+Next month's sales are not computable from a month of reconciled rows, and
+neither is "should I switch payment gateway" or "email this to my accountant" —
+all three sound exactly like what this tool is for, which is what makes them
+dangerous. A confident paragraph about the wrong thing is worse than useless,
+because a merchant has no way to tell it from a right one.
 
-### Fourteen questions, not ten
+Asking it to *forecast* is refused for the same reason, and refused separately
+from not being understood — even though the schedule above exists:
+
+```
+$ uv run milan ask "forecast my cash for next month"
+
+I can work figures out from these files, but I cannot send, draft, set up or
+predict anything — so I would rather say so than answer the nearest question I
+recognise. I will not forecast money nobody has paid yet, though I will tell
+you when money already captured is due to land. What I can answer:
+  - when is my money landing?
+  ...
+```
+
+Refusing to predict while offering what is already committed is the clearest
+one-screen statement of what this project is.
+
+### Fifteen questions, not ten
 
 Ten was too narrow a surface for somebody typing their own question, so
-there are now fourteen: what each **payment method** brought in and what it
+there are now fifteen: what each **payment method** brought in and what it
 cost to accept, everything that happened **on one named date**, the
 **largest payouts**, and how long payouts **actually take** — measured off
 the rows rather than quoting T+2, because what a merchant wants to know is

@@ -96,6 +96,30 @@ those seven are what the fixes were written against. A fourth corpus would
 be needed to measure misrouting again, and until one exists the claim worth
 making is the narrow one - that seven known ways to answer the wrong
 question are closed, not that none remain.
+
+**Round four**, adding `landing` - when money already captured is due to
+reach the bank. The three phrasings for it in `CORPUS` were written with its
+triggers and are therefore worth nothing as a measurement; they are there so
+the coverage guard has something to check. What is worth recording is what
+adding an intent did to the corpora that were not written for it:
+
+    CORPUS     (now 70 questions)  100.0% routed, 0 misrouted
+    HELD_OUT                       100.0% routed, 0 misrouted
+    AFTERWARDS (untouched)          53.3% routed, 0 misrouted
+
+Not one question in any corpus changed intent. That is the number to watch
+when an intent is added, because a new set of triggers is a new set of ways
+to seize a sentence that already had an answer - and `landing` is a
+particularly dangerous one, since "when will I get paid" is its question and
+"how long until I get paid" is `timing`'s.
+
+The action guard was left alone deliberately, which is the more interesting
+decision. Words of predicting - `forecast`, `predict`, `projection` - still
+refuse ahead of everything, even though this system can now date money
+forward. They are not the same request: a schedule says what is owed and
+when it is due, a forecast says what is likely, and only the first is
+arithmetic. So the refusal now names the distinction instead of denying the
+capability, and offers the schedule in the same breath.
 """
 
 from __future__ import annotations
@@ -232,6 +256,14 @@ CORPUS: tuple[tuple[str, str], ...] = (
     # -------------------------------------------------------------- on_a_day
     ("what happened on 14 July?", "on_a_day"),
     ("what happened on 2026-07-09", "on_a_day"),
+    # --------------------------------------------------------------- landing
+    # Written alongside the triggers they exercise, which makes them tuned
+    # against by construction. They are here so the coverage guard below has
+    # something to check, and they are worth nothing as a measurement - see
+    # round four in the module docstring.
+    ("when is my money landing?", "landing"),
+    ("what payouts are still coming in?", "landing"),
+    ("when will I get paid for what I have captured", "landing"),
 )
 
 
@@ -667,8 +699,24 @@ class TestItWillNotPretendToActOnSomething:
         request; it cannot carry it out."""
         answer = ask("email this report to my ca", books)
 
-        assert "cannot send, schedule, draft or predict" in answer.headline
+        assert "cannot send, draft, set up or predict" in answer.headline
         assert answer.suggestions
+
+    def test_refusing_to_forecast_offers_the_schedule_instead(self, books: Books) -> None:
+        """The distinction this system is built on, said out loud.
+
+        A forecast says what is likely and a schedule says what is owed and
+        when it is due, and only the second is arithmetic. So `forecast`
+        keeps refusing even now that money can be dated forward - and the
+        refusal names what it will do rather than stopping at what it will
+        not, because a flat "no" to somebody asking about their cash position
+        is a worse answer than the one that exists.
+        """
+        answer = ask("forecast next quarter revenue", books)
+
+        assert not answer.answered
+        assert "already captured is due to land" in answer.headline
+        assert "when is my money landing?" in answer.suggestions
 
     def test_a_model_cannot_route_around_the_guard(self, books: Books) -> None:
         """The guard runs before the model for the same reason it runs

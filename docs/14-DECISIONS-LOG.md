@@ -1425,3 +1425,87 @@ If a decision is not here, it is not settled.
      to the paisa on the familiar tiers, and the only outputs lost were
      false ones. A real outside payer still reaches the rule, which is
      pinned by its own test.
+271. **The one thing the track named that we had not built: a forward cash
+     position.** Track 04 is titled "Run the books *and the cash position*"
+     and lists a forward cash forecaster among four example directions. Three
+     of the four existed here; this did not, and the gap was in the half of
+     the title nobody had read twice.
+272. **It is a schedule, not a forecast, and that distinction is the design.**
+     A forecast says what is likely and can be wrong about the world. A
+     schedule says what is owed and when it is due, and can only be wrong
+     about arithmetic. `milan.forecast` reads payments the merchant has
+     already taken, applies Razorpay's published settlement cycle to each
+     capture timestamp and the merchant's own fee stack to each amount, and
+     prints the dates that fall out. Nothing extrapolates a sale. That is the
+     only version of "forecaster" this project's own rule permits - **a model
+     may propose, only arithmetic may conclude** - and building the other
+     kind would have contradicted every other page of this log.
+273. **The schedule may only read what the merchant would hold on the day.**
+     Payments captured on or before `as_of`, and settlement rows already paid
+     by it. A row the gateway will write next Tuesday exists in the file the
+     function is handed and is deliberately not read, because reading it
+     would make the schedule a copy of the answer rather than a derivation of
+     one - and would make every accuracy figure downstream a tautology.
+274. **Which is what makes it gradeable.** `milan.forecast.accuracy` takes a
+     schedule built from one half of a month and marks it against the other
+     half, which the schedule was never allowed to see. Over 4 tiers x 6
+     seeds x 3 vantage days at 600 orders, every date the schedule gets wrong
+     belongs to money that never settled at all; on money that arrived, the
+     date has been right every time. A clean month is exact on both date and
+     amount, which is the control the figure needs.
+275. **The amount error is the fee leak, to the paisa.** On the tiers that
+     inject rate mismatches the schedule is short by exactly the overcharge
+     plus the GST charged on it; on the tiers that do not, it is short by
+     nothing. That was not designed. The leak detector reads settlement rows
+     and compares charged rates against contracted ones; the schedule reads
+     payments and applies a rate card forward. They share no code past
+     `compute_deductions` and arrive at the same number, so each is evidence
+     for the other - and the forward schedule is a second, independent way to
+     detect a merchant being overcharged.
+276. **Three buckets, and the last two are the honest ones.** `landings` is
+     dated money. `overdue` is captured money whose settlement date has
+     passed with no payout behind it - the reconciliation queue seen from the
+     other side, kept out so a total labelled "coming" never includes money
+     that should already have come. `undated` is money the files prove and
+     give no date for: a refund waiting for a payout large enough to absorb
+     it, or a row flagged on hold. A refund lands in whichever batch is next
+     big enough, and which one that is depends on sales nobody has made, so
+     the correct output for a date that cannot be derived is no date.
+277. **A refund row carries the `payment_id` of the sale it reverses**, which
+     broke both halves of this before it was caught. In the schedule it
+     marked a refunded payment as already paid out and dropped it entirely -
+     losing exactly the payments most worth watching. In the grader it marked
+     the payment as having settled on the refund's date for the refund's
+     negative amount, reading as an 11% date error that was a property of the
+     grader rather than of anything graded. Both now read payment rows only.
+278. **Instant settlement turned out not to be a blind spot.** The test class
+     was written to bound its cost: a payout pulled early arrives the day it
+     was captured, nothing in a payments file says which the merchant will
+     pull, so all of them should have been dated T+2 and been late. Measured
+     at 40% and 80% instant, none of them is. An instant payout carries a
+     settlement row dated the day of capture, so by the time a schedule is
+     drawn that money is already in the bank and is omitted rather than
+     mis-dated. It changes the size of the schedule, not its accuracy. The
+     class was kept with its prediction corrected rather than deleted,
+     because the property it now pins is the first that would break if the
+     `as_of` cut were loosened.
+279. **`forecast` still refuses, even now that money can be dated.** The
+     action guard keeps `forecast`, `predict` and `projection` ahead of both
+     the rules and the model, because they are not the same request as "when
+     is my money landing". What changed is the refusal: it names the
+     distinction instead of denying the capability, and offers the schedule
+     in the same breath. Refusing to predict while showing what is committed
+     is the clearest single statement of what this project is.
+280. **Adding an intent is when misroutes appear, so it was measured.**
+     `landing` is a dangerous one to add - "when will I get paid" is its
+     question and "how long until I get paid" is `timing`'s. Not one question
+     in any of the three corpora changed intent. The three `landing`
+     phrasings in `CORPUS` were written with its triggers and are worth
+     nothing as a measurement; they are there so the coverage guard has
+     something to check, and the docstring says so.
+281. **The schedule is served on imported runs on the same terms as generated
+     ones.** Almost everything else about an import is thinner for want of an
+     answer key. This needs none - only the merchant's own payments and the
+     published cycle - so it is one figure a merchant's real files get in
+     full, and the first forward-looking number this system has ever been
+     able to offer somebody who brought their own books.

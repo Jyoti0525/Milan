@@ -53,6 +53,7 @@ import { Merchant } from "@/components/Merchant";
 import { WhatToDo } from "@/components/WhatToDo";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { Position } from "@/components/Position";
+import { Schedule } from "@/components/Schedule";
 import { TopBar } from "@/components/TopBar";
 import { ProofPanel } from "@/components/ProofPanel";
 import { LeakList, LeakPanel } from "@/components/Leaks";
@@ -601,6 +602,13 @@ export default function Workspace() {
                 seconds={view.summary.duration_seconds}
               />
             )}
+            {/*
+              Straight after the position, because together they are the cash
+              position: what arrived, and what is owed with a date on it. It
+              sits above the metrics for the same reason `Position` does —
+              rupees before rates.
+            */}
+            {view && <Schedule schedule={view.schedule} />}
             {isImport(view) ? (
               <ImportMetrics
                 summary={view.summary}

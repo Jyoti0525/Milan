@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -22,6 +23,7 @@ from milan.cli import ingest_render, render
 from milan.cli.render import console
 from milan.domain.dataset import Dataset
 from milan.domain.enums import EntityType
+from milan.domain.merchant import profile_of
 from milan.domain.rates import RateCard
 from milan.evaluation.ablate import ablate
 from milan.evaluation.control import compare
@@ -29,6 +31,8 @@ from milan.evaluation.curve import curve
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.sweep import sweep
 from milan.evaluation.twice import run_twice
+from milan.forecast import grade as grade_schedule
+from milan.forecast import last_capture, schedule_from
 from milan.ingest import archive, build
 from milan.ingest.build import Imported
 from milan.ingest.plan import ABSENT, IngestPlan, Question, to_saved
@@ -158,6 +162,61 @@ def recon(
     )
     store.save_report(report, data_root)
     render.report_summary(report)
+
+
+@app.command()
+def forecast(
+    seed: SeedOption = 42,
+    difficulty: DifficultyOption = Difficulty.REALISTIC,
+    back: Annotated[
+        int,
+        typer.Option(
+            "--back",
+            min=0,
+            help="Stand this many days before the last capture. "
+            "Anything after that day is withheld from the schedule.",
+        ),
+    ] = 0,
+    grade: Annotated[
+        bool,
+        typer.Option(
+            "--grade/--no-grade",
+            help="Mark the schedule against the settlement report it was not allowed to read.",
+        ),
+    ] = False,
+    root: RootOption = None,
+) -> None:
+    """Date money already captured, using nothing but arithmetic.
+
+    This is the one command in the engine that talks about the future, and it
+    does it without predicting anything: Razorpay's published settlement cycle
+    applied to the merchant's own capture timestamps, and the merchant's own
+    fee stack applied to the amounts. No sales are extrapolated, no trend is
+    fitted, and money that cannot be dated is reported as undated rather than
+    given a date it did not earn.
+
+    `--back` is what makes `--grade` mean anything. It moves the day the
+    schedule is drawn from backwards, so the settlement rows written after
+    that day are withheld from the schedule and then used to mark it.
+    """
+    dataset = _load(root, seed, difficulty)
+    data = to_recon_input(dataset)
+    captured = last_capture(data.payments)
+    if captured is None:
+        console.print("[yellow]No payments in this run - nothing to schedule.[/yellow]")
+        raise typer.Exit(code=0)
+
+    rates = profile_of(data.settlement_rows).rates()
+    schedule = schedule_from(data, rates, as_of=captured - timedelta(days=back))
+
+    console.print(render.schedule_table(schedule))
+    footnotes = render.schedule_footnotes(schedule)
+    if footnotes is not None:
+        console.print()
+        console.print(footnotes)
+    if grade:
+        console.print()
+        console.print(render.schedule_accuracy(grade_schedule(schedule, data.settlement_rows)))
 
 
 @app.command()

@@ -66,3 +66,21 @@ spreadsheets every Monday morning.
 - Not a general-purpose accounting system
 
 It does one job: **close the settlement reconciliation loop, honestly.**
+
+## The one thing it says about the future
+
+The track is called "Run the books and the cash position", and the second half
+needs an answer that does not contradict the first. `milan.forecast` gives one:
+money the merchant has **already captured**, dated by Razorpay's published
+settlement cycle and reduced by the merchant's own fee stack.
+
+That is a schedule, not a forecast. A forecast says what is likely and can be
+wrong about the world; a schedule says what is owed and when it is due, and can
+only be wrong about arithmetic. No sale is extrapolated and no trend is fitted,
+so the second bullet above still holds exactly as written — and the question
+answerer still refuses the word *forecast* outright, offering the schedule
+instead.
+
+Money that cannot be dated is reported as undated rather than given a date it
+did not earn, and the whole schedule is marked against the half of the month it
+was not allowed to read. See `docs/06-HOW-WE-MEASURE.md`.

@@ -237,6 +237,50 @@ export interface AnswerView {
   suggestions: string[];
 }
 
+/** One date on the forward schedule. */
+export interface Landing {
+  on: string;
+  payments: number;
+  gross: Paise;
+  net: Paise;
+  /** The dated total arriving on or before this day.
+   *
+   *  Sent rather than accumulated here, because the browser adding it up is
+   *  a second implementation of a figure the CLI already prints — and two
+   *  implementations of a running total is how they stop agreeing. */
+  running: Paise;
+}
+
+/** Money the files prove and give no date for. */
+export interface Undated {
+  subject_id: string;
+  kind: string;
+  amount: Paise;
+  because: string;
+}
+
+/**
+ * The forward cash position: money already captured, not yet paid out.
+ *
+ * Dated by Razorpay's published settlement cycle applied to the merchant's
+ * own capture timestamps, so nothing here is predicted. `overdue_net` and
+ * `undated_net` are sent alongside `committed` and are never inside it —
+ * money that has already failed to arrive and money with no date to arrive
+ * on are not cash flow, and a screen that summed the three would show a
+ * balance the merchant does not have.
+ */
+export interface ScheduleView {
+  as_of: string;
+  landings: Landing[];
+  committed: Paise;
+  gross: Paise;
+  payments: number;
+  overdue_count: number;
+  overdue_net: Paise;
+  undated: Undated[];
+  undated_net: Paise;
+}
+
 export interface RunView {
   summary: RunSummary;
   queue: QueueItem[];
@@ -258,6 +302,9 @@ export interface RunView {
   /** Charges above contract, on rows that reconciled. Empty on a clean tier,
    *  and the screen says so rather than showing nothing. */
   leaks: LeakFindings;
+  /** Money already captured and still to land. The only forward-looking
+   *  figure the API serves, and arithmetic rather than a projection. */
+  schedule: ScheduleView;
 }
 
 /**
@@ -378,6 +425,10 @@ export interface ImportView {
   causes: CausesView;
   merchant: Finding[];
   leaks: LeakFindings;
+  /** Served on the same terms as on a generated run. Almost everything else
+   *  about an import is thinner for want of an answer key; the schedule
+   *  needs none, so this is one figure real files get in full. */
+  schedule: ScheduleView;
 }
 
 export const API = process.env.NEXT_PUBLIC_MILAN_API?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";

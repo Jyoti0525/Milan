@@ -25,12 +25,7 @@ import time
 from dataclasses import dataclass
 from datetime import date
 
-from milan.domain.calendar import (
-    DOMESTIC_SETTLEMENT_DAYS,
-    INTERNATIONAL_SETTLEMENT_DAYS,
-    add_working_days,
-)
-from milan.domain.enums import CardType
+from milan.domain.calendar import settlement_due
 from milan.domain.merchant import MerchantProfile, profile_of
 from milan.domain.rates import RateCard
 from milan.domain.records import Payment, SettlementRow
@@ -276,12 +271,10 @@ def _report_complete_to(rows: tuple[SettlementRow, ...]) -> date | None:
 def _due_by(payment: Payment) -> date:
     """When this payment should have appeared in a settlement.
 
-    T+2 working days domestic, T+7 for international cards, which is the
-    published cycle rather than a tolerance we chose.
+    The published cycle, shared with the forward schedule rather than
+    reimplemented beside it - the question "when is this money due" has one
+    answer, and the two callers who ask it read opposite sides of the same
+    date: this one asks whether a payment is already late, the schedule asks
+    what is still to come.
     """
-    lag = (
-        INTERNATIONAL_SETTLEMENT_DAYS
-        if payment.card_type is CardType.INTERNATIONAL
-        else DOMESTIC_SETTLEMENT_DAYS
-    )
-    return add_working_days(payment.captured_at.date(), lag)
+    return settlement_due(payment.captured_at.date(), payment.card_type)

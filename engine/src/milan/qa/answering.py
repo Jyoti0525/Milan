@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 from milan.domain.enums import EntityType, ExceptionCode, PaymentMethod
 from milan.domain.money import ZERO, Paise, format_inr
 from milan.domain.results import ReconReport
+from milan.forecast import schedule_from
 from milan.leaks.clusters import summarise
 from milan.qa.question import Answer, Line
 from milan.recon.causes import induce
@@ -257,6 +258,85 @@ def received(books: Books, asked: Asked) -> Answer:
         ),
         lines=_clip(lines, "days"),
         subjects=tuple(credit.credit_id for credit in credits[:MOST_LINES]),
+    )
+
+
+def landing(books: Books, asked: Asked) -> Answer:
+    """When money already captured is due to reach the bank.
+
+    The only answer in this module about a day that has not happened, and the
+    only one that could be mistaken for a forecast. It is not one: every date
+    is Razorpay's published cycle applied to a capture timestamp the merchant
+    already has, and every amount is their own fee stack applied to money
+    they have already taken. Nothing is extrapolated, and a question about
+    sales nobody has made still reaches no intent at all.
+
+    The two figures kept out of the headline total are named in it instead.
+    Overdue money has already failed to arrive and undated money has no date
+    to arrive on, so adding either to "what is coming" would answer a cash
+    question with a number the merchant cannot spend.
+    """
+    schedule = schedule_from(books.data, books.report.profile.rates())
+
+    if asked.on is not None:
+        through = schedule.through(asked.on)
+        return _nothing(
+            asked,
+            "landing",
+            (
+                f"{format_inr(through)} is due to have reached the bank by {asked.on}, "
+                f"from payments already captured."
+            ),
+        )
+
+    if not schedule.landings:
+        return _nothing(
+            asked,
+            "landing",
+            (
+                "Nothing captured is still waiting for a payout - every payment in these "
+                f"files was settled on or before {schedule.as_of}."
+            ),
+        )
+
+    lines = [
+        Line(
+            label=str(one.on),
+            amount=one.net,
+            detail=(
+                f"{one.count} payment{'s' if one.count > 1 else ''}, "
+                f"{format_inr(schedule.through(one.on))} by then"
+            ),
+            sources=tuple(item.payment_id for item in one.commitments[:MOST_LINES]),
+        )
+        for one in schedule.landings
+    ]
+
+    horizon = schedule.horizon
+    headline = (
+        f"{format_inr(schedule.committed)} is due to reach the bank between "
+        f"{schedule.landings[0].on} and {horizon}, from {schedule.payments} payments "
+        f"captured on or before {schedule.as_of}. "
+        "Dated by the published settlement cycle, not predicted."
+    )
+    if schedule.overdue:
+        headline += (
+            f" Separately, {format_inr(schedule.overdue_net)} across "
+            f"{len(schedule.overdue)} payments was due before {schedule.as_of} "
+            "and has no payout behind it."
+        )
+    if schedule.undated:
+        headline += (
+            f" A further {format_inr(schedule.undated_net)} across "
+            f"{len(schedule.undated)} rows has no date these files support."
+        )
+
+    return Answer(
+        asked=asked.text,
+        intent="landing",
+        headline=headline,
+        lines=_clip(lines, "days"),
+        subjects=tuple(item.payment_id for item in schedule.landings[0].commitments[:MOST_LINES]),
     )
 
 
@@ -804,6 +884,7 @@ ANSWERS = {
     "on_a_day": on_a_day,
     "largest": largest,
     "timing": timing,
+    "landing": landing,
     "charges": charges,
     "refunds": refunds,
     "received": received,

@@ -32,6 +32,7 @@ from milan.domain.records import BankCredit
 from milan.domain.results import Proof, ReconException, ReconReport
 from milan.evaluation.harness import evaluate, to_recon_input
 from milan.evaluation.metrics import Scorecard
+from milan.forecast import schedule_from
 from milan.ingest import archive, build
 from milan.ingest.identity import proven
 from milan.ingest.plan import to_saved
@@ -336,6 +337,59 @@ def _merchant(report: ReconReport) -> tuple[Finding, ...]:
     return (*report.profile.named, *report.profile.questions)
 
 
+class LandingView(BaseModel):
+    """One date on the forward schedule, with the running total to it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    on: date
+    payments: int
+    gross: Paise
+    net: Paise
+    running: Paise
+    """The dated total arriving on or before this day.
+
+    Served rather than accumulated in the browser, because the question a
+    merchant asks is whether Friday is covered and that is a cumulative
+    answer - and a total the screen adds up itself is a total that stops
+    agreeing with the CLI the first time either one changes.
+    """
+
+
+class UndatedView(BaseModel):
+    """Money the files prove and give no date for."""
+
+    model_config = ConfigDict(frozen=True)
+
+    subject_id: str
+    kind: str
+    amount: Paise
+    because: str
+
+
+class ScheduleView(BaseModel):
+    """The forward cash position, and the two totals kept out of it.
+
+    `committed` is what is coming. `overdue` has already failed to arrive and
+    `undated` has no date to arrive on, so neither is added to it - they are
+    served alongside so a screen can show them without a screen being able to
+    sum them by accident.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    landings: tuple[LandingView, ...]
+    committed: Paise
+    gross: Paise
+    payments: int
+
+    overdue_count: int
+    overdue_net: Paise
+    undated: tuple[UndatedView, ...]
+    undated_net: Paise
+
+
 class RunView(BaseModel):
     """Everything one screen needs, in one response.
 
@@ -368,6 +422,16 @@ class RunView(BaseModel):
     """Charges above contract, on rows that reconciled. Always present, and
     empty on a clean tier - a run that found none has to be able to say so,
     or the only evidence of a working detector is the runs where it fired."""
+
+    schedule: ScheduleView
+    """Money already captured, dated forward.
+
+    The only thing this API serves about the future, and it is arithmetic
+    rather than a projection - the published settlement cycle applied to the
+    merchant's own capture timestamps. It sits beside the position rather
+    than inside it because the position is about money in the account and
+    this is about money that is not there yet, and a screen that summed the
+    two would report a balance the merchant does not have."""
 
 
 class ImportRef(BaseModel):
@@ -518,6 +582,15 @@ class ImportView(BaseModel):
     causes: CausesView
     merchant: tuple[Finding, ...] = ()
     leaks: LeakFindings
+
+    schedule: ScheduleView
+    """Served here on exactly the same terms as on a generated run.
+
+    Almost everything else on this screen is thinner than its generated
+    counterpart, because an imported run has no answer key to be scored
+    against. The schedule is not: it needs no ground truth at all, only the
+    merchant's own payments and the published cycle, so this is one figure a
+    merchant's real files get in full."""
 
 
 class ChoiceView(BaseModel):
@@ -720,6 +793,7 @@ class Service:
             causes=_causes(report),
             merchant=_merchant(report),
             leaks=self._leaks(data, report),
+            schedule=_schedule(data, report),
         )
 
     def _queue(
@@ -908,6 +982,7 @@ class Service:
             queue=self._queue(report, data, credits, batches),
             proofs=self._proofs(report, credits),
             leaks=self._leaks(data, report),
+            schedule=_schedule(data, report),
         )
 
     def _summary(self, dataset: Dataset, data: ReconInput, report: ReconReport) -> RunSummary:
@@ -1165,6 +1240,46 @@ def _position(data: ReconInput, report: ReconReport) -> tuple[Paise, Paise, Pais
         sum(exception.amount for exception in report.exceptions if exception.code in ELSEWHERE)
     )
     return credited, proved, awaited
+
+
+def _schedule(data: ReconInput, report: ReconReport) -> ScheduleView:
+    """The forward schedule, as of the merchant's last capture.
+
+    The rate card comes from the report's own profile rather than being read
+    again here. The withholding finding decides how much of each payout the
+    government takes before it lands, so a screen that re-derived it could
+    disagree with the run it is sitting on - which is the same reason the
+    profile is carried on the report at all.
+    """
+    schedule = schedule_from(data, report.profile.rates())
+    return ScheduleView(
+        as_of=schedule.as_of,
+        landings=tuple(
+            LandingView(
+                on=landing.on,
+                payments=landing.count,
+                gross=landing.gross,
+                net=landing.net,
+                running=schedule.through(landing.on),
+            )
+            for landing in schedule.landings
+        ),
+        committed=schedule.committed,
+        gross=schedule.gross,
+        payments=schedule.payments,
+        overdue_count=len(schedule.overdue),
+        overdue_net=schedule.overdue_net,
+        undated=tuple(
+            UndatedView(
+                subject_id=item.subject_id,
+                kind=item.kind,
+                amount=item.amount,
+                because=item.because,
+            )
+            for item in schedule.undated
+        ),
+        undated_net=schedule.undated_net,
+    )
 
 
 def _index(

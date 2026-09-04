@@ -120,10 +120,43 @@ class TestOneRun:
         """One response, because they are one consistent picture of one run."""
         body = client.get("/api/runs/adversarial/42").json()
 
-        assert set(body) == {"summary", "queue", "proofs", "leaks", "merchant", "causes"}
+        assert set(body) == {
+            "summary",
+            "queue",
+            "proofs",
+            "leaks",
+            "merchant",
+            "causes",
+            "schedule",
+        }
         assert body["summary"]["seed"] == 42
         assert body["queue"]
         assert body["proofs"]
+
+    def test_the_forward_schedule_arrives_with_the_run(self, client: TestClient) -> None:
+        """Money already captured and not yet paid out, dated by the published
+        cycle. It is served with the run rather than fetched separately for
+        the same reason the queue is: a second request could describe a
+        different month."""
+        schedule = client.get("/api/runs/adversarial/42").json()["schedule"]
+
+        assert schedule["landings"]
+        assert schedule["committed"] > 0
+        assert schedule["committed"] == sum(landing["net"] for landing in schedule["landings"])
+        assert [landing["on"] for landing in schedule["landings"]] == sorted(
+            landing["on"] for landing in schedule["landings"]
+        )
+        assert all(landing["on"] > schedule["as_of"] for landing in schedule["landings"])
+
+    def test_the_schedule_never_folds_in_what_it_could_not_date(self, client: TestClient) -> None:
+        """Overdue money has already failed to arrive and undated money has
+        no date to arrive on. Both are served, and neither is inside the
+        headline - a screen that summed them would report a balance the
+        merchant does not have."""
+        schedule = client.get("/api/runs/adversarial/42").json()["schedule"]
+
+        assert schedule["overdue_count"] > 0
+        assert schedule["committed"] == schedule["landings"][-1]["running"]
 
     def test_the_queue_arrives_with_the_reasons_behind_it(self, client: TestClient) -> None:
         """The adversarial tier raises enough exceptions that some of them
