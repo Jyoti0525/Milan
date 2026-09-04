@@ -112,9 +112,12 @@ class Categoriser:
         )
 
     def missing_settlement(
-        self, batch: GatewayBatch, batches: tuple[GatewayBatch, ...] = ()
+        self,
+        batch: GatewayBatch,
+        batches: tuple[GatewayBatch, ...] = (),
+        claimed_by: str | None = None,
     ) -> ReconException:
-        """A payout the gateway reported that never reached the bank.
+        """A payout the gateway reported that no credit was concluded for.
 
         `batches` is every payout in the run, and it is here so the evidence
         can record how many the gateway sent out that day. On its own that
@@ -123,22 +126,50 @@ class Categoriser:
         never left", and those are two different phone calls. Nothing else
         in the report carries the day's population, so without it a reader
         with several missing payouts on one date cannot tell which they have.
+
+        `claimed_by` is the credit that *was* matched to this payout and had
+        its claim withdrawn when the arithmetic would not close. Decision 242
+        found that three quarters of what this rule reports is that case
+        rather than a payout that went astray, and refused to suppress it -
+        rightly, because suppressing means asserting a match the prover
+        declined to assert. What was never fixed is that the sentence went on
+        saying "no bank credit matches it" about a payout a bank credit
+        plainly matched, and that the full net stayed in the amount, so a
+        merchant with one short payout saw it twice and read roughly double
+        their exposure.
+
+        Both halves are fixed here without asserting anything. The exception
+        still exists and still says no credit was concluded. It now names the
+        credit that came up short, and carries no amount, because the money
+        that did not arrive is the shortfall and the shortfall exception is
+        already reporting it. That is what `ReconException.amount` means by
+        "zero when the exception is structural".
         """
         that_day = sum(1 for other in batches if other.settled_on == batch.settled_on)
         return ReconException(
             code=ExceptionCode.MISSING_SETTLEMENT,
             subject_id=batch.settlement_id,
-            amount=batch.expected_net,
+            amount=ZERO if claimed_by else batch.expected_net,
             summary=(
-                f"The gateway reported {format_inr(batch.expected_net)} settled on "
-                f"{batch.settled_on} across {len(batch.rows)} records. No bank credit "
-                "matches it."
+                (
+                    f"The gateway reported {format_inr(batch.expected_net)} settled on "
+                    f"{batch.settled_on} across {len(batch.rows)} records. {claimed_by} "
+                    "was matched to it and would not reconstruct, so this payout and "
+                    "that shortfall are the same money - counted here once."
+                )
+                if claimed_by
+                else (
+                    f"The gateway reported {format_inr(batch.expected_net)} settled on "
+                    f"{batch.settled_on} across {len(batch.rows)} records. No bank credit "
+                    "matches it."
+                )
             ),
             evidence={
                 "settled_on": batch.settled_on.isoformat(),
                 "rows": str(len(batch.rows)),
                 "reference": batch.settlement_utr or "absent",
                 **({"batches_that_day": str(that_day)} if that_day else {}),
+                **({"claimed_by": claimed_by} if claimed_by else {}),
             },
         )
 

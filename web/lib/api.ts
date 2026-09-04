@@ -237,6 +237,29 @@ export interface AnswerView {
   suggestions: string[];
 }
 
+/** One band of rows and the rate they were charged, or a question. */
+export interface RateFinding {
+  name: string;
+  /** Preformatted, e.g. `2.150%`. `null` when the rows would not agree.
+   *
+   *  A rate is a label rather than something this screen computes with, so
+   *  it arrives written. Money is the opposite and always arrives as integer
+   *  paise — the rule is about float arithmetic, not about strings. */
+  rate: string | null;
+  rows: number;
+  of: number;
+  because: string;
+  /** Rows the rate does not explain. Candidate overcharges, not noise. */
+  disagreeing: number;
+}
+
+/** The contract, read off the merchant's own settlement rows. */
+export interface RatesView {
+  findings: RateFinding[];
+  /** Bands the rows would not settle — a number a person has to answer. */
+  questions: number;
+}
+
 /** One date on the forward schedule. */
 export interface Landing {
   on: string;
@@ -275,6 +298,9 @@ export interface ScheduleView {
   committed: Paise;
   gross: Paise;
   payments: number;
+  /** Paid straight on to a linked account. Already subtracted from
+   *  `committed`, and sent so the screen can say why the total is smaller. */
+  routed: Paise;
   overdue_count: number;
   overdue_net: Paise;
   undated: Undated[];
@@ -302,6 +328,9 @@ export interface RunView {
   /** Charges above contract, on rows that reconciled. Empty on a clean tier,
    *  and the screen says so rather than showing nothing. */
   leaks: LeakFindings;
+  /** What this merchant is charged, worked out from their own rows rather
+   *  than assumed from Razorpay's published pricing. */
+  rates: RatesView;
   /** Money already captured and still to land. The only forward-looking
    *  figure the API serves, and arithmetic rather than a projection. */
   schedule: ScheduleView;
@@ -425,6 +454,7 @@ export interface ImportView {
   causes: CausesView;
   merchant: Finding[];
   leaks: LeakFindings;
+  rates: RatesView;
   /** Served on the same terms as on a generated run. Almost everything else
    *  about an import is thinner for want of an answer key; the schedule
    *  needs none, so this is one figure real files get in full. */

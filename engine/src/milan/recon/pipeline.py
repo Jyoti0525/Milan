@@ -37,6 +37,7 @@ from milan.recon.matching.base import Attempt, Matcher
 from milan.recon.matching.cascade import Cascade, default_strategies
 from milan.recon.triage import Categoriser
 from milan.recon.waterfall import provable, prove
+from milan.rules import induce_rates
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,8 +109,16 @@ class ReconciliationPipeline:
         )
         exceptions.extend(withdrawn_explanations)
         shortfalls.extend(withdrawn_shortfalls)
+        # A settlement a credit was matched to and then withdrawn from is not
+        # a settlement nothing spoke for. The cascade already knows which
+        # those are; until now nothing carried the fact this far, so the
+        # exception below said "no bank credit matches it" about a payout a
+        # bank credit plainly matched. See decision 242.
+        spoken_for = _withdrawn_claims(data, attempts)
         exceptions.extend(
-            reading.categoriser.missing_settlement(batch, batches)
+            reading.categoriser.missing_settlement(
+                batch, batches, claimed_by=spoken_for.get(batch.settlement_id)
+            )
             for batch in batches
             if batch.settlement_id not in claimed
         )
@@ -134,9 +143,26 @@ class ReconciliationPipeline:
     # ------------------------------------------------------------- internals
 
     def _read(self, data: ReconInput) -> Reading:
-        """Identify the merchant, unless someone has already said who they are."""
+        """Identify the merchant, unless someone has already said who they are.
+
+        When nobody has, the contract is now read off the rows rather than
+        assumed from Razorpay's published pricing. That is the whole of the
+        import case: a merchant brings three files and no rate card, and until
+        this existed the engine checked their payouts against list price and
+        called any difference a leak.
+
+        The induction only fills bands it could conclude, and falls back to
+        the published rate everywhere else, so this can only ever be closer to
+        the merchant's contract than the previous behaviour was. It is
+        deliberately absent from the explicit branch above: every graded number
+        in this project passes a rate card, and a figure that could move
+        because a detector changed its mind is not a measurement.
+        """
         profile = profile_of(data.settlement_rows)
-        rates = self._rates if self._rates is not None else profile.rates()
+        if self._rates is not None:
+            rates = self._rates
+        else:
+            rates = induce_rates(data.settlement_rows).card(profile.rates())
         return Reading(profile=profile, rates=rates, categoriser=Categoriser(rates))
 
     def _cascade_for(self, reading: Reading) -> Matcher:
@@ -254,6 +280,24 @@ class ReconciliationPipeline:
             for payment in data.payments
             if payment.payment_id not in reported and _due_by(payment) <= cutoff
         ]
+
+
+def _withdrawn_claims(data: ReconInput, attempts: dict[str, Attempt]) -> dict[str, str]:
+    """Which credit was matched to each settlement and then withdrawn from it.
+
+    Iterated in bank-statement order rather than over the attempt dictionary,
+    so that when two credits both named one settlement the same one is
+    reported every run. A message that names a different credit on a rerun of
+    the same seed is a message nobody can check.
+    """
+    spoken_for: dict[str, str] = {}
+    for credit in data.bank_credits:
+        attempt = attempts.get(credit.credit_id)
+        if attempt is None or attempt.resolved:
+            continue
+        for settlement_id in attempt.withdrawn_ids:
+            spoken_for.setdefault(settlement_id, credit.credit_id)
+    return spoken_for
 
 
 def _report_complete_to(rows: tuple[SettlementRow, ...]) -> date | None:

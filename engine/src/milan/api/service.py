@@ -45,6 +45,7 @@ from milan.recon.batches import GatewayBatch, rebuild_batches
 from milan.recon.causes import induce
 from milan.recon.inputs import ReconInput
 from milan.recon.pipeline import ReconciliationPipeline, RunMetadata
+from milan.rules import induce_rates
 
 
 class RunRef(BaseModel):
@@ -337,6 +338,42 @@ def _merchant(report: ReconReport) -> tuple[Finding, ...]:
     return (*report.profile.named, *report.profile.questions)
 
 
+class RateFindingView(BaseModel):
+    """One band of rows and the rate they were charged, or a question.
+
+    `rate` arrives preformatted. Every money figure in this API crosses as
+    integer paise precisely so the browser never does float arithmetic on it;
+    a rate is a label rather than something the screen computes with, and
+    sending `0.0215` for the browser to multiply by a hundred would be
+    reintroducing the float for no gain.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    rate: str | None
+    rows: int
+    of: int
+    because: str
+    disagreeing: int
+    """Rows this rate does not explain. Candidate overcharges, not noise."""
+
+
+class RatesView(BaseModel):
+    """The contract, read off the merchant's own settlement rows.
+
+    Served on every run for the same reason the merchant profile is: it is
+    the standard the leak check was run against, and a screen that worked it
+    out again could disagree with the run it is describing.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    findings: tuple[RateFindingView, ...]
+    questions: int
+    """Bands the rows would not settle. A number a person has to answer."""
+
+
 class LandingView(BaseModel):
     """One date on the forward schedule, with the running total to it."""
 
@@ -384,6 +421,14 @@ class ScheduleView(BaseModel):
     gross: Paise
     payments: int
 
+    routed: Paise
+    """Money in these payouts paid straight on to a linked account.
+
+    Already subtracted from `committed`, and served anyway. A marketplace that
+    saw its total drop with no line explaining why would reasonably think the
+    figure was wrong - and this is the one deduction that is not a cost at
+    all, it is a share of a sale that was never theirs."""
+
     overdue_count: int
     overdue_net: Paise
     undated: tuple[UndatedView, ...]
@@ -422,6 +467,15 @@ class RunView(BaseModel):
     """Charges above contract, on rows that reconciled. Always present, and
     empty on a clean tier - a run that found none has to be able to say so,
     or the only evidence of a working detector is the runs where it fired."""
+
+    rates: RatesView
+    """What this merchant is charged, worked out from their own rows.
+
+    Not a configuration echoed back. Until this existed the engine checked
+    every payout against Razorpay's published pricing, which is right for a
+    generated month and wrong for a merchant on a negotiated contract - and
+    a wrong contract does not produce nearly-right leak findings, it produces
+    confident wrong ones on every row of the band it got wrong."""
 
     schedule: ScheduleView
     """Money already captured, dated forward.
@@ -582,6 +636,7 @@ class ImportView(BaseModel):
     causes: CausesView
     merchant: tuple[Finding, ...] = ()
     leaks: LeakFindings
+    rates: RatesView
 
     schedule: ScheduleView
     """Served here on exactly the same terms as on a generated run.
@@ -793,6 +848,7 @@ class Service:
             causes=_causes(report),
             merchant=_merchant(report),
             leaks=self._leaks(data, report),
+            rates=_rates(data),
             schedule=_schedule(data, report),
         )
 
@@ -982,6 +1038,7 @@ class Service:
             queue=self._queue(report, data, credits, batches),
             proofs=self._proofs(report, credits),
             leaks=self._leaks(data, report),
+            rates=_rates(data),
             schedule=_schedule(data, report),
         )
 
@@ -1242,6 +1299,32 @@ def _position(data: ReconInput, report: ReconReport) -> tuple[Paise, Paise, Pais
     return credited, proved, awaited
 
 
+def _rates(data: ReconInput) -> RatesView:
+    """The contract these rows imply, bands that said nothing included.
+
+    A band with no rows at all is dropped - a merchant who takes no
+    international cards does not need a line telling them so - but a band
+    that had rows and could not conclude is kept, because that one is a
+    question somebody has to answer.
+    """
+    induced = induce_rates(data.settlement_rows)
+    shown = [finding for finding in induced.findings if finding.of]
+    return RatesView(
+        findings=tuple(
+            RateFindingView(
+                name=finding.name,
+                rate=f"{finding.rate:.3%}" if finding.rate is not None else None,
+                rows=finding.rows,
+                of=finding.of,
+                because=finding.because,
+                disagreeing=finding.disagreeing,
+            )
+            for finding in shown
+        ),
+        questions=sum(1 for finding in shown if not finding.settled),
+    )
+
+
 def _schedule(data: ReconInput, report: ReconReport) -> ScheduleView:
     """The forward schedule, as of the merchant's last capture.
 
@@ -1267,6 +1350,7 @@ def _schedule(data: ReconInput, report: ReconReport) -> ScheduleView:
         committed=schedule.committed,
         gross=schedule.gross,
         payments=schedule.payments,
+        routed=schedule.routed,
         overdue_count=len(schedule.overdue),
         overdue_net=schedule.overdue_net,
         undated=tuple(

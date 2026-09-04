@@ -68,6 +68,14 @@ this leads with the problem and not with the technology.)*
 > rather than given a date it did not earn, and asking Milan to *forecast* is
 > still refused outright, with the schedule offered in its place.
 >
+> It also works out what the merchant is *contracted* to pay, from their own
+> rows, instead of being handed a rate card — which nobody has. That sounds
+> circular, because learning the rate from data that contains overcharges
+> should learn the overcharges too, so it is measured on both halves at once:
+> 48 of 48 months recover the exact contract, and every one of 693 overcharges
+> is still caught, with none invented. Where the rows will not agree on a rate
+> it refuses and names both, rather than resolving to the more popular half.
+>
 > Accuracy is measured against a generated answer key rather than demonstrated
 > on an example: across twenty adversarial seeds, 389/389 credits matched at
 > 100% precision, 200/200 impossible credits correctly refused, and 762/762

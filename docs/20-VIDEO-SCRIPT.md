@@ -154,7 +154,14 @@ adversarial`, which prints the same figures.
 > is the same failure as understating it.
 >
 > Seven hundred and sixty-two leaks across twenty seeds. All seven hundred and
-> sixty-two found, and not one false accusation."
+> sixty-two found, and not one false accusation.
+>
+> And it does not need to be told the contract. It reads it off your own rows —
+> two percent on three hundred and ninety, two percent on a hundred and seven
+> of a hundred and fifty-four cards. That second count *is* the leak. The
+> obvious objection is that learning the rate from the data would learn the
+> overcharge too, so that is measured: forty-eight of forty-eight contracts
+> recovered, every leak still found, nothing invented."
 
 ---
 

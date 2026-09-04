@@ -32,18 +32,24 @@ the answer rather than a derivation of it. That restriction is what makes
   correct output for a date that cannot be derived is no date.
 
 **What it cannot see, stated rather than hidden.** Three things move a real
-payout that this schedule does not model, and each one shows up as error in
-the accuracy report rather than as a caveat nobody reads:
+payout, and two of them turned out to be reachable once they were measured
+rather than assumed:
 
-1. *Instant settlement.* A merchant who pulls a payout early gets the money
-   the day it was captured, not T+2, and nothing in a payments file says
-   which payouts they will pull. Predicted dates for those are late.
-2. *Route.* A payment split onward to a linked account settles less than its
-   own net, and the split is not knowable from the payment record.
-3. *Refunds still to be raised.* A customer who asks for their money back
-   tomorrow reduces a payout this schedule has already dated. Refunds that
-   already exist are in `undated`; ones that do not exist yet are not
-   forecastable and are not forecast.
+1. *Instant settlement.* Not a blind spot. A payout pulled early carries a
+   settlement row dated the day of capture, so by the time a schedule is
+   drawn that money is already in the bank - it is left out rather than
+   mis-dated. Measured at 40% and 80% instant: no date error at all.
+2. *Route.* Handled, and it belongs here rather than in the caveats because a
+   transfer row is written when the payment is *captured*. The merchant is
+   already holding it on `as_of`, so netting it reads no future row and
+   guesses no date - a split leaves in the same payout as the payment it came
+   out of. Exact through a 60% Route share.
+3. *Refunds still to be raised.* The one that stays. A customer who asks for
+   their money back tomorrow reduces a payout this schedule has already
+   dated, and no arithmetic reaches a decision nobody has made yet. Refunds
+   that already exist are in `undated`. Ones that do not are not forecastable,
+   and this refuses to forecast them - which is the same refusal the whole
+   module is built on, not an omission.
 """
 
 from __future__ import annotations
@@ -89,10 +95,24 @@ class Commitment(BaseModel):
     gross: Paise
     net: Paise
 
+    routed: Paise = ZERO
+    """Paid onward to a linked account through Route, with its commission.
+
+    Its own field rather than folded into the deductions, because it is not a
+    deduction. A fee is the merchant's money going to the gateway; a Route
+    split is a share of the sale that was never the merchant's to begin with,
+    and the proof layer gives it a separate line for exactly this reason.
+
+    Knowable on the day, which is why it can be here at all: a transfer row is
+    written when the payment is captured, not when the payout runs, so a
+    merchant standing on `as_of` is already holding it. Nothing about a future
+    settlement is read to find it.
+    """
+
     @property
     def deducted(self) -> Paise:
-        """Fee, GST and any withholding, as one number."""
-        return Paise(self.gross - self.net)
+        """Fee, GST and any withholding. Not the Route split - see `routed`."""
+        return Paise(self.gross - self.net - self.routed)
 
 
 class Landing(BaseModel):
@@ -110,6 +130,10 @@ class Landing(BaseModel):
     @property
     def gross(self) -> Paise:
         return Paise(sum(item.gross for item in self.commitments))
+
+    @property
+    def routed(self) -> Paise:
+        return Paise(sum(item.routed for item in self.commitments))
 
     @property
     def count(self) -> int:
@@ -154,8 +178,13 @@ class Schedule(BaseModel):
         return Paise(sum(landing.gross for landing in self.landings))
 
     @property
+    def routed(self) -> Paise:
+        """Money in these payouts that is paid straight on to somebody else."""
+        return Paise(sum(landing.routed for landing in self.landings))
+
+    @property
     def deducted(self) -> Paise:
-        return Paise(self.gross - self.committed)
+        return Paise(self.gross - self.committed - self.routed)
 
     @property
     def overdue_net(self) -> Paise:
@@ -210,6 +239,7 @@ def schedule_from(data: ReconInput, rates: RateCard, as_of: date | None = None) 
         return Schedule(as_of=date.min, landings=(), overdue=(), undated=())
 
     settled = _settled_by(data.settlement_rows, when)
+    routed = _routed_by(data.settlement_rows, when)
     dated: list[Commitment] = []
     late: list[Commitment] = []
 
@@ -217,7 +247,7 @@ def schedule_from(data: ReconInput, rates: RateCard, as_of: date | None = None) 
         captured = payment.captured_at.date()
         if captured > when or payment.payment_id in settled:
             continue
-        commitment = _commitment(payment, rates)
+        commitment = _commitment(payment, rates, routed.get(payment.payment_id, ZERO))
         (dated if commitment.due > when else late).append(commitment)
 
     return Schedule(
@@ -231,7 +261,7 @@ def schedule_from(data: ReconInput, rates: RateCard, as_of: date | None = None) 
 # ----------------------------------------------------------------- internals
 
 
-def _commitment(payment: Payment, rates: RateCard) -> Commitment:
+def _commitment(payment: Payment, rates: RateCard, routed: Paise) -> Commitment:
     """One payment's date and net, both derived rather than looked up."""
     deductions = compute_deductions(payment.amount, payment.method, payment.card_type, rates)
     captured = payment.captured_at.date()
@@ -245,8 +275,32 @@ def _commitment(payment: Payment, rates: RateCard) -> Commitment:
             else DOMESTIC_SETTLEMENT_DAYS
         ),
         gross=payment.amount,
-        net=deductions.net,
+        net=Paise(deductions.net - routed),
+        routed=routed,
     )
+
+
+def _routed_by(rows: tuple[SettlementRow, ...], when: date) -> dict[str, Paise]:
+    """Route splits already taken against payments, as of `when`.
+
+    A transfer leaves with the money it was taken from rather than rolling
+    into a later payout, so it needs no date of its own - it reduces the
+    payout its payment is already scheduled into. That is what makes it
+    datable when a refund is not.
+
+    Read on `created_at`, which is the capture, never on `settled_at`, which
+    is a future payout the merchant does not yet hold. The whole `debit` is
+    taken because it is the whole cash impact: the amount paid onward, the
+    0.1% commission on it, and the GST on that commission.
+    """
+    routed: dict[str, Paise] = defaultdict(lambda: ZERO)
+    for row in rows:
+        if row.type is not EntityType.TRANSFER or row.payment_id is None:
+            continue
+        if row.created_at.date() > when:
+            continue
+        routed[row.payment_id] = Paise(routed[row.payment_id] + row.debit)
+    return dict(routed)
 
 
 def _settled_by(rows: tuple[SettlementRow, ...], when: date) -> frozenset[str]:

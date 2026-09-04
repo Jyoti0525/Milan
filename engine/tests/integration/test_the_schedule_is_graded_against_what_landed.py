@@ -31,15 +31,23 @@ ones; the schedule reads payments and applies a rate card forward. They share
 no code past `compute_deductions` and they arrive at the same number, which
 makes each one evidence for the other.
 
-**What it does not claim.** Three real mechanisms move a payout that this
-schedule does not model - instant settlement, Route splits, and refunds not
-yet raised - and the tiers here generate none of the first two. Those figures
-are conditional on that. Instant settlement was then generated deliberately
-to bound the first, and the result was not the expected one: it costs the
-schedule nothing, because an instant payout is already in the bank by the
-time a schedule is drawn, so it is omitted rather than mis-dated. Route and
-unraised refunds remain uncosted and are named here rather than left to be
-discovered.
+**What it does not claim.** Three real mechanisms move a payout beyond the
+fee stack, and the tiers above generate none of them, so those figures are
+conditional on that. All three were then generated deliberately rather than
+left as caveats, and two stopped being caveats:
+
+* *Instant settlement* costs the schedule nothing, at 40% and at 80%. A payout
+  pulled early carries a settlement row dated the day of capture, so it is
+  already in the bank when the schedule is drawn and is omitted rather than
+  mis-dated. The prediction written here first said the opposite.
+* *Route* is now netted, and the reason it can be is that a transfer row is
+  written when the payment is captured. The merchant holds it on `as_of`, so
+  subtracting it reads no future row - and a split leaves in the same payout
+  as the payment it came from, so it needs no date of its own. Exact through a
+  60% share.
+* *Refunds not yet raised* stay uncosted, permanently. A customer who has not
+  asked for their money back is a decision, not a row, and reaching it would
+  mean predicting - which is the one thing this module exists not to do.
 """
 
 from __future__ import annotations
@@ -292,6 +300,80 @@ class TestInstantSettlementShrinksTheScheduleRatherThanSpoilingIt:
 
         assert counts == sorted(counts, reverse=True)
         assert counts[-1] < counts[0]
+
+
+def route_month(share: float) -> Dataset:
+    return ChaosEngine(
+        GenerationConfig(
+            seed=42,
+            difficulty=Difficulty.REALISTIC,
+            order_count=ORDERS,
+            route_probability=share,
+        )
+    ).generate()
+
+
+class TestARouteSplitIsNettedRatherThanIgnored:
+    """The blind spot that was reachable after all.
+
+    A marketplace pays part of each sale straight on to a linked account, and
+    that share was never the merchant's money. A schedule that ignores it
+    tells a platform it is getting a payout that includes somebody else's
+    revenue - and it overstates by more the better the marketplace does.
+
+    It was listed as unreachable on the reasoning that the split is not
+    knowable from the payment record. That was wrong, and the generator says
+    so: a transfer row carries `created_at` of the *capture*, not of the
+    payout. The merchant is holding it on the day, so netting it reads
+    nothing about the future. Nor does it need a date invented for it - unlike
+    a refund, which waits for a payout large enough to absorb it, a transfer
+    leaves with the money it came from.
+
+    So this is arithmetic on a row that already exists, which is the only kind
+    of thing this module is allowed to do.
+    """
+
+    @pytest.mark.parametrize("share", [0.15, 0.30, 0.60])
+    def test_the_amount_is_exact_at_every_share(self, share: float) -> None:
+        accuracy = measure(route_month(share), back=7)
+
+        assert accuracy.total > 0
+        assert accuracy.error_on_arrivals == Paise(0)
+        assert accuracy.dated_exactly == 1.0
+
+    @pytest.mark.parametrize("share", [0.15, 0.30, 0.60])
+    def test_the_split_is_reported_separately_from_the_fees(self, share: float) -> None:
+        """A fee is the merchant's money going to the gateway. A Route split
+        is a share of the sale that was never theirs. The proof layer keeps
+        them on separate lines and so does this, because summing them would
+        describe the platform's economics wrongly in both directions."""
+        data = to_recon_input(route_month(share))
+        rates = profile_of(data.settlement_rows).rates()
+
+        schedule = schedule_from(data, rates)
+
+        assert schedule.routed > 0
+        assert schedule.deducted > 0
+        assert schedule.gross == Paise(schedule.committed + schedule.deducted + schedule.routed)
+
+    def test_a_merchant_with_no_linked_accounts_routes_nothing(self) -> None:
+        data = to_recon_input(route_month(0.0))
+        rates = profile_of(data.settlement_rows).rates()
+
+        assert schedule_from(data, rates).routed == Paise(0)
+
+    def test_the_more_is_routed_the_less_is_committed(self) -> None:
+        """The direction that matters. Ignoring the split would leave this
+        flat, which is exactly the failure - a platform reading the same
+        payout however much of it belongs to its sellers."""
+        committed = []
+        for share in (0.0, 0.30, 0.60):
+            data = to_recon_input(route_month(share))
+            rates = profile_of(data.settlement_rows).rates()
+            committed.append(schedule_from(data, rates).committed)
+
+        assert committed == sorted(committed, reverse=True)
+        assert committed[-1] < committed[0]
 
 
 class TestNothingIsDatedThatShouldNotBe:

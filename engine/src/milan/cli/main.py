@@ -157,11 +157,20 @@ def recon(
     """Reconcile a generated dataset and report what could not be resolved."""
     data_root = _root(root)
     dataset = _load(root, seed, difficulty)
+    data = to_recon_input(dataset)
     report = ReconciliationPipeline().run(
-        to_recon_input(dataset), RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
+        data, RunMetadata(seed=dataset.seed, difficulty=dataset.difficulty)
     )
     store.save_report(report, data_root)
     render.report_summary(report)
+
+    # After the summary rather than inside it, because it is context for every
+    # figure above rather than one of them: these are the rates the leak check
+    # was run against, worked out from the merchant's own rows.
+    rates = render.rates_table(data.settlement_rows)
+    if rates is not None:
+        console.print()
+        console.print(rates)
 
 
 @app.command()

@@ -1046,6 +1046,8 @@ are now done.
 - **Rule induction** - learning a merchant's own fee stack from their history
   instead of being handed a rate card. Named in the original plan, never
   built, and it is the one remaining item that would change a graded number.
+  *(Closed on day 13 - see below. It changed no graded number, because it is
+  wired only into the paths that never had a rate card to begin with.)*
 - **The question corpus is written by the same person as the triggers.** The
   held-out set narrows that, and does not remove it. Nothing here has been in
   front of a merchant.
@@ -1053,7 +1055,9 @@ are now done.
   reports is a payout whose deposit is in the same queue. The induction names
   the duplication; the exception's own wording still reads as "the money never
   arrived", and fixing that properly means the pipeline knowing that a
-  withdrawn claim still spoke for a settlement.
+  withdrawn claim still spoke for a settlement. *(Closed on day 13. The
+  pipeline now knows exactly that - the cascade had been carrying
+  `withdrawn_ids` the whole time and nothing passed them on.)*
 
 ## Day 12 — the half of the track title nobody had read twice
 
@@ -1084,9 +1088,40 @@ not in the examples, it was in the title.
   at 40% and 80% to cost the dates and cost nothing, so that one is closed on
   evidence; these two are named as open rather than assumed small.
 
-### Still open, and unchanged by any of this
+## Day 13 — closing the list instead of carrying it
 
-- **Rule induction** — learning a merchant's own fee stack from their history
-  instead of being handed a rate card. Still the one remaining item that would
-  change a graded number, and it would now change two: the schedule derives
-  its amounts from the same rate card the reconciliation does.
+Three items were carried as open. Two were open on real reasoning, one half
+was genuinely impossible, and keeping all of them on one list as though they
+were the same kind of unfinished was itself the mistake — a permanent limit
+and a piece of unbuilt work read identically on a TODO and are not the same
+thing at all.
+
+- [x] **Rule induction.** `milan.rules`, wired into the path that has no rate
+      card and never into the path that does. 48 of 48 months recover the exact
+      contract they were built with, and leak detection is untouched: 693 of
+      693 found, 0 missed, 0 false accusations. The circularity that kept this
+      unbuilt is answered by measurement rather than by argument — see
+      decisions 290-296.
+- [x] **`MISSING_SETTLEMENT` overclaims** (decision 242). 144 of 180 now name
+      the credit that was matched and withdrawn, and carry no amount, so
+      `awaited` stopped double counting. None of the 60 genuinely missing
+      payouts was softened. Decisions 283-285.
+- [x] **Route splits in the forward schedule.** Listed as unmodellable on the
+      reasoning that a split is not knowable from the payment record. That was
+      wrong — a transfer row carries the *capture* timestamp — so it is now
+      netted, exactly, through a 60% Route share. Decisions 286-288.
+
+### Open permanently, and recorded as a limit rather than a task
+
+- **Refunds not yet raised.** A customer who has not asked for their money
+  back is a decision, not a row, and reaching it would mean predicting — the
+  one thing the forward schedule exists not to do. This is the refusal
+  working, not a gap in it, and it will not be closed.
+- **The generator is a model of reality, not a sample of it.** Unchanged and
+  unchangeable by any amount of work inside this repository. Every accuracy
+  figure remains an upper bound conditional on the defect catalogue, which is
+  written by the same person as the matcher. The unfamiliar-defect harness
+  narrows this and does not remove it.
+- **Nothing here has been in front of a merchant.** The question corpora are
+  written by the same person as the triggers; the held-out sets narrow that
+  and do not remove it.

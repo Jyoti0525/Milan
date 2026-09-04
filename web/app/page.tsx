@@ -53,6 +53,7 @@ import { Merchant } from "@/components/Merchant";
 import { WhatToDo } from "@/components/WhatToDo";
 import { ImportMetrics, Metrics } from "@/components/Metrics";
 import { Position } from "@/components/Position";
+import { Rates } from "@/components/Rates";
 import { Schedule } from "@/components/Schedule";
 import { TopBar } from "@/components/TopBar";
 import { ProofPanel } from "@/components/ProofPanel";
@@ -626,6 +627,13 @@ export default function Workspace() {
               smaller than these sales.
             */}
             {view && <Merchant findings={view.merchant} />}
+            {/*
+              Beside the merchant findings rather than beside the leaks,
+              because it is the same kind of fact: something read off the
+              rows about who this merchant is, which every figure above then
+              depends on. The leak list is what it *implies*.
+            */}
+            {view && <Rates rates={view.rates} />}
             {/* Last, because it is the only thing here that asks for an
                 action, and it hands the reader into the queue. */}
             {view && (

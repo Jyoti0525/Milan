@@ -16,6 +16,7 @@ from rich.table import Table
 
 from milan.domain.merchant import MerchantProfile
 from milan.domain.money import Paise, format_inr
+from milan.domain.records import SettlementRow
 from milan.domain.results import Proof, ReconReport
 from milan.evaluation.ablation import Ablation
 from milan.evaluation.control import Comparison
@@ -31,6 +32,7 @@ from milan.llm.pricing import RATES
 from milan.llm.registry import Status
 from milan.qa import Answer
 from milan.recon.causes import induce
+from milan.rules import induce_rates
 from milan.samples.measure import Accuracy
 
 console = Console()
@@ -1123,5 +1125,45 @@ def schedule_accuracy(accuracy: ScheduleAccuracy) -> Table:
         table.add_row(
             "Payments the report never mentions",
             str(len(accuracy.never_arrived)),
+        )
+    return table
+
+
+def rates_table(rows: tuple[SettlementRow, ...]) -> Table | None:
+    """The contract these rows imply, and the bands that would not say.
+
+    Printed only when something was concluded or something was contested. A
+    merchant whose report is too thin to read anything off gets nothing here
+    rather than five lines saying so, for the same reason `merchant_table`
+    stays quiet: a panel that is always empty trains the reader to skip it.
+    """
+    induced = induce_rates(rows)
+    shown = [*induced.settled, *(f for f in induced.questions if f.of)]
+    if not shown:
+        return None
+
+    table = Table(
+        title="What this merchant is charged, read from their own rows",
+        title_justify="left",
+        title_style="bold",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("Band")
+    table.add_column("Rate", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Rows", **_NUMERIC)  # type: ignore[arg-type]
+    table.add_column("Because")
+
+    for finding in shown:
+        name = (
+            f"[green]{finding.name}[/green]"
+            if finding.settled
+            else f"[yellow]{finding.name}?[/yellow]"
+        )
+        table.add_row(
+            name,
+            f"{finding.rate:.3%}" if finding.rate is not None else "-",
+            finding.share,
+            finding.because,
         )
     return table

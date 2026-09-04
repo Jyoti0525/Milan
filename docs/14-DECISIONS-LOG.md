@@ -1509,3 +1509,94 @@ If a decision is not here, it is not settled.
      published cycle - so it is one figure a merchant's real files get in
      full, and the first forward-looking number this system has ever been
      able to offer somebody who brought their own books.
+282. **The three open items were closed, and one of them could not be.** Two
+     were open on real reasoning and one half was genuinely impossible. Keeping
+     them on a list as though they were all the same kind of unfinished was
+     itself the mistake: a permanent limit and a piece of unbuilt work read the
+     same on a TODO and are not the same thing at all.
+283. **A payout a credit claimed is no longer reported as one nothing spoke
+     for.** Decision 242 found that most `MISSING_SETTLEMENT` exceptions were
+     payouts a bank credit had been matched to and withdrawn from, and refused
+     to suppress them - rightly, because suppressing means asserting a match
+     the prover declined to assert. What it left open needed no assertion: the
+     sentence said "no bank credit matches it" about a payout a credit plainly
+     matched, and the full net stayed in the amount, so one short payout was
+     counted twice. The cascade already carried `withdrawn_ids`; nothing had
+     ever passed them to the categoriser.
+284. **Measured over 36 months: 144 of the 180 overclaims now name their
+     credit, and 0 of the 60 genuinely missing payouts were softened.** That
+     zero is the load-bearing figure. A payout that really went astray,
+     labelled as already accounted for, is the one message in this system that
+     would stop somebody chasing money that is gone - and nothing downstream
+     would ever contradict it. The remaining 36 are payouts no credit ever
+     claimed even provisionally, so "no bank credit matches it" is exactly
+     what happened to them.
+285. **The amount is zero on a spoken-for payout, and that is what the field
+     already meant.** `ReconException.amount` is documented as the unexplained
+     amount, zero when the exception is structural. The unexplained amount
+     here is the shortfall, and the shortfall exception is already reporting
+     it. Removing the double count made `awaited` on the position screen
+     correct rather than roughly twice the truth.
+286. **Route was listed as unmodellable and the listing was wrong.** The
+     reasoning was that a split is not knowable from the payment record. The
+     generator says otherwise: a transfer row carries `created_at` of the
+     *capture*, not of the payout. The merchant is holding it on the day, so
+     netting it reads no future row - and unlike a refund, which waits for a
+     payout large enough to absorb it, a transfer leaves with the money it came
+     from and needs no date invented for it. Exact through a 60% Route share.
+287. **The split is its own field, not a deduction.** A fee is the merchant's
+     money going to the gateway; a Route split is a share of a sale that was
+     never theirs. The proof layer has always given it a separate line and the
+     schedule now does too, because summing them describes a marketplace's
+     economics wrongly in both directions.
+288. **The grader had to be fixed alongside it.** A payment's contribution to
+     what reaches the bank is its own credit less whatever was routed out of
+     it. Grading against the credit alone would have scored a schedule that
+     correctly nets the split as short by exactly the split - the same class of
+     error as the refund `payment_id` collision, and found the same way.
+289. **Refunds not yet raised stay open permanently, and are now recorded as a
+     limit rather than a task.** A customer who has not asked for their money
+     back is a decision, not a row. Reaching it would mean predicting, which is
+     the one thing the schedule exists not to do, so this is the refusal
+     working rather than a gap in it.
+290. **Rule induction was the last item from the original build plan, and it
+     stayed open on a real objection.** Learning a rate from the rows and then
+     checking the rows against it is circular: whatever was charged becomes
+     what was contracted, and `milan.leaks` goes silent on every merchant it is
+     pointed at. Building it badly would not have added a feature, it would
+     have quietly removed the best one.
+291. **The resolution is a stated condition: an overcharge is a minority.** A
+     merchant contracted at 2% and overcharged on some cards has most rows at
+     2%, so the modal rate over a band is the contract and the rows that
+     disagree are the leak. Where that does not hold - a band split evenly
+     between two rates - the induction refuses and names both, because the more
+     popular of two rates is a guess wearing a majority.
+292. **Bands are read off columns the report itself declares.** Method and card
+     type are what Razorpay's pricing actually varies on, so the question is
+     "what were rows like this one charged" rather than "what clusters can I
+     find". Two rates a merchant genuinely holds are two findings, never one
+     averaged answer.
+293. **The vote is approximate and the proof is exact.** A rounded fee only
+     implies a rate to within a paisa, so rates are voted on at one hundredth
+     of a percent - and the winner must then reproduce every fee it claims
+     through `apply_rate`, the same function the fee was computed with. The
+     count reported beside a finding is of rows the rate reproduces exactly,
+     never of rows that merely voted for it.
+294. **Measured over 48 months: 48 of 48 contracts recovered exactly, 693 of
+     693 leaks still found, 0 missed, 0 false accusations.** The last two are
+     what decided whether this was safe to build. The adversarial tier charges
+     a quarter of its consumer cards above contract and the induced card still
+     separates them perfectly - it hands over the majority rate and leaves the
+     minority to be reported, rather than absorbing them into a contract that
+     explains them away.
+295. **It is wired into the path that had no rate card and never into the path
+     that does.** Every graded figure passes an explicit card, so no measured
+     number can move because a detector changed its mind - the full suite
+     confirms nothing did. The import path, which had been checking real
+     merchants against Razorpay list price and calling any difference a leak,
+     now reads their own contract.
+296. **The count beside the rate is the column worth reading.** A band showing
+     `2.000%` on `107 of 154` rows says two things at once: this is your
+     contract, and forty-seven of your card payments were not charged at it.
+     Until this shipped, every leak finding on the screen asserted a contract
+     the screen never showed.

@@ -127,6 +127,7 @@ class TestOneRun:
             "leaks",
             "merchant",
             "causes",
+            "rates",
             "schedule",
         }
         assert body["summary"]["seed"] == 42
@@ -157,6 +158,36 @@ class TestOneRun:
 
         assert schedule["overdue_count"] > 0
         assert schedule["committed"] == schedule["landings"][-1]["running"]
+
+    def test_the_contract_the_leak_check_used_arrives_with_the_run(
+        self, client: TestClient
+    ) -> None:
+        """Every leak finding says a row was charged above contract, and until
+        this was served nothing on the screen said what the contract was or
+        where it came from."""
+        rates = client.get("/api/runs/adversarial/42").json()["rates"]
+
+        assert rates["findings"]
+        for finding in rates["findings"]:
+            assert finding["of"] > 0
+            assert finding["because"]
+            assert finding["rows"] + finding["disagreeing"] == finding["of"]
+            if finding["rate"] is not None:
+                assert finding["rate"].endswith("%")
+
+    def test_the_band_that_is_overcharged_shows_its_disagreeing_rows(
+        self, client: TestClient
+    ) -> None:
+        """The count is the column worth reading. A band at 2.000% on 107 of
+        154 rows is saying both what the contract is and that forty-seven
+        payments were not charged at it."""
+        rates = client.get("/api/runs/adversarial/42").json()["rates"]
+
+        consumer = [f for f in rates["findings"] if f["name"] == "Domestic consumer cards"]
+
+        assert consumer
+        assert consumer[0]["rate"] is not None
+        assert consumer[0]["disagreeing"] > 0
 
     def test_the_queue_arrives_with_the_reasons_behind_it(self, client: TestClient) -> None:
         """The adversarial tier raises enough exceptions that some of them

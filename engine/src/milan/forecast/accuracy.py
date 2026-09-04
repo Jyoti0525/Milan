@@ -25,6 +25,7 @@ own and its rupees are reported beside the rest.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable
 from datetime import date
 
@@ -203,11 +204,24 @@ def _outcomes(rows: tuple[SettlementRow, ...]) -> dict[str, tuple[date, Paise]]:
     would otherwise grade every commitment as money that never arrived, and a
     perfect forecast would score zero.
     """
+    routed: dict[str, Paise] = defaultdict(lambda: ZERO)
+    for row in rows:
+        # A Route transfer leaves in the same payout as the payment it was
+        # taken from, so a payment's true contribution to what reaches the
+        # bank is its own credit less whatever was paid onward out of it.
+        # Grading against the credit alone would score a schedule that
+        # correctly nets the split as short by exactly the split.
+        if row.type is EntityType.TRANSFER and row.payment_id is not None:
+            routed[row.payment_id] = Paise(routed[row.payment_id] + row.debit)
+
     found: dict[str, tuple[date, Paise]] = {}
     for row in rows:
         if row.type is not EntityType.PAYMENT or row.settled_at is None:
             continue
-        outcome = (row.settled_at.date(), row.signed_net)
+        landed = Paise(row.signed_net - routed.get(row.entity_id, ZERO))
+        if row.payment_id is not None:
+            landed = Paise(row.signed_net - routed.get(row.payment_id, ZERO))
+        outcome = (row.settled_at.date(), landed)
         found[row.entity_id] = outcome
         if row.payment_id is not None:
             found[row.payment_id] = outcome

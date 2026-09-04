@@ -490,13 +490,27 @@ Neither is added to what is coming. Both are real, and neither is cash flow.
 
 ### What it cannot see, said out loud
 
-Three things move a real payout that this does not model: an instant
-settlement the merchant asks for, a Route split to a linked account, and a
-refund a customer has not requested yet. The first was generated deliberately
-to cost it — and turned out to cost nothing, because an instant payout carries
-a settlement row dated the day of capture, so by the time the schedule is
-drawn that money is already in the bank and is left out rather than mis-dated.
-The other two remain uncosted and are named here rather than left to be found.
+Three things move a real payout beyond the fee stack. All three were generated
+deliberately rather than left as caveats, and two stopped being caveats.
+
+**Instant settlement costs it nothing**, at 40% and at 80%. A payout pulled
+early carries a settlement row dated the day of capture, so it is already in
+the bank when the schedule is drawn and is omitted rather than mis-dated. The
+prediction written here first said the opposite.
+
+**A Route split is netted**, exactly, through a 60% share. This was listed as
+unmodellable on the reasoning that a split is not knowable from the payment
+record — which was wrong. A transfer row carries the timestamp of the
+*capture*, not of the payout, so the merchant is holding it on the day; and
+unlike a refund, a transfer leaves with the money it came from, so it needs no
+date invented for it. It is reported on its own line rather than folded into
+the deductions, because a fee is your money going to the gateway and a Route
+split is a share of a sale that was never yours.
+
+**A refund not yet raised stays uncosted, permanently.** A customer who has
+not asked for their money back is a decision, not a row, and reaching it would
+mean predicting — the one thing this exists not to do. That is the refusal
+working, not a gap in it.
 
 ## Bring your own books
 
@@ -585,6 +599,73 @@ proof, every cascade rung, every exception code and amount.
 
 If the import drops a paisa, reads a date the other way round, or maps the
 debit onto the credit, they diverge and the suite fails.
+
+## The contract, read off the rows
+
+Every overcharge finding above says a row was charged above contract. Until
+day 13 nothing on the screen said what the contract *was* — it came from
+Razorpay's published pricing, which is right for a generated month and wrong
+for anybody on a negotiated rate.
+
+```bash
+uv run milan recon --seed 42 --difficulty adversarial
+```
+
+```
+What this merchant is charged, read from their own rows
+Band                         Rate        Rows  Because
+Standard rate              2.000%  390 of 390  2.000% of the amount, reproducing the
+                                               charge to the paisa on 390 of 390 rows
+Domestic consumer cards    2.000%  107 of 154  2.000% of the amount, reproducing the
+                                               charge to the paisa on 107 of 154 rows
+Domestic corporate cards   2.150%    13 of 13  ...
+International cards        3.000%    13 of 13  ...
+GST on the fee            18.000%  570 of 570  18.000% of the fee, ...
+```
+
+**The count is the column worth reading**, not the rate. `2.000% on 107 of 154`
+says two things at once: this is the contract, and forty-seven card payments
+were not charged at it.
+
+### The circularity, and why this stayed unbuilt for twelve days
+
+Learning a rate from the rows and then checking the rows against it is
+circular. Whatever the gateway charged becomes, by construction, what it was
+contracted to charge — and the leak detector goes silent on every merchant it
+is pointed at. Building it badly would not have added a feature; it would have
+quietly removed the best one.
+
+The way out is a **stated condition, not a trick: an overcharge is a
+minority.** Most rows sit at the contracted rate, so the modal rate over a band
+is the contract and the rows that disagree are the leak. A band that splits
+evenly between two rates is refused out loud, with both named, because the more
+popular of two rates is a guess wearing a majority.
+
+Bands come from columns the report itself declares — method and card type are
+what Razorpay's pricing actually varies on — so this asks "what were rows like
+this one charged", never "what clusters can I find". And the winning rate must
+reproduce every fee it claims through `apply_rate`, the same function the fee
+was computed with. The count beside each finding is of rows it reproduces
+exactly, never of rows that merely voted.
+
+### Measured on both halves at once
+
+| Over 4 tiers × 12 seeds at 600 orders | |
+|---|---|
+| contract recovered exactly | **48 / 48** |
+| leaks still found | **693 / 693** |
+| leaks missed | **0** |
+| false accusations | **0** |
+
+The last two are what decided whether this was safe to ship. The adversarial
+tier charges a quarter of its consumer cards above contract, and the induced
+card still separates them perfectly.
+
+It is wired into the path that had no rate card and **never** into the path
+that does. Every graded figure in this README passes an explicit card, so no
+measured number can move because a detector changed its mind — and the full
+suite confirms none did. What changed is the import path, which had been
+checking real merchants against list price and calling any difference a leak.
 
 ## Ask it a question
 

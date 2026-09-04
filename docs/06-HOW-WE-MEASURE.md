@@ -148,11 +148,42 @@ Two guards keep it from passing by having nothing to check: a floor on how many
 commitments must reach the measurement at all, and a separate class asserting
 the clean tier is perfect. Both fail before any accuracy floor does.
 
-The blind spots are generated rather than described where that is possible.
-Instant settlement was generated at 40% and 80% to cost the schedule its dates
-and cost it nothing — an instant payout is already in the bank by the time a
-schedule is drawn, so it is omitted rather than mis-dated. Route splits and
-refunds not yet raised remain uncosted, and are named as uncosted.
+The blind spots are generated rather than described. Instant settlement was
+generated at 40% and 80% to cost the schedule its dates and cost it nothing —
+an instant payout is already in the bank by the time a schedule is drawn, so
+it is omitted rather than mis-dated. Route was generated at 15%, 30% and 60%
+and turned out to be modellable after all, because a transfer row carries the
+capture timestamp rather than the payout's; it is netted exactly at every
+share. Refunds not yet raised are uncosted permanently, and that is recorded
+as a limit rather than a task: reaching a decision a customer has not made
+would mean predicting.
+
+## Rule 6c — an induced contract must not explain away what it learns from
+
+Learning a rate card from a merchant's rows is circular unless it is measured:
+whatever the gateway charged becomes what it was contracted to charge, and the
+leak detector goes silent. So `milan.rules` is graded on both halves at once —
+does it recover the contract, *and* does the leak check still work against the
+card it produces.
+
+Over **4 tiers x 12 seeds at 600 orders**:
+
+| What is checked | What holds |
+| --- | --- |
+| Contract recovered | 48 / 48 months, exactly — including a negotiated card none of the defaults would produce |
+| Leaks still found | 693 / 693 |
+| Leaks missed | 0 |
+| False accusations | 0 |
+
+The last two decide whether it was safe to build at all. The rule it rests on
+is stated rather than assumed: an overcharge is a minority, so the modal rate
+over a band is the contract and the rows that disagree are the leak. A band
+that splits evenly is refused and both rates are named, because the more
+popular of two rates is a guess wearing a majority.
+
+It is wired only into the paths that never had a rate card. Every graded figure
+here passes one explicitly, so nothing measured can move because a detector
+changed its mind.
 
 ## Rule 7 — throughput, measured properly
 

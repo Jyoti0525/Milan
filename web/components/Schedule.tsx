@@ -23,6 +23,12 @@
  * arrive on. Both are real and neither is cash flow, so they sit below a rule
  * in their own sentences — the same rule, for the same reason, as the one
  * `Position` draws above "never reached the bank at all".
+ *
+ * **The Route line exists because a number got smaller.** Netting the split
+ * dropped one marketplace's total by ₹6,619 with nothing on screen saying why,
+ * which reads as a bug rather than as a correction. It is the one deduction
+ * here that is not a cost at all — a share of each sale that was never this
+ * merchant's — so it says that rather than sitting in with the fees.
  */
 
 import type { Landing, ScheduleView } from "@/lib/api";
@@ -109,6 +115,14 @@ export function Schedule({ schedule }: { schedule: ScheduleView }) {
         </div>
       )}
 
+      {schedule.routed > 0 && (
+        <div className="mt-2 text-[11.5px] text-[var(--text-subtle)]">
+          <Amount paise={schedule.routed} size="sm" /> of these payouts is paid straight on to
+          your linked accounts and is already taken out of the total above — it is a share of
+          each sale rather than a charge on it.
+        </div>
+      )}
+
       {(schedule.overdue_count > 0 || schedule.undated.length > 0) && (
         <div className="mt-3.5 space-y-2 border-t border-[var(--border)] pt-3">
           {schedule.overdue_count > 0 && (
@@ -142,10 +156,15 @@ export function Schedule({ schedule }: { schedule: ScheduleView }) {
             projected, and no trend is fitted.
           </p>
           <p>
-            Three things move a real payout that this cannot see: an instant settlement you ask
-            for, a Route split to a linked account, and a refund a customer has not requested
-            yet. Refunds already raised are in the undated line above; the other two would arrive
-            early or arrive smaller, and neither is invented here.
+            One thing it deliberately cannot see: a refund a customer has not asked for yet.
+            That is a decision rather than a record, and reaching it would mean predicting.
+            Refunds you have already raised are in the undated line above.
+          </p>
+          <p>
+            Two others turned out to be reachable. A Route split is netted out, because the
+            transfer is written when the payment is captured and it leaves in the same payout.
+            An instant settlement costs this nothing either — that money is already in your
+            account by the time this is drawn, so it is left out rather than mis-dated.
           </p>
         </Explain>
       </div>
