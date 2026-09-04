@@ -79,7 +79,26 @@ Turns a clerical output into a business finding.
 evidence is real reasoning — not narration, and not something a clustering
 algorithm produces on its own.
 
-### 6. India-specific depth
+### 6. A cash position that refuses to be a forecast
+Every competitor on this track who builds the "forward cash forecaster" from the
+example list has to decide what to do about the future. Most will fit a trend,
+or hand a month of rows to a model and print whatever comes back.
+
+We date money the merchant has **already captured**, using the published
+settlement cycle and their own fee stack, and refuse the word *forecast*
+outright — while offering the schedule in the same breath. Money that cannot be
+dated is reported as undated rather than given a date it did not earn.
+
+**This one is deliberately not AI**, and that is the point of putting it on this
+list. The rubric asks where you chose *not* to use a model, and this is the
+clearest answer in the project: the one place where reaching for one would have
+been easiest and most expected, and where doing so would have made the number
+unverifiable.
+
+It is also graded against the half of the month it was not allowed to read,
+which is what separates it from a projection nobody can check.
+
+### 7. India-specific depth
 Real fee stack, real 194-O TDS rules, real T+2 timing, real ITC matching against
 the monthly tax invoice, real Razorpay field names.
 

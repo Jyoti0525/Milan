@@ -10,6 +10,11 @@ submissions will not have an answer for.
 command that runs. If a number on screen disagrees with a number in this
 script, the script is wrong and gets corrected — never the other way round.
 
+Two figures in the close were stale when this was last audited — the script
+said 554 tests and 97% coverage against an actual 1,206 and 91%. Both are
+spoken aloud, so re-read the close against `uv run pytest -q --cov=src/milan`
+before recording rather than trusting the number written here.
+
 ---
 
 ## Before recording
@@ -92,7 +97,41 @@ cd web && npm run dev
 
 ---
 
-## 2:05 – 2:50 · The money that is wrong while everything balances
+## 2:05 – 2:35 · What is still to come
+
+**On screen:** back to **Overview**. The schedule card, straight under the
+position. Or the terminal — `uv run milan forecast --seed 42 --difficulty
+adversarial`, which prints the same figures.
+
+> "The track is called *run the books and the cash position*. That was the books.
+> This is the cash position, and it is the one place this thing talks about a
+> day that has not happened yet.
+>
+> One lakh forty-two thousand, six hundred and seventy-nine rupees, due across
+> four days. Sixty-five payments this merchant has already taken and the gateway
+> has not paid on.
+>
+> And it is not a forecast. A forecast says what is *likely*. This says what is
+> *owed*, and when it is due — Razorpay's published settlement cycle applied to
+> their own capture timestamps, their own fee stack applied to their own
+> amounts. Nothing here extrapolates a sale, because nothing in a month of
+> settlement rows knows anything about next month's sales.
+>
+> Two figures are deliberately not in that total. Thirty-four thousand was due
+> before today and has no payout behind it — that is the queue seen from the
+> other side. Twenty-one thousand is going back out as refunds, with no date,
+> because a refund lands in whichever payout is next big enough and that depends
+> on sales nobody has made. Both are real. Neither is cash flow. Adding them
+> would show a balance this merchant does not have."
+
+**Beat:** if there is time, one line of proof that this is measured too —
+
+> "And it is graded against the half of the month it was not allowed to read.
+> Every date it gets wrong belongs to money that never settled at all."
+
+---
+
+## 2:35 – 3:15 · The money that is wrong while everything balances
 
 **On screen:** **Charged above contract** in the sidebar. Open the finding.
 
@@ -119,7 +158,7 @@ cd web && npm run dev
 
 ---
 
-## 2:50 – 3:35 · Measured, not demonstrated
+## 3:15 – 3:55 · Measured, not demonstrated
 
 **On screen:** terminal.
 
@@ -148,7 +187,7 @@ uv run milan curve --seeds 20 --orders 600
 
 ---
 
-## 3:35 – 4:30 · Where the model earns its place
+## 3:55 – 4:35 · Where the model earns its place
 
 **On screen:** terminal, then the ablation table.
 
@@ -200,7 +239,7 @@ model against the key's live catalogue, not just that a key is set."*
 > there. Every fix it needed was me handing back something the fixed order was
 > already doing for free. That is why this is called a cascade."
 
-## 4:30 – 5:00 · Close
+## 4:35 – 5:00 · Close
 
 **On screen:** terminal.
 
@@ -210,7 +249,7 @@ uv run milan reproduce --seed 42 --difficulty adversarial --orders 600
 
 > "Same seed, same digest, every time. *Identical.*
 >
-> Five hundred and fifty-four tests, ninety-seven percent coverage. Every dataset is
+> Twelve hundred tests, ninety-one percent coverage. Every dataset is
 > a pure function of its seed, so nothing is stored in the repository and
 > anything on screen can be regenerated on your machine in one command — including
 > the model's answers, which are committed so you can replay the ablation with no
@@ -224,9 +263,11 @@ uv run milan reproduce --seed 42 --difficulty adversarial --orders 600
 
 In this order:
 
-1. The throughput line at 3:35 (nice, not load-bearing).
+1. The throughput line at 3:15 (nice, not load-bearing).
 2. The degradation-curve half of section 5 — keep the eval ladder.
 3. The hover-the-refs beat at 1:20.
+4. The graded beat at the end of 2:05 — keep the schedule itself, which is
+   half the track's own title.
 
 **Never cut:** the `Unexplained 0.00` row, the refusal count, the leak
 section, or the eleven-of-thirty result. Those four are the submission.
